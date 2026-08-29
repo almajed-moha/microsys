@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Server, Plus, Network, CheckCircle, ShieldAlert } from 'lucide-react';
+import { Server, Plus, Network, CheckCircle, ShieldAlert, Trash2 } from 'lucide-react';
 import { NetworkTenant, AppUser } from '../types';
 import { SystemTenantModal } from './SystemTenantModal';
 
@@ -7,12 +7,14 @@ interface SystemTenantsViewProps {
   tenants: NetworkTenant[];
   users: AppUser[];
   onSaveTenant?: (tenant: NetworkTenant) => void;
+  onDeleteTenant?: (tenantId: string) => void;
 }
 
 export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
   tenants,
   users,
   onSaveTenant,
+  onDeleteTenant,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<NetworkTenant | null>(null);
@@ -131,12 +133,25 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
                     </span>
                   </td>
                   <td className="p-4">
-                    <button 
-                      onClick={() => handleOpenModal(tenant)}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition border border-slate-700"
-                    >
-                      إدارة
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => handleOpenModal(tenant)}
+                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition border border-slate-700"
+                      >
+                        إدارة
+                      </button>
+                      <button 
+                        onClick={() => {
+                          if(window.confirm('هل أنت متأكد من حذف هذه الشبكة؟ سيتم حذف جميع المستخدمين المرتبطين بها بشكل نهائي.')) {
+                            onDeleteTenant?.(tenant.id);
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-xs font-bold transition border border-rose-500/20"
+                        title="حذف الشبكة"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

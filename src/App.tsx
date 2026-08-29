@@ -395,6 +395,16 @@ export default function App() {
     let updatedTenants;
     if (isExisting) {
       updatedTenants = tenants.map((t) => (t.id === tenantToSave.id ? tenantToSave : t));
+      
+      if (adminPassword) {
+        const updatedUsers = users.map((u) => 
+          (u.networkId === tenantToSave.id && u.username === tenantToSave.adminUsername)
+            ? { ...u, password: adminPassword }
+            : u
+        );
+        setUsers(updatedUsers);
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
+      }
     } else {
       updatedTenants = [...tenants, tenantToSave];
       
@@ -422,6 +432,26 @@ export default function App() {
     logUserActivity(
       isExisting ? 'تحديث بيانات شبكة' : 'إضافة شبكة جديدة',
       `تم ${isExisting ? 'تحديث' : 'إضافة'} شبكة: ${tenantToSave.name}`,
+      'systemTenants'
+    );
+  };
+
+  const handleDeleteTenant = (tenantId: string) => {
+    const tenantToDelete = tenants.find(t => t.id === tenantId);
+    if (!tenantToDelete) return;
+
+    const updatedTenants = tenants.filter(t => t.id !== tenantId);
+    setTenants(updatedTenants);
+    localStorage.setItem('mikrotik_pos_tenants', JSON.stringify(updatedTenants));
+
+    // Remove users associated with this tenant
+    const updatedUsers = users.filter(u => u.networkId !== tenantId);
+    setUsers(updatedUsers);
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
+
+    logUserActivity(
+      'حذف شبكة',
+      `تم حذف شبكة: ${tenantToDelete.name} مع جميع مستخدميها`,
       'systemTenants'
     );
   };
@@ -1497,6 +1527,7 @@ export default function App() {
                   tenants={tenants}
                   users={users}
                   onSaveTenant={handleSaveTenant}
+                  onDeleteTenant={handleDeleteTenant}
                 />
               )}
 
