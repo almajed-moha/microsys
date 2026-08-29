@@ -107,12 +107,24 @@ export const SystemTenantModal: React.FC<SystemTenantModalProps> = ({
               dir="ltr"
               placeholder="e.g. admin_alfadaa"
             />
-            {!tenant && (
-              <p className="text-xs text-indigo-400 mt-1">
-                كلمة المرور الافتراضية ستكون: adminpassword
-              </p>
-            )}
           </div>
+
+          {!tenant && (
+            <div>
+              <label className="block text-slate-300 text-sm font-bold mb-1.5">
+                كلمة المرور لمدير الشبكة
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.adminPassword || ''}
+                onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono text-left"
+                dir="ltr"
+                placeholder="e.g. adminpassword"
+              />
+            </div>
+          )}
 
           <div>
             <label className="block text-slate-300 text-sm font-bold mb-1.5">

@@ -372,6 +372,7 @@ export interface NetworkTenant {
   id: string;
   name: string;
   adminUsername: string;
+  adminPassword?: string;
   status: 'active' | 'suspended';
   createdAt: string;
   settings: NetworkSettings;

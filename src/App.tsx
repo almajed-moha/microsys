@@ -388,21 +388,24 @@ export default function App() {
   };
 
   const handleSaveTenant = (tenant: NetworkTenant) => {
-    const isExisting = tenants.some((t) => t.id === tenant.id);
+    // Extract and remove adminPassword so it doesn't get saved in the tenant object
+    const { adminPassword, ...tenantToSave } = tenant;
+
+    const isExisting = tenants.some((t) => t.id === tenantToSave.id);
     let updatedTenants;
     if (isExisting) {
-      updatedTenants = tenants.map((t) => (t.id === tenant.id ? tenant : t));
+      updatedTenants = tenants.map((t) => (t.id === tenantToSave.id ? tenantToSave : t));
     } else {
-      updatedTenants = [...tenants, tenant];
+      updatedTenants = [...tenants, tenantToSave];
       
-      const adminExists = users.some(u => u.username === tenant.adminUsername);
+      const adminExists = users.some(u => u.username === tenantToSave.adminUsername);
       if (!adminExists) {
         const newAdmin: AppUser = {
           id: `user-${Date.now()}`,
-          networkId: tenant.id,
-          name: `مدير ${tenant.name}`,
-          username: tenant.adminUsername,
-          password: 'adminpassword',
+          networkId: tenantToSave.id,
+          name: `مدير ${tenantToSave.name}`,
+          username: tenantToSave.adminUsername,
+          password: adminPassword || 'adminpassword',
           role: 'super_admin',
           status: 'active',
           permissions: getRoleDefaultPermissions('super_admin'),
@@ -418,7 +421,7 @@ export default function App() {
     
     logUserActivity(
       isExisting ? 'تحديث بيانات شبكة' : 'إضافة شبكة جديدة',
-      `تم ${isExisting ? 'تحديث' : 'إضافة'} شبكة: ${tenant.name}`,
+      `تم ${isExisting ? 'تحديث' : 'إضافة'} شبكة: ${tenantToSave.name}`,
       'systemTenants'
     );
   };
