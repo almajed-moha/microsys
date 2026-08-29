@@ -1,0 +1,348 @@
+@import "tailwindcss";
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+
+.animate-shake {
+  animation: shake 0.4s ease-in-out;
+}
+
+@layer base {
+  body {
+    font-family: 'Cairo', system-ui, sans-serif;
+  }
+}
+
+/* ==========================================================
+   LIGHT MODE STYLING & COMPONENT OVERRIDES
+   ========================================================== */
+
+html.light,
+html.light body {
+  background-color: #f8fafc !important; /* slate-50 */
+  color: #0f172a !important; /* slate-900 */
+}
+
+/* Base Surfaces */
+html.light .bg-slate-950 {
+  background-color: #f1f5f9 !important; /* slate-100 */
+}
+
+html.light .bg-slate-900 {
+  background-color: #ffffff !important; /* white card */
+}
+
+html.light .bg-slate-900\/95,
+html.light .bg-slate-900\/90,
+html.light .bg-slate-900\/80,
+html.light .bg-slate-900\/70,
+html.light .bg-slate-900\/60,
+html.light .bg-slate-900\/50,
+html.light .bg-slate-950\/95,
+html.light .bg-slate-950\/90,
+html.light .bg-slate-950\/80,
+html.light .bg-slate-950\/70,
+html.light .bg-slate-950\/60,
+html.light .bg-slate-950\/50 {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+}
+
+html.light .bg-slate-800 {
+  background-color: #f8fafc !important; /* slate-50 */
+}
+
+html.light .bg-slate-800\/90,
+html.light .bg-slate-800\/80,
+html.light .bg-slate-800\/70,
+html.light .bg-slate-800\/60,
+html.light .bg-slate-800\/50,
+html.light .bg-slate-800\/40,
+html.light .bg-slate-800\/30 {
+  background-color: #f1f5f9 !important; /* slate-100 */
+}
+
+/* Hover States */
+html.light .hover\:bg-slate-800:hover,
+html.light .hover\:bg-slate-800\/50:hover,
+html.light .hover\:bg-slate-800\/80:hover {
+  background-color: #e2e8f0 !important; /* slate-200 */
+}
+
+html.light .hover\:bg-slate-700:hover {
+  background-color: #cbd5e1 !important; /* slate-300 */
+}
+
+html.light .hover\:bg-slate-900:hover {
+  background-color: #f1f5f9 !important;
+}
+
+/* Borders & Dividers */
+html.light .border-slate-800,
+html.light .border-slate-700,
+html.light .border-slate-600,
+html.light .border-slate-800\/80,
+html.light .border-slate-700\/80,
+html.light .border-slate-800\/60,
+html.light .border-slate-800\/50,
+html.light .border-slate-700\/50,
+html.light .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+html.light .divide-slate-700 > :not([hidden]) ~ :not([hidden]),
+html.light .divide-slate-800\/80 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #e2e8f0 !important; /* slate-200 */
+}
+
+/* Text Hierarchy */
+html.light .text-white,
+html.light .text-slate-100 {
+  color: #0f172a !important; /* slate-900 */
+}
+
+html.light .text-slate-200,
+html.light .text-slate-300 {
+  color: #1e293b !important; /* slate-800 */
+}
+
+html.light .text-slate-400 {
+  color: #475569 !important; /* slate-600 */
+}
+
+html.light .text-slate-500 {
+  color: #64748b !important; /* slate-500 */
+}
+
+/* Form Inputs, Selects, and Textareas */
+html.light input:not([type="checkbox"]):not([type="radio"]),
+html.light select,
+html.light textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.light input:not([type="checkbox"]):not([type="radio"])::placeholder,
+html.light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+html.light input:not([type="checkbox"]):not([type="radio"]):focus,
+html.light select:focus,
+html.light textarea:focus {
+  border-color: #6366f1 !important;
+  background-color: #ffffff !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15) !important;
+}
+
+/* Buttons with Solid Colors - Keep text white */
+html.light .bg-indigo-600,
+html.light .bg-emerald-600,
+html.light .bg-amber-600,
+html.light .bg-rose-600,
+html.light .bg-purple-600,
+html.light .bg-blue-600,
+html.light .bg-cyan-600,
+html.light .bg-teal-600,
+html.light .bg-indigo-700,
+html.light .bg-emerald-700 {
+  color: #ffffff !important;
+}
+
+html.light .bg-indigo-600 *,
+html.light .bg-emerald-600 *,
+html.light .bg-amber-600 *,
+html.light .bg-rose-600 *,
+html.light .bg-purple-600 *,
+html.light .bg-blue-600 *,
+html.light .bg-cyan-600 *,
+html.light .bg-teal-600 *,
+html.light .bg-indigo-700 *,
+html.light .bg-emerald-700 * {
+  color: #ffffff !important;
+}
+
+/* Light Mode Accent Tints */
+html.light .text-indigo-400 {
+  color: #4f46e5 !important;
+}
+html.light .text-emerald-400 {
+  color: #059669 !important;
+}
+html.light .text-amber-400 {
+  color: #d97706 !important;
+}
+html.light .text-rose-400 {
+  color: #e11d48 !important;
+}
+html.light .text-purple-400 {
+  color: #9333ea !important;
+}
+html.light .text-cyan-400 {
+  color: #0891b2 !important;
+}
+html.light .text-blue-400 {
+  color: #2563eb !important;
+}
+
+html.light .bg-indigo-500\/10,
+html.light .bg-indigo-500\/20,
+html.light .bg-indigo-600\/10,
+html.light .bg-indigo-600\/20 {
+  background-color: #e0e7ff !important;
+}
+
+html.light .bg-emerald-500\/10,
+html.light .bg-emerald-500\/20,
+html.light .bg-emerald-600\/10,
+html.light .bg-emerald-600\/20 {
+  background-color: #d1fae5 !important;
+}
+
+html.light .bg-amber-500\/10,
+html.light .bg-amber-500\/20,
+html.light .bg-amber-600\/10,
+html.light .bg-amber-600\/20 {
+  background-color: #fef3c7 !important;
+}
+
+html.light .bg-rose-500\/10,
+html.light .bg-rose-500\/20,
+html.light .bg-rose-600\/10,
+html.light .bg-rose-600\/20,
+html.light .bg-rose-950\/40 {
+  background-color: #ffe4e6 !important;
+}
+
+html.light .bg-purple-500\/10,
+html.light .bg-purple-500\/20,
+html.light .bg-purple-600\/10,
+html.light .bg-purple-600\/20 {
+  background-color: #f3e8ff !important;
+}
+
+/* Light mode scrollbar */
+html.light ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+html.light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Custom Print Styles for Cards, Statements, Receipts, and Reports */
+@media print {
+  @page {
+    size: auto;
+    margin: 0mm;
+  }
+  
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  .no-print,
+  .no-print * {
+    display: none !important;
+  }
+  
+  .print-only {
+    display: block !important;
+  }
+  
+  .page-break {
+    page-break-after: always;
+  }
+
+  /* Unconstrain fixed modals and modal wrappers so the full height prints without scroll cuts */
+  .fixed,
+  .absolute,
+  [class*="max-h-"],
+  [class*="overflow-y-auto"],
+  [class*="overflow-hidden"] {
+    position: static !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  #pos-statement-document,
+  #batch-dispatch-receipt-content,
+  #official-payment-receipt-content,
+  #sale-receipt-content,
+  #official-sales-report-content,
+  #invoice-receipt-a4-content,
+  #expense-receipt-a4-content,
+  #expenses-report-document,
+  .printable-document {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    padding: 6mm !important;
+    margin: 0 auto !important;
+    display: block !important;
+    page-break-inside: avoid;
+    box-sizing: border-box !important;
+  }
+
+  #batch-dispatch-thermal-content,
+  #official-payment-thermal-content,
+  #sale-thermal-content,
+  #official-sales-report-thermal-content,
+  #invoice-receipt-thermal-content,
+  #expense-receipt-thermal-content,
+  #expenses-report-thermal-content,
+  .printable-thermal-document {
+    width: 78mm !important;
+    max-width: 78mm !important;
+    min-width: 0 !important;
+    margin: 0 auto !important;
+    padding: 2mm 3mm !important;
+    font-size: 11px !important;
+    color: #000000 !important;
+    background: #ffffff !important;
+    border: none !important;
+    box-shadow: none !important;
+    display: block !important;
+    page-break-inside: avoid;
+    box-sizing: border-box !important;
+    direction: rtl !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+  }
+}
+
+/* Custom scrollbar (Dark mode default) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.5);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.8);
+}
