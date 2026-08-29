@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Server, Save, X } from 'lucide-react';
-import { NetworkTenant } from '../types';
+import { NetworkTenant, NetworkSettings } from '../types';
+import { defaultNetworkSettings } from '../mockData';
 
 interface SystemTenantModalProps {
   tenant: NetworkTenant | null;
@@ -14,36 +15,69 @@ export const SystemTenantModal: React.FC<SystemTenantModalProps> = ({
   onClose,
 }) => {
   const [formData, setFormData] = useState<Partial<NetworkTenant> & { adminPassword?: string }>({
-    id: `net-${Date.now()}`,
+    id: '',
     name: '',
     adminUsername: '',
     status: 'active',
     createdAt: new Date().toISOString().split('T')[0],
     settings: {
+      ...defaultNetworkSettings,
       networkName: '',
-      networkSlogan: '',
+      networkSlogan: 'خدمات الإنترنت والشبكات اللاسلكية',
       currency: 'YER',
       currencySymbol: 'ر.ي',
-      hotspotDns: 'wifi.net',
-      loginPageUrl: 'http://wifi.net/login',
-      supportPhone: '',
-      whatsappNumber: '',
-      autoReconciliation: true,
-      enableQrCodeOnCards: true,
-      themeMode: 'dark',
     }
   });
 
   useEffect(() => {
     if (tenant) {
-      setFormData(tenant);
+      setFormData({
+        ...tenant,
+        settings: {
+          ...defaultNetworkSettings,
+          ...(tenant.settings || {}),
+          networkName: tenant.settings?.networkName || tenant.name,
+        }
+      });
+    } else {
+      setFormData({
+        id: `net-${Date.now().toString().slice(-6)}`,
+        name: '',
+        adminUsername: '',
+        status: 'active',
+        createdAt: new Date().toISOString().split('T')[0],
+        settings: {
+          ...defaultNetworkSettings,
+          networkName: '',
+          networkSlogan: 'خدمات الإنترنت والشبكات اللاسلكية',
+          currency: 'YER',
+          currencySymbol: 'ر.ي',
+        }
+      });
     }
   }, [tenant]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.adminUsername) return;
-    onSave(formData as NetworkTenant);
+    const cleanName = (formData.name || '').trim();
+    const cleanAdminUsername = (formData.adminUsername || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const cleanId = (formData.id || `net-${Date.now().toString().slice(-6)}`).trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || `net-${Date.now()}`;
+    
+    if (!cleanName || !cleanAdminUsername) return;
+
+    const mergedSettings: NetworkSettings = {
+      ...defaultNetworkSettings,
+      ...(formData.settings || {}),
+      networkName: cleanName,
+    };
+
+    onSave({
+      ...formData,
+      id: cleanId,
+      name: cleanName,
+      adminUsername: cleanAdminUsername,
+      settings: mergedSettings,
+    } as NetworkTenant);
   };
 
   return (

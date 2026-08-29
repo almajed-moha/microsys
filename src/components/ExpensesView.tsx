@@ -501,7 +501,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             </div>
           </div>
           <div className="text-2xl font-black font-mono text-white">
-            {stats.totalFiltered.toLocaleString()}{' '}
+            {(stats.totalFiltered ?? 0).toLocaleString()}{' '}
             <span className="text-xs text-amber-400 font-sans">{currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
@@ -518,7 +518,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             </div>
           </div>
           <div className="text-2xl font-black font-mono text-indigo-400">
-            {stats.monthTotal.toLocaleString()}{' '}
+            {(stats.monthTotal ?? 0).toLocaleString()}{' '}
             <span className="text-xs text-slate-400 font-sans">{currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
@@ -535,7 +535,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             </div>
           </div>
           <div className="text-2xl font-black font-mono text-emerald-400">
-            {stats.todayTotal.toLocaleString()}{' '}
+            {(stats.todayTotal ?? 0).toLocaleString()}{' '}
             <span className="text-xs text-slate-400 font-sans">{currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
@@ -551,11 +551,11 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
               <TrendingDown className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-sm font-bold text-white truncate" title={stats.topCategory.name}>
-            {stats.topCategory.name}
+          <div className="text-sm font-bold text-white truncate" title={stats.topCategory?.name || 'لا يوجد'}>
+            {stats.topCategory?.name || 'لا يوجد'}
           </div>
           <div className="text-xs font-mono font-bold text-rose-400 mt-1">
-            {stats.topCategory.total.toLocaleString()} {currency}
+            {(stats.topCategory?.total ?? 0).toLocaleString()} {currency}
           </div>
         </div>
       </div>
@@ -674,7 +674,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             </span>
           </div>
           <span className="text-xs text-slate-400">
-            الإجمالي: <strong className="text-amber-400 font-mono">{stats.totalFiltered.toLocaleString()} {currency}</strong>
+            الإجمالي: <strong className="text-amber-400 font-mono">{(stats.totalFiltered ?? 0).toLocaleString()} {currency}</strong>
           </span>
         </div>
 
@@ -742,7 +742,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                       </span>
                     </td>
                     <td className="py-3 px-4 text-center font-bold font-mono text-sm text-amber-400">
-                      {exp.amount.toLocaleString()}{' '}
+                      {(exp.amount ?? 0).toLocaleString()}{' '}
                       <span className="text-[10px] text-slate-500 font-sans">{currency}</span>
                     </td>
                     <td className="py-3 px-4 text-center no-print">
@@ -793,7 +793,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             <p className="text-xs text-slate-300 leading-relaxed">
               هل أنت متأكد من رغبتك في حذف سند الصرف رقم{' '}
               <strong className="text-amber-400 font-mono font-bold">{deletingExpense.voucherNumber}</strong> بمبلغ{' '}
-              <strong className="text-white font-mono font-bold">{deletingExpense.amount.toLocaleString()} {currency}</strong>؟
+              <strong className="text-white font-mono font-bold">{(deletingExpense.amount ?? 0).toLocaleString()} {currency}</strong>؟
               <br />
               <span className="text-slate-400 block mt-1">
                 البيان: {deletingExpense.title} ({deletingExpense.categoryName})
@@ -1228,7 +1228,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                         </td>
                         <td className="p-2 text-center text-slate-700">{e.paidTo || '—'}</td>
                         <td className="p-2 text-center font-mono font-bold text-slate-900">
-                          {e.amount.toLocaleString()}
+                          {(e.amount ?? 0).toLocaleString()}
                         </td>
                       </tr>
                     ))}
@@ -1239,7 +1239,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                         إجمالي المصروفات والنفقات:
                       </td>
                       <td className="p-2.5 text-center font-mono font-black text-base text-amber-800">
-                        {stats.totalFiltered.toLocaleString()} {currency}
+                        {(stats.totalFiltered ?? 0).toLocaleString()} {currency}
                       </td>
                     </tr>
                   </tfoot>

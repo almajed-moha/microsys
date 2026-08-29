@@ -44,6 +44,7 @@ export const STORAGE_KEYS = {
   EXPENSES: 'mikrotik_pos_expenses',
   EXPENSE_CATEGORIES: 'mikrotik_pos_expense_categories',
   USERS: 'mikrotik_pos_users',
+  TENANTS: 'mikrotik_pos_tenants',
   ACTIVE_USER_ID: 'mikrotik_pos_active_user_id',
   ACTIVITY_LOGS: 'mikrotik_pos_activity_logs',
   ORDERS: 'mikrotik_pos_card_orders',

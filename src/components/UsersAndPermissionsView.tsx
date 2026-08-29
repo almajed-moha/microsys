@@ -265,9 +265,12 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
     e.preventDefault();
     if (!formName.trim() || !formUsername.trim()) return;
 
+    const targetNetworkId = editingUser?.networkId || (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : 'net-alfadaa');
+
     const userData: Omit<AppUser, 'id' | 'createdAt'> = {
       name: formName.trim(),
       username: formUsername.trim().toLowerCase(),
+      networkId: targetNetworkId,
       password: formPassword.trim() || undefined,
       pinCode: formPinCode.trim() || undefined,
       email: formEmail.trim() || undefined,
@@ -286,6 +289,7 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
     if (editingUser) {
       onUpdateUser({
         ...userData,
+        networkId: editingUser.networkId || targetNetworkId,
         id: editingUser.id,
         createdAt: editingUser.createdAt,
       });

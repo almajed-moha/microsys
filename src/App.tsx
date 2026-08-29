@@ -120,9 +120,40 @@ export default function App() {
   const [payments, setPayments] = useState<PaymentRecord[]>(() =>
     loadData<PaymentRecord[]>(STORAGE_KEYS.PAYMENTS, mockPayments)
   );
-  const [settings, setSettings] = useState<NetworkSettings>(() =>
-    loadData<NetworkSettings>(STORAGE_KEYS.SETTINGS, defaultNetworkSettings)
+  const [tenants, setTenants] = useState<NetworkTenant[]>(() => {
+    const rawTenants = loadData<NetworkTenant[]>(STORAGE_KEYS.TENANTS, mockTenants);
+    const validList = Array.isArray(rawTenants) && rawTenants.length > 0 ? rawTenants : mockTenants;
+    return validList.map((t, idx) => {
+      const validId = t.id || (idx === 0 ? 'net-alfadaa' : `net-${Date.now() + idx}`);
+      const validName = t.name || t.settings?.networkName || (idx === 0 ? 'شبكة الفضاء اللاسلكية' : `شبكة رقم ${idx + 1}`);
+      return {
+        ...t,
+        id: validId,
+        name: validName,
+        adminUsername: t.adminUsername || `admin_${validId.replace('net-', '')}`,
+        status: t.status || 'active',
+        createdAt: t.createdAt || '2026-01-01',
+        settings: {
+          ...defaultNetworkSettings,
+          ...(t.settings || {}),
+          networkName: validName,
+        },
+      };
+    });
+  });
+
+  const [orders, setOrders] = useState<CardOrder[]>(() =>
+    loadData<CardOrder[]>(STORAGE_KEYS.ORDERS, mockCardOrders)
   );
+
+  const [activityLogs, setActivityLogs] = useState<UserActivityLog[]>(() =>
+    loadData<UserActivityLog[]>(STORAGE_KEYS.ACTIVITY_LOGS, initialActivityLogs)
+  );
+
+  const [activeUserId, setActiveUserId] = useState<string>(() =>
+    loadData<string>(STORAGE_KEYS.ACTIVE_USER_ID, 'user-admin')
+  );
+
   const [users, setUsers] = useState<AppUser[]>(() => {
     const loadedUsers = loadData<AppUser[]>(STORAGE_KEYS.USERS, mockUsers);
     if (!loadedUsers.some((u) => u.username === 'master')) {
@@ -134,35 +165,89 @@ export default function App() {
     }
     return loadedUsers;
   });
-  const [tenants, setTenants] = useState<NetworkTenant[]>(() =>
-    loadData<NetworkTenant[]>('mikrotik_pos_tenants', mockTenants)
-  );
-  const [orders, setOrders] = useState<CardOrder[]>(() =>
-    loadData<CardOrder[]>(STORAGE_KEYS.ORDERS, mockCardOrders)
-  );
-  const [activeUserId, setActiveUserId] = useState<string>(() =>
-    loadData<string>(STORAGE_KEYS.ACTIVE_USER_ID, 'user-admin')
-  );
-  const [selectedTenantFilter, setSelectedTenantFilter] = useState<string>('all');
-  const [activityLogs, setActivityLogs] = useState<UserActivityLog[]>(() =>
-    loadData<UserActivityLog[]>(STORAGE_KEYS.ACTIVITY_LOGS, initialActivityLogs)
-  );
 
   // Derive active user object safely
   const activeUser = users.find((u) => u.id === activeUserId) || users[0] || mockUsers[0];
 
+  const [selectedTenantFilter, setSelectedTenantFilter] = useState<string>('all');
+
   // Helper to extract or fallback tenant ID for any item
-  const getRecordTenantId = useCallback((record?: { networkId?: string }) => record?.networkId || 'net-alfadaa', []);
+  const getRecordTenantId = useCallback((record?: { networkId?: string }) => {
+    if (record?.networkId && record.networkId !== '' && record.networkId !== 'system') {
+      return record.networkId;
+    }
+    return tenants[0]?.id || 'net-alfadaa';
+  }, [tenants]);
 
   // Active effective tenant for filtering data
-  const effectiveTenantId: string | null = activeUser?.role === 'system_owner'
-    ? (selectedTenantFilter === 'all' ? null : selectedTenantFilter)
-    : (activeUser?.networkId || 'net-alfadaa');
+  const effectiveTenantId: string | null = useMemo(() => {
+    if (activeUser?.role === 'system_owner') {
+      return selectedTenantFilter === 'all' ? null : selectedTenantFilter;
+    }
+    if (activeUser?.networkId && activeUser.networkId !== 'system') {
+      return activeUser.networkId;
+    }
+    return tenants[0]?.id || 'net-alfadaa';
+  }, [activeUser?.role, activeUser?.networkId, selectedTenantFilter, tenants]);
 
   // Current tenant ID for assigning to new records
-  const currentTenantId: string = activeUser?.networkId && activeUser.networkId !== 'system'
-    ? activeUser.networkId
-    : (selectedTenantFilter !== 'all' ? selectedTenantFilter : (tenants[0]?.id || 'net-alfadaa'));
+  const currentTenantId: string = useMemo(() => {
+    if (activeUser?.networkId && activeUser.networkId !== 'system') {
+      return activeUser.networkId;
+    }
+    if (selectedTenantFilter !== 'all' && selectedTenantFilter) {
+      return selectedTenantFilter;
+    }
+    return tenants[0]?.id || 'net-alfadaa';
+  }, [activeUser?.networkId, selectedTenantFilter, tenants]);
+
+  // Automatically derive current tenant object for settings and branding sync
+  const currentTenant = useMemo(() => {
+    const targetId = activeUser?.role === 'system_owner'
+      ? (selectedTenantFilter !== 'all' ? selectedTenantFilter : null)
+      : (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : (tenants[0]?.id || 'net-alfadaa'));
+    if (!targetId) return null;
+    return tenants.find((t) => t.id === targetId) || null;
+  }, [tenants, activeUser?.role, activeUser?.networkId, selectedTenantFilter]);
+
+  const [settings, setSettings] = useState<NetworkSettings>(() => {
+    if (currentTenant?.settings) {
+      return {
+        ...defaultNetworkSettings,
+        ...currentTenant.settings,
+        networkName: currentTenant.name || currentTenant.settings.networkName,
+      };
+    }
+    return loadData<NetworkSettings>(STORAGE_KEYS.SETTINGS, defaultNetworkSettings);
+  });
+
+  // Keep settings automatically synchronized with active tenant
+  useEffect(() => {
+    if (currentTenant && currentTenant.settings) {
+      const targetSettings: NetworkSettings = {
+        ...defaultNetworkSettings,
+        ...currentTenant.settings,
+        networkName: currentTenant.name || currentTenant.settings.networkName,
+      };
+      if (
+        settings.networkName !== targetSettings.networkName ||
+        settings.currency !== targetSettings.currency ||
+        settings.currencySymbol !== targetSettings.currencySymbol ||
+        settings.networkSlogan !== targetSettings.networkSlogan ||
+        settings.supportPhone !== targetSettings.supportPhone ||
+        settings.whatsappNumber !== targetSettings.whatsappNumber ||
+        settings.hotspotDns !== targetSettings.hotspotDns
+      ) {
+        setSettings(targetSettings);
+        saveData(STORAGE_KEYS.SETTINGS, targetSettings);
+      }
+    } else if (activeUser?.role === 'system_owner' && selectedTenantFilter === 'all') {
+      if (settings.networkName !== defaultNetworkSettings.networkName) {
+        setSettings(defaultNetworkSettings);
+        saveData(STORAGE_KEYS.SETTINGS, defaultNetworkSettings);
+      }
+    }
+  }, [currentTenant, activeUser?.role, selectedTenantFilter]);
 
   // Scoped collections based on tenant isolation
   const scopedCategories = useMemo(() => 
@@ -213,8 +298,10 @@ export default function App() {
   const scopedUsers = useMemo(() => 
     effectiveTenantId 
       ? users.filter((u) => u.role !== 'system_owner' && getRecordTenantId(u) === effectiveTenantId) 
-      : users,
-    [users, effectiveTenantId, getRecordTenantId]
+      : (activeUser?.role === 'system_owner' && selectedTenantFilter === 'all' 
+          ? users.filter((u) => u.role !== 'system_owner') 
+          : users),
+    [users, effectiveTenantId, getRecordTenantId, activeUser?.role, selectedTenantFilter]
   );
 
   const scopedActivityLogs = useMemo(() => 
@@ -444,11 +531,15 @@ export default function App() {
   const handleSaveSettings = (newSettings: NetworkSettings) => {
     const prevSettings = settings;
     setSettings(newSettings);
+    saveData(STORAGE_KEYS.SETTINGS, newSettings);
 
-    // If active tenant exists, update tenant settings in tenants list
-    if (effectiveTenantId) {
+    const targetTenantId = activeUser?.role === 'system_owner'
+      ? (selectedTenantFilter !== 'all' ? selectedTenantFilter : 'net-alfadaa')
+      : (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : 'net-alfadaa');
+
+    if (targetTenantId) {
       const updatedTenants = tenants.map((t) =>
-        t.id === effectiveTenantId
+        t.id === targetTenantId
           ? {
               ...t,
               name: newSettings.networkName || t.name,
@@ -457,7 +548,7 @@ export default function App() {
           : t
       );
       setTenants(updatedTenants);
-      localStorage.setItem('mikrotik_pos_tenants', JSON.stringify(updatedTenants));
+      saveData('mikrotik_pos_tenants', updatedTenants);
     }
 
     const isThemeChanged = prevSettings.themeMode !== newSettings.themeMode;
@@ -469,7 +560,7 @@ export default function App() {
       title: 'تحديث إعدادات الشبكة والنظام',
       details: isThemeChanged
         ? `تم حفظ إعدادات النظام وتغيير السمة إلى: ${newSettings.themeMode === 'dark' ? 'الوضع الليلي' : newSettings.themeMode === 'light' ? 'الوضع النهاري' : 'تلقائي (System)'}`
-        : `تم تحديث إعدادات النظام والشبكة بنجاح`,
+        : `تم تحديث إعدادات النظام والشبكة بنجاح (${newSettings.networkName || 'الشبكة'})`,
       status: 'info',
     });
     setActivityLogs((prev) => [log, ...(prev || [])]);
@@ -479,38 +570,56 @@ export default function App() {
     // Extract and remove adminPassword so it doesn't get saved in the tenant object
     const { adminPassword, ...tenantToSave } = tenant;
 
-    const isExisting = tenants.some((t) => t.id === tenantToSave.id);
-    let updatedTenants;
+    const safeId = (tenantToSave.id || `net-${Date.now().toString().slice(-6)}`).trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || `net-${Date.now()}`;
+    const safeName = (tenantToSave.name || tenantToSave.settings?.networkName || 'شبكة لاسلكية جديدة').trim();
+    const safeAdminUser = (tenantToSave.adminUsername || `admin_${safeId.replace('net-', '')}`).trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+
+    const guaranteedSettings: NetworkSettings = {
+      ...defaultNetworkSettings,
+      ...(tenantToSave.settings || {}),
+      networkName: safeName,
+    };
+
+    const finalTenantToSave: NetworkTenant = {
+      ...tenantToSave,
+      id: safeId,
+      name: safeName,
+      adminUsername: safeAdminUser,
+      settings: guaranteedSettings,
+    };
+
+    const isExisting = tenants.some((t) => t.id === finalTenantToSave.id);
+    let updatedTenants: NetworkTenant[];
     if (isExisting) {
-      updatedTenants = tenants.map((t) => (t.id === tenantToSave.id ? tenantToSave : t));
+      updatedTenants = tenants.map((t) => (t.id === finalTenantToSave.id ? finalTenantToSave : t));
       
       if (adminPassword) {
         const updatedUsers = users.map((u) => 
-          (u.networkId === tenantToSave.id && u.username === tenantToSave.adminUsername)
+          (u.networkId === finalTenantToSave.id && u.username === finalTenantToSave.adminUsername)
             ? { ...u, password: adminPassword }
             : u
         );
         setUsers(updatedUsers);
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
+        saveData(STORAGE_KEYS.USERS, updatedUsers);
       }
     } else {
-      const adminExists = users.some(u => u.username.toLowerCase() === tenantToSave.adminUsername.toLowerCase());
+      const adminExists = users.some(u => u.username.toLowerCase() === finalTenantToSave.adminUsername.toLowerCase());
       if (adminExists) {
         alert('اسم المستخدم لمدير الشبكة محجوز أو موجود مسبقاً، يرجى اختيار اسم آخر.');
         return;
       }
 
-      updatedTenants = [...tenants, tenantToSave];
+      updatedTenants = [...tenants, finalTenantToSave];
       
       const newAdmin: AppUser = {
         id: `user-${Date.now()}`,
-        networkId: tenantToSave.id,
-        name: `مدير ${tenantToSave.name}`,
-        username: tenantToSave.adminUsername,
+        networkId: finalTenantToSave.id,
+        name: `مدير ${finalTenantToSave.name}`,
+        username: finalTenantToSave.adminUsername,
         password: adminPassword || 'adminpassword',
         pinCode: '1234',
         role: 'super_admin',
-        customRoleName: `مدير شبكة ${tenantToSave.name}`,
+        customRoleName: `مدير شبكة ${finalTenantToSave.name}`,
         avatar: '🌐',
         avatarBgColor: 'bg-blue-600',
         status: 'active',
@@ -519,13 +628,13 @@ export default function App() {
       };
       const updatedUsers = [...users, newAdmin];
       setUsers(updatedUsers);
-      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
+      saveData(STORAGE_KEYS.USERS, updatedUsers);
 
       // Initialize default card categories and expense categories for this new tenant
       const defaultCategoriesForNewTenant: CardCategory[] = [
         {
-          id: `cat-${tenantToSave.id}-1`,
-          networkId: tenantToSave.id,
+          id: `cat-${finalTenantToSave.id}-1`,
+          networkId: finalTenantToSave.id,
           name: 'فئة 100 ريال (1 جيجا)',
           code: '100_1D',
           retailPrice: 100,
@@ -539,8 +648,8 @@ export default function App() {
           mikrotikProfile: '1GB-1Day',
         },
         {
-          id: `cat-${tenantToSave.id}-2`,
-          networkId: tenantToSave.id,
+          id: `cat-${finalTenantToSave.id}-2`,
+          networkId: finalTenantToSave.id,
           name: 'فئة 200 ريال (2.5 جيجا)',
           code: '200_3D',
           retailPrice: 200,
@@ -554,8 +663,8 @@ export default function App() {
           mikrotikProfile: '2.5GB-3Days',
         },
         {
-          id: `cat-${tenantToSave.id}-3`,
-          networkId: tenantToSave.id,
+          id: `cat-${finalTenantToSave.id}-3`,
+          networkId: finalTenantToSave.id,
           name: 'فئة 500 ريال (7 جيجا)',
           code: '500_7D',
           retailPrice: 500,
@@ -569,26 +678,39 @@ export default function App() {
           mikrotikProfile: '7GB-7Days',
         },
       ];
-      setCategories((prev) => [...prev, ...defaultCategoriesForNewTenant]);
+      setCategories((prev) => {
+        const nextCats = [...prev, ...defaultCategoriesForNewTenant];
+        saveData(STORAGE_KEYS.CATEGORIES, nextCats);
+        return nextCats;
+      });
 
       const defaultExpenseCategoriesForNewTenant: ExpenseCategory[] = [
-        { id: `expcat-${tenantToSave.id}-1`, networkId: tenantToSave.id, name: 'سعات وخطوط الإنترنت (Bandwidth)' },
-        { id: `expcat-${tenantToSave.id}-2`, networkId: tenantToSave.id, name: 'إيجار الأبراج والمواقع' },
-        { id: `expcat-${tenantToSave.id}-3`, networkId: tenantToSave.id, name: 'الكهرباء والطاقة الشمسية' },
-        { id: `expcat-${tenantToSave.id}-4`, networkId: tenantToSave.id, name: 'الصيانة والقطع الفنية' },
-        { id: `expcat-${tenantToSave.id}-5`, networkId: tenantToSave.id, name: 'مصاريف تسويق ومطبوعات' },
+        { id: `expcat-${finalTenantToSave.id}-1`, networkId: finalTenantToSave.id, name: 'سعات وخطوط الإنترنت (Bandwidth)' },
+        { id: `expcat-${finalTenantToSave.id}-2`, networkId: finalTenantToSave.id, name: 'إيجار الأبراج والمواقع' },
+        { id: `expcat-${finalTenantToSave.id}-3`, networkId: finalTenantToSave.id, name: 'الكهرباء والطاقة الشمسية' },
+        { id: `expcat-${finalTenantToSave.id}-4`, networkId: finalTenantToSave.id, name: 'الصيانة والقطع الفنية' },
+        { id: `expcat-${finalTenantToSave.id}-5`, networkId: finalTenantToSave.id, name: 'مصاريف تسويق ومطبوعات' },
       ];
-      setExpenseCategories((prev) => [...prev, ...defaultExpenseCategoriesForNewTenant]);
+      setExpenseCategories((prev) => {
+        const nextExpCats = [...prev, ...defaultExpenseCategoriesForNewTenant];
+        saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, nextExpCats);
+        return nextExpCats;
+      });
     }
     setTenants(updatedTenants);
-    localStorage.setItem('mikrotik_pos_tenants', JSON.stringify(updatedTenants));
+    saveData(STORAGE_KEYS.TENANTS, updatedTenants);
+
+    if (activeUser?.networkId === finalTenantToSave.id || effectiveTenantId === finalTenantToSave.id) {
+      setSettings(guaranteedSettings);
+      saveData(STORAGE_KEYS.SETTINGS, guaranteedSettings);
+    }
     
     logUserActivity(
       isExisting ? 'تحديث بيانات شبكة' : 'إضافة شبكة جديدة',
       'systemTenants',
       'إدارة جوار الشبكات (Multi-Tenant SaaS)',
-      `تم ${isExisting ? 'تحديث' : 'إضافة'} شبكة: ${tenantToSave.name}`,
-      `اسم مستخدم الإدارة: @${tenantToSave.adminUsername}`,
+      `تم ${isExisting ? 'تحديث' : 'إضافة'} شبكة: ${finalTenantToSave.name}`,
+      `اسم مستخدم الإدارة: @${finalTenantToSave.adminUsername}`,
       'create'
     );
   };
@@ -597,29 +719,77 @@ export default function App() {
     const tenantToDelete = tenants.find((t) => t.id === tenantId);
     if (!tenantToDelete) return;
 
-    if (!confirm(`هل أنت متأكد من حذف شبكة "${tenantToDelete.name}" وكافة بياناتها ومستخدميها ونقاط بيعها نهائياً؟`)) {
-      return;
-    }
-
     const updatedTenants = tenants.filter((t) => t.id !== tenantId);
     setTenants(updatedTenants);
-    localStorage.setItem('mikrotik_pos_tenants', JSON.stringify(updatedTenants));
+    saveData(STORAGE_KEYS.TENANTS, updatedTenants);
 
     // Cascade remove all records associated with this tenant
-    setUsers((prev) => prev.filter((u) => getRecordTenantId(u) !== tenantId));
-    setCategories((prev) => prev.filter((c) => getRecordTenantId(c) !== tenantId));
-    setPosPoints((prev) => prev.filter((p) => getRecordTenantId(p) !== tenantId));
-    setInvoices((prev) => prev.filter((i) => getRecordTenantId(i) !== tenantId));
-    setExpenses((prev) => prev.filter((e) => getRecordTenantId(e) !== tenantId));
-    setExpenseCategories((prev) => prev.filter((ec) => getRecordTenantId(ec) !== tenantId));
-    setDispatches((prev) => prev.filter((d) => getRecordTenantId(d) !== tenantId));
-    setSales((prev) => prev.filter((s) => getRecordTenantId(s) !== tenantId));
-    setPayments((prev) => prev.filter((p) => getRecordTenantId(p) !== tenantId));
-    setOrders((prev) => prev.filter((o) => getRecordTenantId(o) !== tenantId));
-    setActivityLogs((prev) => prev.filter((l) => getRecordTenantId(l) !== tenantId));
+    setUsers((prev) => {
+      const next = prev.filter((u) => getRecordTenantId(u) !== tenantId);
+      saveData(STORAGE_KEYS.USERS, next);
+      return next;
+    });
+    setCategories((prev) => {
+      const next = prev.filter((c) => getRecordTenantId(c) !== tenantId);
+      saveData(STORAGE_KEYS.CATEGORIES, next);
+      return next;
+    });
+    setPosPoints((prev) => {
+      const next = prev.filter((p) => getRecordTenantId(p) !== tenantId);
+      saveData(STORAGE_KEYS.POS_POINTS, next);
+      return next;
+    });
+    setInvoices((prev) => {
+      const next = prev.filter((i) => getRecordTenantId(i) !== tenantId);
+      saveData(STORAGE_KEYS.INVOICES, next);
+      return next;
+    });
+    setExpenses((prev) => {
+      const next = prev.filter((e) => getRecordTenantId(e) !== tenantId);
+      saveData(STORAGE_KEYS.EXPENSES, next);
+      return next;
+    });
+    setExpenseCategories((prev) => {
+      const next = prev.filter((ec) => getRecordTenantId(ec) !== tenantId);
+      saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, next);
+      return next;
+    });
+    setDispatches((prev) => {
+      const next = prev.filter((d) => getRecordTenantId(d) !== tenantId);
+      saveData(STORAGE_KEYS.DISPATCHES, next);
+      return next;
+    });
+    setSales((prev) => {
+      const next = prev.filter((s) => getRecordTenantId(s) !== tenantId);
+      saveData(STORAGE_KEYS.SALES, next);
+      return next;
+    });
+    setPayments((prev) => {
+      const next = prev.filter((p) => getRecordTenantId(p) !== tenantId);
+      saveData(STORAGE_KEYS.PAYMENTS, next);
+      return next;
+    });
+    setOrders((prev) => {
+      const next = prev.filter((o) => getRecordTenantId(o) !== tenantId);
+      saveData(STORAGE_KEYS.ORDERS, next);
+      return next;
+    });
+    setActivityLogs((prev) => {
+      const next = prev.filter((l) => getRecordTenantId(l) !== tenantId);
+      saveData(STORAGE_KEYS.ACTIVITY_LOGS, next);
+      return next;
+    });
 
     if (selectedTenantFilter === tenantId) {
       setSelectedTenantFilter('all');
+    }
+
+    if (activeUser?.networkId === tenantId) {
+      const fallbackUser = users.find((u) => u.role === 'system_owner') || users[0] || mockUsers[0];
+      if (fallbackUser) {
+        setActiveUserId(fallbackUser.id);
+        saveData(STORAGE_KEYS.ACTIVE_USER_ID, fallbackUser.id);
+      }
     }
 
     logUserActivity(
@@ -1482,19 +1652,22 @@ export default function App() {
         : u
     );
     setUsers(updatedUsers);
+    saveData(STORAGE_KEYS.USERS, updatedUsers);
     setActiveUserId(user.id);
+    saveData(STORAGE_KEYS.ACTIVE_USER_ID, user.id);
     setIsLoggedIn(true);
     setIsLoginModalOpen(false);
     setActiveView(targetView);
 
-    if (user.networkId) {
-      const userTenant = tenants.find(t => t.id === user.networkId);
-      if (userTenant) {
+    if (user.networkId && user.networkId !== 'system') {
+      const userTenant = tenants.find((t) => t.id === user.networkId);
+      if (userTenant?.settings) {
         setSettings(userTenant.settings);
+        saveData(STORAGE_KEYS.SETTINGS, userTenant.settings);
       }
     } else {
-      // For master user, reset to default network settings
       setSettings(defaultNetworkSettings);
+      saveData(STORAGE_KEYS.SETTINGS, defaultNetworkSettings);
     }
 
     // High-visibility Feedback Banner
@@ -1517,14 +1690,26 @@ export default function App() {
   const handleSwitchActiveUser = (targetUser: AppUser) => {
     const targetLanding = getDefaultLandingViewForUser(targetUser);
     setActiveUserId(targetUser.id);
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === targetUser.id
-          ? { ...u, lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16) }
-          : u
-      )
+    saveData(STORAGE_KEYS.ACTIVE_USER_ID, targetUser.id);
+    const updatedUsers = users.map((u) =>
+      u.id === targetUser.id
+        ? { ...u, lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16) }
+        : u
     );
+    setUsers(updatedUsers);
+    saveData(STORAGE_KEYS.USERS, updatedUsers);
     setActiveView(targetLanding);
+
+    if (targetUser.networkId && targetUser.networkId !== 'system') {
+      const userTenant = tenants.find((t) => t.id === targetUser.networkId);
+      if (userTenant?.settings) {
+        setSettings(userTenant.settings);
+        saveData(STORAGE_KEYS.SETTINGS, userTenant.settings);
+      }
+    } else {
+      setSettings(defaultNetworkSettings);
+      saveData(STORAGE_KEYS.SETTINGS, defaultNetworkSettings);
+    }
 
     setUserLoginFeedback({
       title: `تم تبديل الحساب: ${targetUser.name}`,
@@ -1533,6 +1718,36 @@ export default function App() {
     setTimeout(() => {
       setUserLoginFeedback(null);
     }, 4000);
+  };
+
+  // Switch context directly to a tenant's admin account
+  const handleSwitchToTenantAdmin = (tenant: NetworkTenant) => {
+    let tenantAdmin = users.find(
+      (u) => u.networkId === tenant.id && (u.role === 'super_admin' || u.username === tenant.adminUsername)
+    );
+
+    if (!tenantAdmin) {
+      tenantAdmin = {
+        id: `user-${Date.now()}`,
+        networkId: tenant.id,
+        name: `مدير ${tenant.name}`,
+        username: tenant.adminUsername,
+        password: 'adminpassword',
+        pinCode: '1234',
+        role: 'super_admin',
+        customRoleName: `مدير شبكة ${tenant.name}`,
+        avatar: '🌐',
+        avatarBgColor: 'bg-blue-600',
+        status: 'active',
+        permissions: getRoleDefaultPermissions('super_admin'),
+        createdAt: new Date().toISOString().split('T')[0],
+      };
+      const updatedUsers = [...users, tenantAdmin];
+      setUsers(updatedUsers);
+      saveData(STORAGE_KEYS.USERS, updatedUsers);
+    }
+
+    handleSwitchActiveUser(tenantAdmin);
   };
 
   // Helper to check if the current activeView is permitted for activeUser
@@ -1737,6 +1952,7 @@ export default function App() {
                   users={users}
                   onSaveTenant={handleSaveTenant}
                   onDeleteTenant={handleDeleteTenant}
+                  onSwitchToTenantAdmin={handleSwitchToTenantAdmin}
                 />
               )}
 

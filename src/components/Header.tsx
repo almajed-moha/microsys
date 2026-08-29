@@ -85,18 +85,23 @@ export const Header: React.FC<HeaderProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+  const tenantObj = activeUser?.networkId && activeUser.networkId !== 'system'
+    ? tenants.find((t) => t.id === activeUser.networkId)
+    : (selectedTenantFilter && selectedTenantFilter !== 'all' ? tenants.find((t) => t.id === selectedTenantFilter) : null);
+  const currentTenantName = tenantObj?.settings?.networkName || tenantObj?.name || (activeUser?.role === 'system_owner' && selectedTenantFilter === 'all' ? 'منصة إدارة الشبكات السحابية (SaaS)' : settings?.networkName);
+
   const safeSettings: NetworkSettings = {
-    networkName: settings?.networkName || 'شبكة الفضاء اللاسلكية | Al-Fadaa WiFi',
-    networkSlogan: settings?.networkSlogan || 'سرعة فائقة وتغطية شاملة 24/7',
-    currency: settings?.currency || 'YER',
-    currencySymbol: settings?.currencySymbol || 'ر.ي',
-    hotspotDns: settings?.hotspotDns || 'wifi.net',
-    loginPageUrl: settings?.loginPageUrl || 'http://wifi.net/login',
-    supportPhone: settings?.supportPhone || '770123456',
-    whatsappNumber: settings?.whatsappNumber || '967770123456',
+    networkName: currentTenantName || settings?.networkName || 'نظام إدارة الشبكات اللاسلكية',
+    networkSlogan: tenantObj?.settings?.networkSlogan || settings?.networkSlogan || 'إدارة الشبكات ونقاط البيع السحابية',
+    currency: tenantObj?.settings?.currency || settings?.currency || 'YER',
+    currencySymbol: tenantObj?.settings?.currencySymbol || settings?.currencySymbol || 'ر.ي',
+    hotspotDns: tenantObj?.settings?.hotspotDns || settings?.hotspotDns || 'wifi.net',
+    loginPageUrl: tenantObj?.settings?.loginPageUrl || settings?.loginPageUrl || 'http://wifi.net/login',
+    supportPhone: tenantObj?.settings?.supportPhone || settings?.supportPhone || '770123456',
+    whatsappNumber: tenantObj?.settings?.whatsappNumber || settings?.whatsappNumber || '967770123456',
     autoReconciliation: settings?.autoReconciliation ?? true,
     enableQrCodeOnCards: settings?.enableQrCodeOnCards ?? true,
-    mikrotikConfig: settings?.mikrotikConfig,
+    mikrotikConfig: tenantObj?.settings?.mikrotikConfig || settings?.mikrotikConfig,
   };
 
   const isConnected = safeSettings.mikrotikConfig?.isLiveConnected ?? false;

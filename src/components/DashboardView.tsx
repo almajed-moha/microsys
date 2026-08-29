@@ -611,7 +611,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <YAxis stroke="#64748b" tick={{ fontSize: 11 }} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
-                    formatter={(value: any) => [`${Number(value).toLocaleString()} ${currency}`, '']}
+                    formatter={(value: any) => [`${Number(value || 0).toLocaleString()} ${currency}`, '']}
                   />
                   <Legend />
                   <Area type="monotone" dataKey="sales" name="المبيعات" stroke="#6366f1" strokeWidth={2} fillOpacity={1} fill="url(#salesGrad)" />
@@ -659,7 +659,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </Pie>
                   <Tooltip
                     contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
-                    formatter={(value: any) => [`${Number(value).toLocaleString()} ${currency}`, 'المبلغ']}
+                    formatter={(value: any) => [`${Number(value || 0).toLocaleString()} ${currency}`, 'المبلغ']}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -722,7 +722,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <Tooltip
                     contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
                     formatter={(val: any, name: string) => [
-                      `${Number(val).toLocaleString()} ${currency}`,
+                      `${Number(val || 0).toLocaleString()} ${currency}`,
                       name === 'netSales' ? 'صافي المبيعات' : name === 'debt' ? 'المديونية الحالية' : 'المبيعات'
                     ]}
                   />

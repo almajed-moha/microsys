@@ -363,31 +363,31 @@ export const FinancialExportModal: React.FC<FinancialExportModalProps> = ({
               <div className="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700">
                 <div className="text-xs text-slate-400">صافي المبيعات</div>
                 <div className="text-sm font-bold text-emerald-400 mt-0.5">
-                  {filteredMetrics.netSales.toLocaleString('ar-YE')} {currency}
+                  {(filteredMetrics.netSales ?? 0).toLocaleString('ar-YE')} {currency}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-0.5">({filteredMetrics.netCardsSold} كارت)</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">({filteredMetrics.netCardsSold ?? 0} كارت)</div>
               </div>
 
               <div className="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700">
                 <div className="text-xs text-slate-400">تكلفة الكروت (COGS)</div>
                 <div className="text-sm font-bold text-amber-300 mt-0.5">
-                  {filteredMetrics.netCOGS.toLocaleString('ar-YE')} {currency}
+                  {(filteredMetrics.netCOGS ?? 0).toLocaleString('ar-YE')} {currency}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-0.5">مجمل الربح: {filteredMetrics.grossProfit.toLocaleString('ar-YE')}</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">مجمل الربح: {(filteredMetrics.grossProfit ?? 0).toLocaleString('ar-YE')}</div>
               </div>
 
               <div className="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700">
                 <div className="text-xs text-slate-400">المصروفات التشغيلية</div>
                 <div className="text-sm font-bold text-rose-400 mt-0.5">
-                  {filteredMetrics.totalExpenses.toLocaleString('ar-YE')} {currency}
+                  {(filteredMetrics.totalExpenses ?? 0).toLocaleString('ar-YE')} {currency}
                 </div>
                 <div className="text-[10px] text-slate-400 mt-0.5">{filteredExpensesCount} بند صرف</div>
               </div>
 
               <div className="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700">
                 <div className="text-xs text-slate-400">صافي الربح النهائي</div>
-                <div className={`text-sm font-bold mt-0.5 ${filteredMetrics.netProfit >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
-                  {filteredMetrics.netProfit.toLocaleString('ar-YE')} {currency}
+                <div className={`text-sm font-bold mt-0.5 ${(filteredMetrics.netProfit ?? 0) >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
+                  {(filteredMetrics.netProfit ?? 0).toLocaleString('ar-YE')} {currency}
                 </div>
                 <div className="text-[10px] text-slate-400 mt-0.5">هامش: {(filteredMetrics.netProfitMargin ?? 0).toFixed(1)}%</div>
               </div>

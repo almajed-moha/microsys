@@ -113,11 +113,11 @@ export const SalesReportModal: React.FC<SalesReportModalProps> = ({
 🗓️ الفترة: *${getFormattedDateRange()}*
 🔍 التصفية: ${filterInfo.posFilterName} | ${filterInfo.categoryFilterName} | ${filterInfo.paymentFilterName}
 📊 إجمالي العمليات: *${sales.length} فاتورة*
-📦 إجمالي الكروت: *${totals.totalQty.toLocaleString()} كارت*
-💰 إجمالي مبيعات الجملة: *${totals.totalWholesale.toLocaleString()} ${settings.currencySymbol}*
-💵 مبيعات نقدية: *${totals.totalCash.toLocaleString()} ${settings.currencySymbol}*
-⏳ مبيعات آجلة (ديون): *${totals.totalCredit.toLocaleString()} ${settings.currencySymbol}*
-📈 صافي أرباح الشبكة: *${totals.totalProfit.toLocaleString()} ${settings.currencySymbol}*
+📦 إجمالي الكروت: *${(totals.totalQty ?? 0).toLocaleString()} كارت*
+💰 إجمالي مبيعات الجملة: *${(totals.totalWholesale ?? 0).toLocaleString()} ${settings.currencySymbol}*
+💵 مبيعات نقدية: *${(totals.totalCash ?? 0).toLocaleString()} ${settings.currencySymbol}*
+⏳ مبيعات آجلة (ديون): *${(totals.totalCredit ?? 0).toLocaleString()} ${settings.currencySymbol}*
+📈 صافي أرباح الشبكة: *${(totals.totalProfit ?? 0).toLocaleString()} ${settings.currencySymbol}*
 ----------------------------------------
 تم إصدار هذا التقرير رسمياً من نظام إدارة الشبكة
 للاستفسار: ${settings.supportPhone}`;

@@ -484,12 +484,12 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
               <span className="text-xs text-slate-400 font-medium">صافي المبيعات (الإيراد)</span>
               <div className="mt-1">
                 <span className="text-xl sm:text-2xl font-black text-white">
-                  {calculations.netSalesRevenue.toLocaleString()}
+                  {(calculations.netSalesRevenue ?? 0).toLocaleString()}
                 </span>
                 <span className="text-xs text-slate-400 mr-1 font-bold">{currency}</span>
               </div>
               <span className="text-[11px] text-slate-400 mt-1">
-                {calculations.netCardsQty.toLocaleString()} كرت صافي مباع
+                {(calculations.netCardsQty ?? 0).toLocaleString()} كرت صافي مباع
               </span>
             </div>
 
@@ -498,7 +498,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
               <span className="text-xs text-slate-400 font-medium">تكلفة البضاعة المباعة (رأس المال)</span>
               <div className="mt-1">
                 <span className="text-xl sm:text-2xl font-black text-amber-400">
-                  {calculations.netCOGS.toLocaleString()}
+                  {(calculations.netCOGS ?? 0).toLocaleString()}
                 </span>
                 <span className="text-xs text-slate-400 mr-1 font-bold">{currency}</span>
               </div>
@@ -510,7 +510,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
               <span className="text-xs text-slate-400 font-medium">المصروفات التشغيلية (OPEX)</span>
               <div className="mt-1">
                 <span className="text-xl sm:text-2xl font-black text-rose-400">
-                  {calculations.totalOperatingExpenses.toLocaleString()}
+                  {(calculations.totalOperatingExpenses ?? 0).toLocaleString()}
                 </span>
                 <span className="text-xs text-slate-400 mr-1 font-bold">{currency}</span>
               </div>
@@ -547,12 +547,12 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                     calculations.isNetLoss ? 'text-rose-400' : 'text-emerald-400'
                   }`}
                 >
-                  {calculations.netProfit.toLocaleString()}
+                  {(calculations.netProfit ?? 0).toLocaleString()}
                 </span>
                 <span className="text-xs text-slate-300 mr-1 font-bold">{currency}</span>
               </div>
               <span className="text-[11px] text-slate-400 mt-1">
-                مجمل الربح ({calculations.grossProfit.toLocaleString()} {currency}) - المصاريف
+                مجمل الربح ({(calculations.grossProfit ?? 0).toLocaleString()} {currency}) - المصاريف
               </span>
             </div>
           </div>
@@ -591,11 +591,11 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                       <td className="py-3 px-4 pr-8 text-slate-300">
                         إجمالي مبيعات وتسليمات الكروت (Gross Sales)
                         <span className="block text-xs text-slate-500">
-                          بناءً على الفواتير المعتمدة ({calculations.totalCardsSoldQty.toLocaleString()} كرت)
+                          بناءً على الفواتير المعتمدة ({(calculations.totalCardsSoldQty ?? 0).toLocaleString()} كرت)
                         </span>
                       </td>
                       <td className="py-3 px-4 text-left font-semibold text-slate-300">
-                        {calculations.grossSales.toLocaleString()}
+                        {(calculations.grossSales ?? 0).toLocaleString()}
                       </td>
                       <td className="py-3 px-4 text-left text-slate-500">-</td>
                       <td className="py-3 px-4 text-center text-xs text-slate-400">100%</td>
@@ -604,11 +604,11 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                       <td className="py-3 px-4 pr-8 text-rose-300/90">
                         (-) مردودات ومسموحات مبيعات الكروت (Sales Returns)
                         <span className="block text-xs text-slate-500">
-                          كروت مرتجعة للمخزن ({calculations.totalCardsReturnedQty.toLocaleString()} كرت)
+                          كروت مرتجعة للمخزن ({(calculations.totalCardsReturnedQty ?? 0).toLocaleString()} كرت)
                         </span>
                       </td>
                       <td className="py-3 px-4 text-left font-semibold text-rose-400">
-                        ({calculations.salesReturns.toLocaleString()})
+                        ({(calculations.salesReturns ?? 0).toLocaleString()})
                       </td>
                       <td className="py-3 px-4 text-left text-slate-500">-</td>
                       <td className="py-3 px-4 text-center text-xs text-rose-400">
@@ -624,7 +624,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                       </td>
                       <td className="py-3.5 px-4 text-left text-slate-500">-</td>
                       <td className="py-3.5 px-4 text-left font-black text-white text-base">
-                        {calculations.netSalesRevenue.toLocaleString()} {currency}
+                        {(calculations.netSalesRevenue ?? 0).toLocaleString()} {currency}
                       </td>
                       <td className="py-3.5 px-4 text-center font-bold text-emerald-400">100%</td>
                     </tr>
@@ -643,7 +643,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                         </span>
                       </td>
                       <td className="py-3 px-4 text-left font-semibold text-amber-400">
-                        {calculations.costOfGoodsSold.toLocaleString()}
+                        {(calculations.costOfGoodsSold ?? 0).toLocaleString()}
                       </td>
                       <td className="py-3 px-4 text-left text-slate-500">-</td>
                       <td className="py-3 px-4 text-center text-xs text-slate-400">
@@ -659,7 +659,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                           (-) تكلفة الكروت المرتجعة المستردة
                         </td>
                         <td className="py-3 px-4 text-left font-semibold text-slate-400">
-                          ({calculations.costOfGoodsReturned.toLocaleString()})
+                          ({(calculations.costOfGoodsReturned ?? 0).toLocaleString()})
                         </td>
                         <td className="py-3 px-4 text-left text-slate-500">-</td>
                         <td className="py-3 px-4 text-center text-xs text-slate-500">-</td>
@@ -674,7 +674,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                       </td>
                       <td className="py-3.5 px-4 text-left text-slate-500">-</td>
                       <td className="py-3.5 px-4 text-left font-black text-amber-400 text-base">
-                        {calculations.grossProfit.toLocaleString()} {currency}
+                        {(calculations.grossProfit ?? 0).toLocaleString()} {currency}
                       </td>
                       <td className="py-3.5 px-4 text-center font-black text-amber-400">
                         {(calculations.grossMarginPercent ?? 0).toFixed(1)}%
@@ -703,7 +703,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                             </span>
                           </td>
                           <td className="py-2.5 px-4 text-left font-semibold text-slate-300">
-                            {expItem.totalAmount.toLocaleString()}
+                            {(expItem.totalAmount ?? 0).toLocaleString()}
                           </td>
                           <td className="py-2.5 px-4 text-left text-slate-500">-</td>
                           <td className="py-2.5 px-4 text-center text-xs text-slate-400">
@@ -718,7 +718,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                       </td>
                       <td className="py-3.5 px-4 text-left text-slate-500">-</td>
                       <td className="py-3.5 px-4 text-left font-black text-rose-400 text-base">
-                        ({calculations.totalOperatingExpenses.toLocaleString()}) {currency}
+                        ({(calculations.totalOperatingExpenses ?? 0).toLocaleString()}) {currency}
                       </td>
                       <td className="py-3.5 px-4 text-center font-bold text-rose-400">
                         {calculations.netSalesRevenue > 0
@@ -747,7 +747,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                       </td>
                       <td className="py-4 px-4 text-left text-slate-400 text-sm">-</td>
                       <td className="py-4 px-4 text-left font-black text-xl">
-                        {calculations.netProfit.toLocaleString()} {currency}
+                        {(calculations.netProfit ?? 0).toLocaleString()} {currency}
                       </td>
                       <td className="py-4 px-4 text-center font-black text-base">
                         {(calculations.netProfitMarginPercent ?? 0).toFixed(1)}%
@@ -803,23 +803,23 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                             <span>{cat.categoryName}</span>
                           </td>
                           <td className="py-3 px-4 text-center font-bold text-slate-200">
-                            {cat.netQty.toLocaleString()}{' '}
+                            {(cat.netQty ?? 0).toLocaleString()}{' '}
                             <span className="text-[11px] text-slate-500">كرت</span>
                           </td>
                           <td className="py-3 px-4 text-center text-xs text-amber-400 font-semibold">
-                            {cat.unitCost.toLocaleString()} {currency}
+                            {(cat.unitCost ?? 0).toLocaleString()} {currency}
                           </td>
                           <td className="py-3 px-4 text-center text-xs text-slate-300 font-semibold">
-                            {cat.unitPrice.toLocaleString()} {currency}
+                            {(cat.unitPrice ?? 0).toLocaleString()} {currency}
                           </td>
                           <td className="py-3 px-4 text-left font-bold text-white">
-                            {cat.netRevenue.toLocaleString()} {currency}
+                            {(cat.netRevenue ?? 0).toLocaleString()} {currency}
                           </td>
                           <td className="py-3 px-4 text-left text-xs text-amber-400">
-                            {cat.cogs.toLocaleString()} {currency}
+                            {(cat.cogs ?? 0).toLocaleString()} {currency}
                           </td>
                           <td className="py-3 px-4 text-left font-bold text-emerald-400">
-                            {cat.grossProfit.toLocaleString()} {currency}
+                            {(cat.grossProfit ?? 0).toLocaleString()} {currency}
                           </td>
                           <td className="py-3 px-4 text-center">
                             <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-bold">
@@ -881,19 +881,19 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                             {posItem.totalInvoices} فاتورة
                           </td>
                           <td className="py-3 px-4 text-left font-medium text-slate-300">
-                            {posItem.grossSales.toLocaleString()}
+                            {(posItem.grossSales ?? 0).toLocaleString()}
                           </td>
                           <td className="py-3 px-4 text-left text-xs text-rose-400">
                             {posItem.returnsAmount > 0 ? `(${posItem.returnsAmount.toLocaleString()})` : '-'}
                           </td>
                           <td className="py-3 px-4 text-left font-bold text-white">
-                            {posItem.netSales.toLocaleString()} {currency}
+                            {(posItem.netSales ?? 0).toLocaleString()} {currency}
                           </td>
                           <td className="py-3 px-4 text-left font-semibold text-emerald-400">
-                            {posItem.totalCollected.toLocaleString()} {currency}
+                            {(posItem.totalCollected ?? 0).toLocaleString()} {currency}
                           </td>
                           <td className="py-3 px-4 text-left font-bold text-amber-400">
-                            {posItem.grossProfit.toLocaleString()} {currency}
+                            {(posItem.grossProfit ?? 0).toLocaleString()} {currency}
                           </td>
                         </tr>
                       ))
@@ -953,7 +953,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                     <td className="p-2 pr-6">
                       إجمالي مبيعات الكروت ({calculations.totalCardsSoldQty} كرت)
                     </td>
-                    <td className="p-2 text-left font-semibold">{calculations.grossSales.toLocaleString()}</td>
+                    <td className="p-2 text-left font-semibold">{(calculations.grossSales ?? 0).toLocaleString()}</td>
                     <td className="p-2 text-left">-</td>
                     <td className="p-2 text-center">100%</td>
                   </tr>
@@ -962,7 +962,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                       (-) مردودات ومسموحات المبيعات ({calculations.totalCardsReturnedQty} كرت)
                     </td>
                     <td className="p-2 text-left font-semibold text-red-700">
-                      ({calculations.salesReturns.toLocaleString()})
+                      ({(calculations.salesReturns ?? 0).toLocaleString()})
                     </td>
                     <td className="p-2 text-left">-</td>
                     <td className="p-2 text-center text-red-700">
@@ -976,7 +976,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                     <td className="p-2">(=) صافي إيرادات المبيعات (Net Revenue)</td>
                     <td className="p-2 text-left">-</td>
                     <td className="p-2 text-left font-black">
-                      {calculations.netSalesRevenue.toLocaleString()} {currency}
+                      {(calculations.netSalesRevenue ?? 0).toLocaleString()} {currency}
                     </td>
                     <td className="p-2 text-center font-bold">100%</td>
                   </tr>
@@ -988,7 +988,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                   </tr>
                   <tr>
                     <td className="p-2 pr-6">تكلفة الكروت المباعة من المصدر</td>
-                    <td className="p-2 text-left font-semibold">{calculations.netCOGS.toLocaleString()}</td>
+                    <td className="p-2 text-left font-semibold">{(calculations.netCOGS ?? 0).toLocaleString()}</td>
                     <td className="p-2 text-left">-</td>
                     <td className="p-2 text-center">
                       {calculations.netSalesRevenue > 0
@@ -1001,7 +1001,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                     <td className="p-2">(=) مجمل الربح التجاري (Gross Profit)</td>
                     <td className="p-2 text-left">-</td>
                     <td className="p-2 text-left font-black text-slate-900">
-                      {calculations.grossProfit.toLocaleString()} {currency}
+                      {(calculations.grossProfit ?? 0).toLocaleString()} {currency}
                     </td>
                     <td className="p-2 text-center font-black">
                       {(calculations.grossMarginPercent ?? 0).toFixed(1)}%
@@ -1018,7 +1018,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                       <td className="p-2 pr-6">
                         {e.categoryName} ({e.voucherCount} سند)
                       </td>
-                      <td className="p-2 text-left">{e.totalAmount.toLocaleString()}</td>
+                      <td className="p-2 text-left">{(e.totalAmount ?? 0).toLocaleString()}</td>
                       <td className="p-2 text-left">-</td>
                       <td className="p-2 text-center">{(e.percentOfRevenue ?? 0).toFixed(1)}%</td>
                     </tr>
@@ -1027,7 +1027,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                     <td className="p-2">(=) إجمالي المصروفات التشغيلية</td>
                     <td className="p-2 text-left">-</td>
                     <td className="p-2 text-left font-bold text-red-700">
-                      ({calculations.totalOperatingExpenses.toLocaleString()}) {currency}
+                      ({(calculations.totalOperatingExpenses ?? 0).toLocaleString()}) {currency}
                     </td>
                     <td className="p-2 text-center font-bold text-red-700">
                       {calculations.netSalesRevenue > 0
@@ -1044,7 +1044,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                     <td className="p-3">(=) صافي الربح / الخسارة النهائي (Net Profit)</td>
                     <td className="p-3 text-left">-</td>
                     <td className="p-3 text-left font-black text-base">
-                      {calculations.netProfit.toLocaleString()} {currency}
+                      {(calculations.netProfit ?? 0).toLocaleString()} {currency}
                     </td>
                     <td className="p-3 text-center font-black text-sm">
                       {(calculations.netProfitMarginPercent ?? 0).toFixed(1)}%

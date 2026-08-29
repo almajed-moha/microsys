@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Server, Plus, Network, CheckCircle, ShieldAlert, Trash2 } from 'lucide-react';
+import { Server, Plus, Network, CheckCircle, ShieldAlert, Trash2, LogIn, Users } from 'lucide-react';
 import { NetworkTenant, AppUser } from '../types';
 import { SystemTenantModal } from './SystemTenantModal';
 
@@ -8,6 +8,7 @@ interface SystemTenantsViewProps {
   users: AppUser[];
   onSaveTenant?: (tenant: NetworkTenant) => void;
   onDeleteTenant?: (tenantId: string) => void;
+  onSwitchToTenantAdmin?: (tenant: NetworkTenant) => void;
 }
 
 export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
@@ -15,6 +16,7 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
   users,
   onSaveTenant,
   onDeleteTenant,
+  onSwitchToTenantAdmin,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<NetworkTenant | null>(null);
@@ -151,52 +153,79 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
             <thead>
               <tr className="bg-slate-800/50 text-slate-300 text-xs font-bold">
                 <th className="p-4">الشبكة</th>
-                <th className="p-4">مدير الشبكة (الافتراضي)</th>
+                <th className="p-4">مدير الشبكة</th>
+                <th className="p-4">المستخدمين المرتبطين</th>
                 <th className="p-4">تاريخ الاشتراك</th>
                 <th className="p-4">الحالة</th>
-                <th className="p-4">إجراءات</th>
+                <th className="p-4">إجراءات والوصول</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
-              {tenants.map(tenant => (
-                <tr key={tenant.id} className="hover:bg-slate-800/30 transition text-sm">
-                  <td className="p-4">
-                    <div className="font-bold text-white">{tenant.name}</div>
-                    <div className="text-xs text-slate-400 font-mono mt-0.5">{tenant.id}</div>
-                  </td>
-                  <td className="p-4 font-mono text-indigo-400">{tenant.adminUsername}</td>
-                  <td className="p-4 text-slate-300">{tenant.createdAt}</td>
-                  <td className="p-4">
-                    <span className={`px-2 py-1 rounded-lg text-xs font-bold ${
-                      tenant.status === 'active' 
-                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                        : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                    }`}>
-                      {tenant.status === 'active' ? 'نشط' : 'موقوف'}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => handleOpenModal(tenant)}
-                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition border border-slate-700"
-                      >
-                        إدارة
-                      </button>
-                      <button 
-                        onClick={() => setDeleteConfirmTenant(tenant)}
-                        className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-xs font-bold transition border border-rose-500/20"
-                        title="حذف الشبكة"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {tenants.map(tenant => {
+                const tenantUsersCount = users.filter(u => (u.networkId || 'net-alfadaa') === tenant.id).length;
+                return (
+                  <tr key={tenant.id} className="hover:bg-slate-800/30 transition text-sm">
+                    <td className="p-4">
+                      <div className="font-bold text-white flex items-center gap-2">
+                        <span>{tenant.name}</span>
+                        {tenant.id === 'net-alfadaa' && (
+                          <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] font-mono font-bold">
+                            الافتراضية
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-400 font-mono mt-0.5">{tenant.id}</div>
+                    </td>
+                    <td className="p-4 font-mono text-indigo-400">@{tenant.adminUsername}</td>
+                    <td className="p-4">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold border border-slate-700">
+                        <Users className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>{tenantUsersCount} مستخدم</span>
+                      </span>
+                    </td>
+                    <td className="p-4 text-slate-300">{tenant.createdAt}</td>
+                    <td className="p-4">
+                      <span className={`px-2 py-1 rounded-lg text-xs font-bold ${
+                        tenant.status === 'active' 
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                      }`}>
+                        {tenant.status === 'active' ? 'نشط' : 'موقوف'}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-2">
+                        {onSwitchToTenantAdmin && (
+                          <button
+                            onClick={() => onSwitchToTenantAdmin(tenant)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-white text-xs font-bold transition border border-indigo-500/30"
+                            title={`الدخول مباشرة بحساب مدير شبكة ${tenant.name}`}
+                          >
+                            <LogIn className="w-3.5 h-3.5" />
+                            <span>دخول للشبكة</span>
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => handleOpenModal(tenant)}
+                          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition border border-slate-700"
+                        >
+                          إدارة
+                        </button>
+                        <button 
+                          onClick={() => setDeleteConfirmTenant(tenant)}
+                          className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-xs font-bold transition border border-rose-500/20"
+                          title="حذف الشبكة"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
               {tenants.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-400 text-sm">
+                  <td colSpan={6} className="p-8 text-center text-slate-400 text-sm">
                     لا توجد شبكات مضافة بعد.
                   </td>
                 </tr>

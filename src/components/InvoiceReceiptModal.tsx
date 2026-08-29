@@ -212,7 +212,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
 
   const getWhatsAppMessage = () => {
     const itemsText = invoice.items
-      .map((it) => `▫️ ${it.categoryName}: ${it.quantity} كارت × ${it.unitWholesalePrice.toLocaleString()} = ${it.totalWholesalePrice.toLocaleString()} ${currency}`)
+      .map((it) => `▫️ ${it.categoryName}: ${it.quantity} كارت × ${(it.unitWholesalePrice ?? 0).toLocaleString()} = ${(it.totalWholesalePrice ?? 0).toLocaleString()} ${currency}`)
       .join('\n');
 
     return `*${settings.networkName}*\n` +
@@ -226,10 +226,10 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
       `📦 *تفاصيل الأصناف والكميات:*\n${itemsText}\n` +
       `--------------------------------\n` +
       `🔢 إجمالي الكروت: *${invoice.totalQuantity} كارت*\n` +
-      `💰 المبلغ الإجمالي: *${invoice.totalWholesaleAmount.toLocaleString()} ${currency}*\n` +
-      `📝 ${tafqeetArabic(invoice.totalWholesaleAmount, settings?.currency || 'ريال يمني')}\n` +
+      `💰 المبلغ الإجمالي: *${(invoice.totalWholesaleAmount ?? 0).toLocaleString()} ${currency}*\n` +
+      `📝 ${tafqeetArabic(invoice.totalWholesaleAmount || 0, settings?.currency || 'ريال يمني')}\n` +
       (invoice.notes ? `📌 ملاحظات: ${invoice.notes}\n` : '') +
-      (posPoint ? `📊 المديونية الحالية للنقطة: ${posPoint.currentDebt.toLocaleString()} ${currency}\n` : '') +
+      (posPoint ? `📊 المديونية الحالية للنقطة: ${(posPoint.currentDebt ?? 0).toLocaleString()} ${currency}\n` : '') +
       `--------------------------------\n` +
       `شكراً لتعاملكم معنا 🌹\nهاتف الدعم: ${settings.supportPhone}`;
   };
@@ -469,10 +469,10 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
                           {item.quantity} كارت
                         </td>
                         <td className="py-2.5 px-3 text-center font-mono text-slate-700">
-                          {item.unitWholesalePrice.toLocaleString()} {currency}
+                          {(item.unitWholesalePrice ?? 0).toLocaleString()} {currency}
                         </td>
                         <td className="py-2.5 px-3 text-center font-bold font-mono text-slate-900">
-                          {item.totalWholesalePrice.toLocaleString()}
+                          {(item.totalWholesalePrice ?? 0).toLocaleString()}
                         </td>
                         <td className="py-2.5 px-3 text-center font-mono text-[11px] text-slate-600">
                           {item.serialStart && item.serialEnd ? `${item.serialStart} ⟵ ${item.serialEnd}` : '—'}
@@ -489,7 +489,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
                   <div>
                     <span className="text-xs text-slate-500 font-medium block">المبلغ الإجمالي بالحروف والتفقيط:</span>
                     <span className="text-xs sm:text-sm font-bold text-slate-900 mt-0.5 block">
-                      {tafqeetArabic(invoice.totalWholesaleAmount, settings?.currency || 'ريال يمني')}
+                      {tafqeetArabic(invoice.totalWholesaleAmount || 0, settings?.currency || 'ريال يمني')}
                     </span>
                   </div>
 
@@ -501,7 +501,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
                     <div className="text-center">
                       <span className="text-[11px] text-slate-500 block">صافي الفاتورة</span>
                       <span className={`text-xl font-black font-mono ${isReturn ? 'text-rose-700' : 'text-indigo-800'}`}>
-                        {invoice.totalWholesaleAmount.toLocaleString()} {currency}
+                        {(invoice.totalWholesaleAmount ?? 0).toLocaleString()} {currency}
                       </span>
                     </div>
                   </div>
@@ -589,7 +589,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
                       <div className="font-bold">{item.categoryName}</div>
                       <div className="flex justify-between text-slate-700">
                         <span>{item.quantity} كارت × {item.unitWholesalePrice}</span>
-                        <span className="font-bold text-black">{item.totalWholesalePrice.toLocaleString()} {currency}</span>
+                        <span className="font-bold text-black">{(item.totalWholesalePrice ?? 0).toLocaleString()} {currency}</span>
                       </div>
                       {item.serialStart && item.serialEnd && (
                         <div className="text-[9px] text-slate-600">
@@ -609,12 +609,12 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
                 </div>
                 <div className="flex justify-between text-sm font-black pt-1">
                   <span>المبلغ الإجمالي:</span>
-                  <span>{invoice.totalWholesaleAmount.toLocaleString()} {currency}</span>
+                  <span>{(invoice.totalWholesaleAmount ?? 0).toLocaleString()} {currency}</span>
                 </div>
               </div>
 
               <div className="py-2 text-[9px] leading-tight text-center text-slate-800 border-b border-dashed border-black">
-                {tafqeetArabic(invoice.totalWholesaleAmount, settings?.currency || 'ريال')}
+                {tafqeetArabic(invoice.totalWholesaleAmount || 0, settings?.currency || 'ريال')}
               </div>
 
               {/* Barcode */}

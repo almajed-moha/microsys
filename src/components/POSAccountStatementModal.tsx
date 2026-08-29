@@ -257,10 +257,10 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
 ⏱ تاريخ الكشف: ${new Date().toLocaleDateString('ar-EG')} ${new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
 
 📊 *الملخص المالي:*
-- الرصيد السابق المنقول: ${ledgerData.openingBalance.toLocaleString()} ${settings.currencySymbol}
-- إجمالي مسحوبات ومبيعات الفترة: ${ledgerData.periodDebits.toLocaleString()} ${settings.currencySymbol}
-- إجمالي المبالغ المسددة: ${ledgerData.periodCredits.toLocaleString()} ${settings.currencySymbol}
-- 🔴 *الرصيد المتبقي (المديونية الحالية): ${ledgerData.closingBalance.toLocaleString()} ${settings.currencySymbol}*
+- الرصيد السابق المنقول: ${(ledgerData.openingBalance ?? 0).toLocaleString()} ${settings.currencySymbol}
+- إجمالي مسحوبات ومبيعات الفترة: ${(ledgerData.periodDebits ?? 0).toLocaleString()} ${settings.currencySymbol}
+- إجمالي المبالغ المسددة: ${(ledgerData.periodCredits ?? 0).toLocaleString()} ${settings.currencySymbol}
+- 🔴 *الرصيد المتبقي (المديونية الحالية): ${(ledgerData.closingBalance ?? 0).toLocaleString()} ${settings.currencySymbol}*
 
 📦 *جرد الكروت المتبقية لدى النقطة:*
 - الكروت المستلمة إجمالاً: ${fullInventory?.totalDispatched ?? 0} كارت
@@ -695,20 +695,20 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                   {dateFrom && (
                     <div className="flex justify-between text-slate-700">
                       <span>الرصيد السابق:</span>
-                      <span className="font-bold">{ledgerData.openingBalance.toLocaleString()} {settings.currencySymbol}</span>
+                      <span className="font-bold">{(ledgerData.openingBalance ?? 0).toLocaleString()} {settings.currencySymbol}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-slate-800">
                     <span>مسحوبات ومبيعات الفترة (+):</span>
-                    <span className="font-bold">{ledgerData.periodDebits.toLocaleString()} {settings.currencySymbol}</span>
+                    <span className="font-bold">{(ledgerData.periodDebits ?? 0).toLocaleString()} {settings.currencySymbol}</span>
                   </div>
                   <div className="flex justify-between text-emerald-800 font-bold">
                     <span>المسدد نقداً (-):</span>
-                    <span>{ledgerData.periodCredits.toLocaleString()} {settings.currencySymbol}</span>
+                    <span>{(ledgerData.periodCredits ?? 0).toLocaleString()} {settings.currencySymbol}</span>
                   </div>
                   <div className="flex justify-between text-slate-950 font-black text-xs pt-1 border-t border-slate-300 bg-slate-100 p-1 rounded">
                     <span>الرصيد المتبقي (المطلوب):</span>
-                    <span>{ledgerData.closingBalance.toLocaleString()} {settings.currencySymbol}</span>
+                    <span>{(ledgerData.closingBalance ?? 0).toLocaleString()} {settings.currencySymbol}</span>
                   </div>
                 </div>
 
@@ -746,9 +746,9 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                         <div className="text-slate-800 text-[9px] truncate">{tx.description}</div>
                         <div className="flex justify-between items-center text-slate-950 font-bold pt-0.5">
                           <span>
-                            {tx.debit > 0 ? `+${tx.debit.toLocaleString()}` : `-${tx.credit.toLocaleString()}`} {settings.currencySymbol}
+                            {tx.debit > 0 ? `+${(tx.debit ?? 0).toLocaleString()}` : `-${(tx.credit ?? 0).toLocaleString()}`} {settings.currencySymbol}
                           </span>
-                          <span className="text-slate-500 text-[9px]">رصيد: {tx.runningBalance.toLocaleString()}</span>
+                          <span className="text-slate-500 text-[9px]">رصيد: {(tx.runningBalance ?? 0).toLocaleString()}</span>
                         </div>
                       </div>
                     ))}
@@ -851,7 +851,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                   <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
                     <span className="text-[11px] text-slate-600 font-bold block">الرصيد السابق المنقول</span>
                     <span className="text-base font-black text-slate-900 font-mono mt-1 block">
-                      {ledgerData.openingBalance.toLocaleString()}{' '}
+                      {(ledgerData.openingBalance ?? 0).toLocaleString()}{' '}
                       <span className="text-xs font-bold text-slate-600">{settings.currencySymbol}</span>
                     </span>
                   </div>
@@ -860,7 +860,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                   <div className="p-3.5 bg-blue-50/70 rounded-xl border border-blue-200">
                     <span className="text-[11px] text-blue-900 font-bold block">مسحوبات ومبيعات الفترة</span>
                     <span className="text-base font-black text-blue-950 font-mono mt-1 block">
-                      {ledgerData.periodDebits.toLocaleString()}{' '}
+                      {(ledgerData.periodDebits ?? 0).toLocaleString()}{' '}
                       <span className="text-xs font-bold text-blue-800">{settings.currencySymbol}</span>
                     </span>
                   </div>
@@ -869,7 +869,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                   <div className="p-3.5 bg-emerald-50/70 rounded-xl border border-emerald-200">
                     <span className="text-[11px] text-emerald-900 font-bold block">المبالغ المسددة بالفترة</span>
                     <span className="text-base font-black text-emerald-950 font-mono mt-1 block">
-                      {ledgerData.periodCredits.toLocaleString()}{' '}
+                      {(ledgerData.periodCredits ?? 0).toLocaleString()}{' '}
                       <span className="text-xs font-bold text-emerald-800">{settings.currencySymbol}</span>
                     </span>
                   </div>
@@ -878,7 +878,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                   <div className="p-3.5 bg-amber-50/70 rounded-xl border border-amber-200">
                     <span className="text-[11px] text-amber-900 font-bold block">الرصيد المتبقي (المديونية)</span>
                     <span className="text-base font-black text-amber-950 font-mono mt-1 block">
-                      {ledgerData.closingBalance.toLocaleString()}{' '}
+                      {(ledgerData.closingBalance ?? 0).toLocaleString()}{' '}
                       <span className="text-xs font-bold text-amber-800">{settings.currencySymbol}</span>
                     </span>
                   </div>
@@ -958,7 +958,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                               ★ الرصيد السابق المنقول قبل تاريخ {dateFrom}
                             </td>
                             <td className="py-2 px-3 font-mono text-left font-black text-slate-900 bg-slate-100">
-                              {ledgerData.openingBalance.toLocaleString()} {settings.currencySymbol}
+                              {(ledgerData.openingBalance ?? 0).toLocaleString()} {settings.currencySymbol}
                             </td>
                             <td className="py-2 px-3 text-[10px] text-slate-500 font-mono">افتتاحي</td>
                             <td className="py-2 px-3 no-print"></td>
@@ -978,7 +978,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                               {(row.credit || 0) > 0 ? `${(row.credit || 0).toLocaleString()} ${settings.currencySymbol}` : '-'}
                             </td>
                             <td className="py-2 px-3 font-mono font-black text-slate-950 text-left whitespace-nowrap bg-slate-50/60">
-                              {row.runningBalance.toLocaleString()} {settings.currencySymbol}
+                              {(row.runningBalance ?? 0).toLocaleString()} {settings.currencySymbol}
                             </td>
                             <td className="py-2 px-3 font-mono text-slate-500 text-[10px] whitespace-nowrap font-medium">{row.ref}</td>
                             <td className="py-2 px-3 no-print text-center">
@@ -1020,13 +1020,13 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                             إجمالي حركات الفترة المحددة:
                           </td>
                           <td className="py-3 px-3 font-mono text-left text-amber-900">
-                            {ledgerData.periodDebits.toLocaleString()} {settings.currencySymbol}
+                            {(ledgerData.periodDebits ?? 0).toLocaleString()} {settings.currencySymbol}
                           </td>
                           <td className="py-3 px-3 font-mono text-left text-emerald-900">
-                            {ledgerData.periodCredits.toLocaleString()} {settings.currencySymbol}
+                            {(ledgerData.periodCredits ?? 0).toLocaleString()} {settings.currencySymbol}
                           </td>
                           <td className="py-3 px-3 font-mono text-left text-indigo-950 bg-indigo-50">
-                            {ledgerData.closingBalance.toLocaleString()} {settings.currencySymbol}
+                            {(ledgerData.closingBalance ?? 0).toLocaleString()} {settings.currencySymbol}
                           </td>
                           <td colSpan={2} className="py-3 px-3 text-[11px] text-slate-600 font-normal">
                             صافي الرصيد الختامي
@@ -1058,7 +1058,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <span>الرصيد النهائي المستحق:</span>
             <strong className="text-amber-400 font-mono text-sm">
-              {ledgerData.closingBalance.toLocaleString()} {settings.currencySymbol}
+              {(ledgerData.closingBalance ?? 0).toLocaleString()} {settings.currencySymbol}
             </strong>
           </div>
           <button
