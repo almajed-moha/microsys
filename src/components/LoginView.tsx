@@ -24,6 +24,7 @@ import {
   getViewNameArabic,
 } from '../utils/permissions';
 import { NavView } from './Sidebar';
+import { AboutProgramModal } from './AboutProgramModal';
 
 interface LoginViewProps {
   users: AppUser[];
@@ -59,11 +60,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginSuccessUser, setLoginSuccessUser] = useState<{ user: AppUser; view: NavView } | null>(null);
   const [showSupportModal, setShowSupportModal] = useState(false);
-  const [showDevAccounts, setShowDevAccounts] = useState(false);
+  const [showAboutModal, setShowAboutModal] = useState(false);
 
   const supportPhone = settings?.supportPhone || settings?.whatsappNumber || '770123456';
-  const networkName = settings?.networkName || 'نظام إدارة الشبكات';
-  const networkSlogan = settings?.networkSlogan || 'نظام محاسبي معتمد لشبكات الإنترنت';
+  const networkName = settings?.networkName || 'إدارة شبكات المايكروتك ونقاط البيع السحابية MicroSys';
+  const networkSlogan = settings?.networkSlogan || 'المنظومة السحابية المتكاملة للتحكم المالي، الفواتير، ونقاط البيع';
   const logoUrl = settings?.logoUrl;
 
   // Handle Username & Password Submission
@@ -427,58 +428,46 @@ export const LoginView: React.FC<LoginViewProps> = ({
             </form>
           )}
 
-          {/* Help & Support Button */}
-          <div className="pt-2 text-center">
+          {/* Help & Support & About Program Buttons */}
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-slate-800/80">
             <button
               type="button"
               onClick={() => setShowSupportModal(true)}
-              className="inline-flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition underline underline-offset-4"
+              className="inline-flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition underline underline-offset-4 cursor-pointer"
             >
               <HelpCircle className="w-3.5 h-3.5" />
-              <span>تعذر تسجيل الدخول أو نسيت كلمة المرور؟</span>
+              <span>نسيت كلمة المرور؟</span>
             </button>
-          </div>
 
-          {/* Discreet Dev Helper (Accordion) */}
-          <div className="pt-2 border-t border-slate-800/80">
             <button
               type="button"
-              onClick={() => setShowDevAccounts(!showDevAccounts)}
-              className="w-full flex items-center justify-between text-[11px] text-slate-500 hover:text-slate-300 transition py-1"
+              onClick={() => setShowAboutModal(true)}
+              className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition bg-slate-950 hover:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-800 cursor-pointer"
             >
-              <span>حسابات النظام الافتراضية (للتجربة والإدارة)</span>
-              {showDevAccounts ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              <span>ℹ️ حول البرنامج</span>
             </button>
-
-            {showDevAccounts && (
-              <div className="mt-2 p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5 text-[11px] animate-fade-in">
-                <div className="flex items-center justify-between py-1 border-b border-slate-850">
-                  <span className="text-amber-300 font-bold">مالك النظام العام (master):</span>
-                  <span className="font-mono text-amber-400">كلمة المرور: masterpassword | PIN: 0000</span>
-                </div>
-                <div className="flex items-center justify-between py-1 border-b border-slate-850">
-                  <span className="text-slate-300 font-bold">المدير العام (admin):</span>
-                  <span className="font-mono text-indigo-400">كلمة المرور: adminpassword | PIN: 1234</span>
-                </div>
-                <div className="flex items-center justify-between py-1 border-b border-slate-850">
-                  <span className="text-slate-300 font-bold">المحاسب (accountant):</span>
-                  <span className="font-mono text-indigo-400">كلمة المرور: accpassword | PIN: 2233</span>
-                </div>
-                <div className="flex items-center justify-between py-1">
-                  <span className="text-slate-300 font-bold">نقاط البيع والموزعين:</span>
-                  <span className="text-slate-400">حسب اسم المستخدم المسجل في شاشة نقاط البيع</span>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
         {/* Footer */}
         <div className="p-4 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
           <span>{networkSlogan}</span>
-          <span className="font-mono">RBAC Security v3.5</span>
+          <button
+            type="button"
+            onClick={() => setShowAboutModal(true)}
+            className="hover:text-indigo-400 transition cursor-pointer font-mono"
+          >
+            ميراب سوفت التقنية v3.5 Pro
+          </button>
         </div>
       </div>
+
+      {/* About Program Modal */}
+      <AboutProgramModal
+        isOpen={showAboutModal}
+        onClose={() => setShowAboutModal(false)}
+        settings={settings}
+      />
 
       {/* Support / Contact Admin Dialog */}
       {showSupportModal && (

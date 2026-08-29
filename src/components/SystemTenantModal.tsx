@@ -1,16 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import { Server, Save, X } from 'lucide-react';
-import { NetworkTenant, NetworkSettings } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Server, Save, X, Sparkles } from 'lucide-react';
+import { NetworkTenant, NetworkSettings, AppUser, POSPoint } from '../types';
 import { defaultNetworkSettings } from '../mockData';
+import { checkUsernameAvailability, generateAlternativeUsernames } from '../utils/usernameValidator';
+import { UsernameAvailabilityIndicator } from './UsernameAvailabilityIndicator';
 
 interface SystemTenantModalProps {
   tenant: NetworkTenant | null;
+  allUsers?: AppUser[];
+  allPosPoints?: POSPoint[];
+  allTenants?: NetworkTenant[];
   onSave: (tenant: NetworkTenant) => void;
   onClose: () => void;
 }
 
 export const SystemTenantModal: React.FC<SystemTenantModalProps> = ({
   tenant,
+  allUsers = [],
+  allPosPoints = [],
+  allTenants = [],
   onSave,
   onClose,
 }) => {
@@ -57,6 +65,27 @@ export const SystemTenantModal: React.FC<SystemTenantModalProps> = ({
     }
   }, [tenant]);
 
+  // Real-time username availability validation
+  const usernameValidation = useMemo(() => {
+    return checkUsernameAvailability(
+      formData.adminUsername || '',
+      allUsers,
+      allPosPoints,
+      allTenants,
+      { excludeTenantId: tenant?.id }
+    );
+  }, [formData.adminUsername, allUsers, allPosPoints, allTenants, tenant?.id]);
+
+  const handleAutoGenerateAdminUsername = () => {
+    const base = formData.name ? 'admin_' + formData.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 10) : 'admin_net';
+    const suggestions = generateAlternativeUsernames(base, allUsers, allPosPoints, allTenants);
+    const chosen = suggestions[0] || `${base}_${Date.now().toString().slice(-4)}`;
+    setFormData((prev) => ({
+      ...prev,
+      adminUsername: chosen,
+    }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const cleanName = (formData.name || '').trim();
@@ -64,6 +93,7 @@ export const SystemTenantModal: React.FC<SystemTenantModalProps> = ({
     const cleanId = (formData.id || `net-${Date.now().toString().slice(-6)}`).trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || `net-${Date.now()}`;
     
     if (!cleanName || !cleanAdminUsername) return;
+    if (!usernameValidation.isValid && !tenant) return;
 
     const mergedSettings: NetworkSettings = {
       ...defaultNetworkSettings,
@@ -123,24 +153,49 @@ export const SystemTenantModal: React.FC<SystemTenantModalProps> = ({
               onChange={(e) => setFormData({ ...formData, id: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono disabled:opacity-50 text-left"
               dir="ltr"
-              placeholder="e.g. net-alfadaa"
+              placeholder="e.g. net-alnoor"
             />
           </div>
 
           <div>
-            <label className="block text-slate-300 text-sm font-bold mb-1.5">
-              اسم مستخدم المدير (Super Admin Username)
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-slate-300 text-sm font-bold">
+                اسم مستخدم المدير (Super Admin Username) <span className="text-rose-500">*</span>
+              </label>
+              {!tenant && (
+                <button
+                  type="button"
+                  onClick={handleAutoGenerateAdminUsername}
+                  className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-bold"
+                >
+                  <Sparkles className="w-3 h-3 text-amber-400" />
+                  <span>توليد فريد</span>
+                </button>
+              )}
+            </div>
             <input
               type="text"
               required
               disabled={!!tenant}
               value={formData.adminUsername || ''}
               onChange={(e) => setFormData({ ...formData, adminUsername: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono disabled:opacity-50 text-left"
+              className={`w-full bg-slate-950 border rounded-xl px-3 py-2 text-white focus:outline-none font-mono disabled:opacity-50 text-left ${
+                usernameValidation.status === 'taken'
+                  ? 'border-rose-500 focus:border-rose-500'
+                  : usernameValidation.status === 'available'
+                  ? 'border-emerald-500 focus:border-emerald-500'
+                  : 'border-slate-800 focus:border-indigo-500'
+              }`}
               dir="ltr"
               placeholder="e.g. admin_alfadaa"
             />
+
+            {!tenant && (
+              <UsernameAvailabilityIndicator
+                validation={usernameValidation}
+                onSelectSuggestion={(sug) => setFormData({ ...formData, adminUsername: sug })}
+              />
+            )}
           </div>
 
           <div>
@@ -183,7 +238,8 @@ export const SystemTenantModal: React.FC<SystemTenantModalProps> = ({
             </button>
             <button
               type="submit"
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition shadow-lg shadow-indigo-600/20"
+              disabled={!usernameValidation.isValid && !tenant}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold transition shadow-lg shadow-indigo-600/20"
             >
               <Save className="w-4 h-4" />
               <span>حفظ</span>

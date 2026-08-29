@@ -37,9 +37,13 @@ import {
   SalesRecord,
   PaymentRecord,
   NetworkSettings,
+  AppUser,
+  NetworkTenant,
 } from '../types';
 import { calculatePOSInventory, calculatePOSBalance } from '../utils/storage';
 import { exportElementToPdf } from '../utils/pdfExport';
+import { checkUsernameAvailability, generateAlternativeUsernames } from '../utils/usernameValidator';
+import { UsernameAvailabilityIndicator } from './UsernameAvailabilityIndicator';
 
 interface POSPointsViewProps {
   posPoints: POSPoint[];
@@ -48,6 +52,9 @@ interface POSPointsViewProps {
   sales: SalesRecord[];
   payments: PaymentRecord[];
   settings: NetworkSettings;
+  allUsers?: AppUser[];
+  allPosPoints?: POSPoint[];
+  tenants?: NetworkTenant[];
   onAddPOS: (pos: Omit<POSPoint, 'id' | 'createdAt'>) => void;
   onUpdatePOS: (pos: POSPoint) => void;
   onDeletePOS: (posId: string, cascade?: boolean) => void;
@@ -64,6 +71,9 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
   sales,
   payments,
   settings,
+  allUsers = [],
+  allPosPoints,
+  tenants = [],
   onAddPOS,
   onUpdatePOS,
   onDeletePOS,
@@ -86,6 +96,9 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
   const [deletingPOS, setDeletingPOS] = useState<POSPoint | null>(null);
   const [deleteCascadeOption, setDeleteCascadeOption] = useState<boolean>(false);
 
+  // Effective pos list for global cross-tenant check
+  const effectiveAllPos = allPosPoints || posPoints;
+
   // Form Data including login credentials
   const [formData, setFormData] = useState({
     name: '',
@@ -99,6 +112,25 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
     pinCode: '',
     notes: '',
   });
+
+  // Real-time username availability validation
+  const usernameValidation = useMemo(() => {
+    if (!formData.username.trim()) {
+      return {
+        status: 'empty' as const,
+        isValid: false,
+        message: 'أدخل اسم مستخدم فريد لنقطة البيع',
+        suggestedUsernames: [],
+      };
+    }
+    return checkUsernameAvailability(
+      formData.username,
+      allUsers,
+      effectiveAllPos,
+      tenants,
+      { excludePosId: editingPOS?.id }
+    );
+  }, [formData.username, allUsers, effectiveAllPos, tenants, editingPOS?.id]);
 
   const handleOpenAdd = () => {
     setEditingPOS(null);
@@ -136,10 +168,14 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
 
   const handleAutoGenerateCredentials = () => {
     const cleanPhone = formData.phone.replace(/[^0-9]/g, '');
-    const cleanName = formData.name ? 'pos_' + formData.name.trim().toLowerCase().replace(/\s+/g, '_').slice(0, 10) : 'pos_point';
+    const cleanName = formData.name ? 'pos_' + formData.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 10) : 'pos_point';
+    const base = cleanPhone ? 'pos_' + cleanPhone : cleanName;
+    const suggestions = generateAlternativeUsernames(base, allUsers, effectiveAllPos, tenants);
+    const chosenUsername = suggestions[0] || `${base}_${Date.now().toString().slice(-4)}`;
+
     setFormData((prev) => ({
       ...prev,
-      username: cleanPhone ? 'pos_' + cleanPhone : cleanName,
+      username: chosenUsername,
       password: 'pos' + Math.floor(1000 + Math.random() * 9000),
       pinCode: String(Math.floor(1000 + Math.random() * 9000)),
     }));
@@ -148,8 +184,9 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name) return;
+    if (!usernameValidation.isValid) return;
 
-    const finalUsername = formData.username.trim() || (formData.phone ? 'pos_' + formData.phone.replace(/[^0-9]/g, '') : 'pos_' + Date.now().toString().slice(-4));
+    const finalUsername = formData.username.trim().toLowerCase();
     const finalPassword = formData.password.trim() || '123456';
     const finalPin = formData.pinCode.trim() || '1234';
 
@@ -834,45 +871,61 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  <div>
-                    <label className="block text-slate-400 text-[11px] mb-1">
-                      اسم المستخدم:
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="pos_supermarket"
-                      value={formData.username}
-                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-white text-xs font-mono text-left focus:outline-none focus:border-indigo-500"
-                      dir="ltr"
-                    />
-                  </div>
+                  <div className="sm:col-span-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="block text-slate-400 text-[11px] mb-1 font-bold">
+                          اسم المستخدم: <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="pos_supermarket"
+                          value={formData.username}
+                          onChange={(e) => setFormData({ ...formData, username: e.target.value.toLowerCase().replace(/[^a-z0-9_.-]/g, '') })}
+                          className={`w-full bg-slate-900 border rounded-xl px-2.5 py-1.5 text-white text-xs font-mono text-left focus:outline-none ${
+                            usernameValidation.status === 'taken'
+                              ? 'border-rose-500 focus:border-rose-500'
+                              : usernameValidation.status === 'available'
+                              ? 'border-emerald-500 focus:border-emerald-500'
+                              : 'border-slate-700 focus:border-indigo-500'
+                          }`}
+                          dir="ltr"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-slate-400 text-[11px] mb-1">
-                      كلمة المرور:
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="123456"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-white text-xs font-mono text-left focus:outline-none focus:border-indigo-500"
-                      dir="ltr"
-                    />
-                  </div>
+                      <div>
+                        <label className="block text-slate-400 text-[11px] mb-1">
+                          كلمة المرور:
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="123456"
+                          value={formData.password}
+                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-white text-xs font-mono text-left focus:outline-none focus:border-indigo-500"
+                          dir="ltr"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-slate-400 text-[11px] mb-1">
-                      رمز PIN السريع:
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={6}
-                      placeholder="1234"
-                      value={formData.pinCode}
-                      onChange={(e) => setFormData({ ...formData, pinCode: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-white text-xs font-mono text-center tracking-wider focus:outline-none focus:border-indigo-500"
+                      <div>
+                        <label className="block text-slate-400 text-[11px] mb-1">
+                          رمز PIN السريع:
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={6}
+                          placeholder="1234"
+                          value={formData.pinCode}
+                          onChange={(e) => setFormData({ ...formData, pinCode: e.target.value.replace(/\D/g, '') })}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-white text-xs font-mono text-center tracking-wider focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    <UsernameAvailabilityIndicator
+                      validation={usernameValidation}
+                      onSelectSuggestion={(sug) => setFormData({ ...formData, username: sug })}
                     />
                   </div>
                 </div>
@@ -905,7 +958,8 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-600/30 transition"
+                  disabled={!usernameValidation.isValid}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold shadow-lg shadow-indigo-600/30 transition"
                 >
                   {editingPOS ? 'حفظ التعديلات' : 'إضافة النقطة وتفعيل الحساب'}
                 </button>

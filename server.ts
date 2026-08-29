@@ -327,6 +327,7 @@ ${JSON.stringify(networkContext || {}, null, 2)}
     res.json({
       success: true,
       reply: response.text,
+      response: response.text,
     });
   } catch (error: any) {
     console.error("AI MikroTik Assistant error:", error);

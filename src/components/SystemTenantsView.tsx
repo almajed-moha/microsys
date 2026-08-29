@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Server, Plus, Network, CheckCircle, ShieldAlert, Trash2, LogIn, Users } from 'lucide-react';
-import { NetworkTenant, AppUser } from '../types';
+import { NetworkTenant, AppUser, POSPoint } from '../types';
 import { SystemTenantModal } from './SystemTenantModal';
 
 interface SystemTenantsViewProps {
   tenants: NetworkTenant[];
   users: AppUser[];
+  posPoints?: POSPoint[];
   onSaveTenant?: (tenant: NetworkTenant) => void;
   onDeleteTenant?: (tenantId: string) => void;
   onSwitchToTenantAdmin?: (tenant: NetworkTenant) => void;
@@ -14,6 +15,7 @@ interface SystemTenantsViewProps {
 export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
   tenants,
   users,
+  posPoints = [],
   onSaveTenant,
   onDeleteTenant,
   onSwitchToTenantAdmin,
@@ -44,6 +46,9 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
       {isModalOpen && (
         <SystemTenantModal
           tenant={editingTenant}
+          allUsers={users}
+          allPosPoints={posPoints}
+          allTenants={tenants}
           onSave={handleSave}
           onClose={handleCloseModal}
         />
@@ -162,15 +167,15 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-800/50">
               {tenants.map(tenant => {
-                const tenantUsersCount = users.filter(u => (u.networkId || 'net-alfadaa') === tenant.id).length;
+                const tenantUsersCount = users.filter(u => (u.networkId || 'net-microsys') === tenant.id).length;
                 return (
                   <tr key={tenant.id} className="hover:bg-slate-800/30 transition text-sm">
                     <td className="p-4">
                       <div className="font-bold text-white flex items-center gap-2">
                         <span>{tenant.name}</span>
-                        {tenant.id === 'net-alfadaa' && (
+                        {(tenant.id === 'net-microsys' || tenant.id === tenants[0]?.id) && (
                           <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] font-mono font-bold">
-                            الافتراضية
+                            الرئيسية
                           </span>
                         )}
                       </div>
@@ -225,8 +230,23 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
               })}
               {tenants.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-400 text-sm">
-                    لا توجد شبكات مضافة بعد.
+                  <td colSpan={6} className="p-12 text-center">
+                    <div className="max-w-md mx-auto flex flex-col items-center justify-center text-center">
+                      <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-4">
+                        <Server className="w-8 h-8" />
+                      </div>
+                      <h4 className="text-lg font-bold text-white mb-2">النظام جاهز ونظيف - لا توجد شبكات حالياً</h4>
+                      <p className="text-sm text-slate-400 mb-6 leading-relaxed">
+                        تم تصفير كافة الشبكات بنجاح وأنت الآن مسجل كـ <strong>الماستر (Master)</strong>. يمكنك الآن البدء بإضافة الشبكات وتعيين مدير (Super Admin) لكل شبكة ليباشر إدارة نقاط البيع والبطاقات الخاصة به.
+                      </p>
+                      <button
+                        onClick={() => handleOpenModal()}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition shadow-lg shadow-indigo-600/25"
+                      >
+                        <Plus className="w-5 h-5" />
+                        <span>إضافة أول شبكة الآن</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )}

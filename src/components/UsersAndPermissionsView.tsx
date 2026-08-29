@@ -39,9 +39,9 @@ import {
   Info,
   BadgePercent,
   Check,
-  X
+  X,
 } from 'lucide-react';
-import { AppUser, UserRole, UserPermissions, UserActivityLog, NetworkSettings } from '../types';
+import { AppUser, UserRole, UserPermissions, UserActivityLog, NetworkSettings, POSPoint, NetworkTenant } from '../types';
 import {
   ROLE_DEFINITIONS,
   PERMISSION_MODULES_CONFIG,
@@ -55,12 +55,17 @@ import {
 } from '../utils/permissions';
 import { exportToCSV } from '../utils/storage';
 import { AuditLogView } from './AuditLogView';
+import { checkUsernameAvailability, generateAlternativeUsernames } from '../utils/usernameValidator';
+import { UsernameAvailabilityIndicator } from './UsernameAvailabilityIndicator';
 
 interface UsersAndPermissionsViewProps {
   users: AppUser[];
   activeUser: AppUser;
   activityLogs?: UserActivityLog[];
   settings?: NetworkSettings;
+  allUsers?: AppUser[];
+  posPoints?: POSPoint[];
+  tenants?: NetworkTenant[];
   onAddUser: (user: Omit<AppUser, 'id' | 'createdAt'>) => void;
   onUpdateUser: (user: AppUser) => void;
   onDeleteUser: (userId: string) => void;
@@ -74,6 +79,9 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
   activeUser,
   activityLogs = [],
   settings,
+  allUsers,
+  posPoints = [],
+  tenants = [],
   onAddUser,
   onUpdateUser,
   onDeleteUser,
@@ -126,6 +134,37 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
     usersAndPermissions: false,
     settings: false,
   });
+
+  // Effective full user list for cross-tenant validation
+  const effectiveAllUsers = allUsers || users;
+
+  // Real-time username availability validation
+  const usernameValidation = useMemo(() => {
+    if (!formUsername.trim()) {
+      return {
+        status: 'empty' as const,
+        isValid: false,
+        message: 'أدخل اسم مستخدم فريد للدخول',
+        suggestedUsernames: [],
+      };
+    }
+    return checkUsernameAvailability(
+      formUsername,
+      effectiveAllUsers,
+      posPoints,
+      tenants,
+      { excludeUserId: editingUser?.id }
+    );
+  }, [formUsername, effectiveAllUsers, posPoints, tenants, editingUser?.id]);
+
+  const handleAutoGenerateUserUsername = () => {
+    const rolePrefix = formRole === 'super_admin' ? 'admin' : formRole.replace('_', '');
+    const cleanName = formName ? formName.trim().toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 8) : rolePrefix;
+    const base = cleanName ? `${cleanName}_${rolePrefix}` : rolePrefix;
+    const suggestions = generateAlternativeUsernames(base, effectiveAllUsers, posPoints, tenants);
+    const chosen = suggestions[0] || `${rolePrefix}_${Date.now().toString().slice(-4)}`;
+    setFormUsername(chosen);
+  };
 
   // Switch User PIN prompt
   const [switchTargetUser, setSwitchTargetUser] = useState<AppUser | null>(null);
@@ -264,8 +303,9 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
   const handleSaveUserSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim() || !formUsername.trim()) return;
+    if (!usernameValidation.isValid) return;
 
-    const targetNetworkId = editingUser?.networkId || (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : 'net-alfadaa');
+    const targetNetworkId = editingUser?.networkId || (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : 'net-microsys');
 
     const userData: Omit<AppUser, 'id' | 'createdAt'> = {
       name: formName.trim(),
@@ -550,6 +590,8 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
           users={users}
           activeUser={activeUser}
           settings={settings}
+          tenants={tenants}
+          allUsers={allUsers}
           onClearLogs={onClearLogs}
         />
       ) : (
@@ -814,7 +856,7 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
                     <Edit2 className="w-4 h-4 text-indigo-400" />
                   </button>
 
-                  {user.id !== 'user-admin' && (
+                  {user.id !== 'user-system-owner' && user.username !== 'master' && (
                     <button
                       onClick={() => setUserToDelete(user)}
                       className="p-2 rounded-xl bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-800 transition"
@@ -939,16 +981,37 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                        اسم الدخول (Username) <span className="text-rose-500">*</span>
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-bold text-slate-300">
+                          اسم الدخول (Username) <span className="text-rose-500">*</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleAutoGenerateUserUsername}
+                          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1"
+                        >
+                          <Sparkles className="w-3 h-3 text-amber-400" />
+                          <span>توليد اسم فريد</span>
+                        </button>
+                      </div>
                       <input
                         type="text"
                         required
                         placeholder="مثال: accountant2"
                         value={formUsername}
-                        onChange={(e) => setFormUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))}
-                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white font-mono focus:outline-hidden focus:border-indigo-500"
+                        onChange={(e) => setFormUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.-]/g, ''))}
+                        className={`w-full px-3.5 py-2.5 bg-slate-950 border rounded-xl text-sm text-white font-mono focus:outline-hidden ${
+                          usernameValidation.status === 'taken'
+                            ? 'border-rose-500 focus:border-rose-500'
+                            : usernameValidation.status === 'available'
+                            ? 'border-emerald-500 focus:border-emerald-500'
+                            : 'border-slate-800 focus:border-indigo-500'
+                        }`}
+                        dir="ltr"
+                      />
+                      <UsernameAvailabilityIndicator
+                        validation={usernameValidation}
+                        onSelectSuggestion={(sug) => setFormUsername(sug)}
                       />
                     </div>
 
@@ -1325,7 +1388,8 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
 
                   <button
                     type="submit"
-                    className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold transition shadow-lg shadow-indigo-600/30"
+                    disabled={!usernameValidation.isValid}
+                    className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-bold transition shadow-lg shadow-indigo-600/30"
                   >
                     {editingUser ? 'حفظ التعديلات' : 'إضافة وتثبيت المستخدم'}
                   </button>

@@ -49,9 +49,13 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         body: JSON.stringify({ sales, posPoints, categories }),
       });
       const data = await res.json();
-      setAiResponse(data.analysis || 'تم إتمام التحليل.');
-    } catch (err) {
-      setAiResponse('تعذر الاتصال بخدمة الذكاء الاصطناعي حالياً. يرجى التحقق من مفتاح API.');
+      if (!res.ok || data.error) {
+        setAiResponse(data.error || 'تعذر استكمال تحليل المبيعات.');
+      } else {
+        setAiResponse(data.analysis || data.response || 'تم إتمام التحليل بنجاح.');
+      }
+    } catch (err: any) {
+      setAiResponse(`تعذر الاتصال بخدمة الذكاء الاصطناعي: ${err.message || 'خطأ في الشبكة'}`);
     } finally {
       setLoading(false);
     }
@@ -74,9 +78,13 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         }),
       });
       const data = await res.json();
-      setAiResponse(data.suggestions || 'تم توليد مقترحات الباقات.');
-    } catch (err) {
-      setAiResponse('تعذر الاتصال بخدمة الذكاء الاصطناعي حالياً.');
+      if (!res.ok || data.error) {
+        setAiResponse(data.error || 'تعذر اقتراح الباقات.');
+      } else {
+        setAiResponse(data.suggestions || data.response || 'تم توليد مقترحات الباقات بنجاح.');
+      }
+    } catch (err: any) {
+      setAiResponse(`تعذر الاتصال بخدمة الذكاء الاصطناعي: ${err.message || 'خطأ في الشبكة'}`);
     } finally {
       setLoading(false);
     }
@@ -85,7 +93,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
   // 3. Ask MikroTik Assistant
   const handleAskMikroTik = async (queryText?: string) => {
     const query = queryText || userQuery;
-    if (!query) return;
+    if (!query.trim()) return;
 
     setLoading(true);
     setAiResponse(null);
@@ -96,9 +104,13 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         body: JSON.stringify({ query }),
       });
       const data = await res.json();
-      setAiResponse(data.response || 'تم توليد الإجابة والسكربت.');
-    } catch (err) {
-      setAiResponse('حدث خطأ أثناء معالجة الطلب.');
+      if (!res.ok || data.error) {
+        setAiResponse(data.error || 'تعذر معالجة الطلب عبر المساعد الذكي.');
+      } else {
+        setAiResponse(data.reply || data.response || 'تم توليد الإجابة والسكربت بنجاح.');
+      }
+    } catch (err: any) {
+      setAiResponse(`حدث خطأ أثناء معالجة الطلب: ${err.message || 'خطأ في الشبكة'}`);
     } finally {
       setLoading(false);
     }

@@ -33,3 +33,4 @@ export { ChangePasswordModal } from './ChangePasswordModal';
 
 export { SystemTenantsView } from './SystemTenantsView';
 export { SystemTenantModal } from './SystemTenantModal';
+export { AboutProgramModal } from './AboutProgramModal';

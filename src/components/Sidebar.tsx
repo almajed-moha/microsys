@@ -27,6 +27,7 @@ import {
   LogOut,
   ShoppingBag,
   Server,
+  Info,
 } from 'lucide-react';
 import {
   NetworkSettings,
@@ -98,6 +99,7 @@ interface SidebarProps {
   onResetData?: () => void;
   onOpenLogin?: () => void;
   onLogout?: () => void;
+  onOpenAboutProgram?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -130,11 +132,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onResetData,
   onOpenLogin,
   onLogout,
+  onOpenAboutProgram,
 }) => {
   const handleClose = onClose || onCloseMobile || (() => {});
   const handleNavigate = onSelectView || onNavigate || (() => {});
   const handleOpenSettings = onOpenSettings || onOpenSettingsModal || (() => {});
   const handleOpenAI = onOpenAI || onOpenAIModal || (() => {});
+  const handleOpenAbout = onOpenAboutProgram || (() => {});
 
   const totalDebt = (posPoints || []).reduce((acc, p) => acc + (p?.currentDebt || 0), 0);
   const isMikrotikConnected = settings?.mikrotikConfig?.isLiveConnected || (settings as any)?.mikrotik?.isLiveConnected || false;
@@ -421,6 +425,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {!isCollapsed && <span>إعدادات الشبكة والراوتر</span>}
             </button>
           )}
+
+          {/* About Program Button */}
+          <button
+            onClick={() => {
+              handleOpenAbout();
+              handleClose();
+            }}
+            title="حول البرنامج وميراب سوفت التقنية"
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-300 hover:text-white hover:bg-slate-800/70 group ${
+              isCollapsed ? 'lg:justify-center' : 'justify-start'
+            }`}
+          >
+            <Info className="w-5 h-5 text-cyan-400 shrink-0 group-hover:scale-110 transition-transform" />
+            {!isCollapsed && <span>حول البرنامج</span>}
+          </button>
         </div>
 
         {/* Sidebar Footer with Active User Badge */}
@@ -483,7 +502,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
 
             <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
-              <span>الإصدار 3.0 Pro RBAC</span>
+              <button
+                type="button"
+                onClick={handleOpenAbout}
+                className="hover:text-indigo-400 transition cursor-pointer text-right"
+              >
+                ميراب سوفت التقنية v3.5 Pro
+              </button>
               {onResetData && (
                 <button
                   onClick={onResetData}
@@ -507,6 +532,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {activeUser.avatar || '👤'}
               </button>
             )}
+            <button
+              onClick={handleOpenAbout}
+              className="p-2 rounded-xl text-slate-400 hover:text-cyan-400 hover:bg-slate-800 transition"
+              title="حول البرنامج وميراب سوفت"
+            >
+              <Info className="w-4 h-4 text-cyan-400" />
+            </button>
             <button
               onClick={handleOpenSettings}
               className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"

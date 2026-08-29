@@ -136,7 +136,7 @@ export function getStoredUsers(): AppUser[] {
 }
 
 export function getStoredActiveUserId(): string {
-  return loadFromStorage<string>(STORAGE_KEYS.ACTIVE_USER_ID, 'user-admin');
+  return loadFromStorage<string>(STORAGE_KEYS.ACTIVE_USER_ID, 'user-system-owner');
 }
 
 export function resetToMockData(): void {
@@ -152,7 +152,10 @@ export function resetToMockData(): void {
   localStorage.removeItem(STORAGE_KEYS.EXPENSES);
   localStorage.removeItem(STORAGE_KEYS.EXPENSE_CATEGORIES);
   localStorage.removeItem(STORAGE_KEYS.USERS);
+  localStorage.removeItem(STORAGE_KEYS.TENANTS);
   localStorage.removeItem(STORAGE_KEYS.ACTIVE_USER_ID);
+  localStorage.removeItem(STORAGE_KEYS.ACTIVITY_LOGS);
+  localStorage.removeItem(STORAGE_KEYS.ORDERS);
 }
 
 // Calculate remaining inventory at each POS Point

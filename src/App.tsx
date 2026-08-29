@@ -30,6 +30,7 @@ import {
   OrdersManagementView,
   ChangePasswordModal,
   SystemTenantsView,
+  AboutProgramModal,
 } from './components';
 import {
   CardCategory,
@@ -84,9 +85,16 @@ import {
 } from './utils/permissions';
 import { CheckCircle2, LogIn, Sparkles, X } from 'lucide-react';
 
+// Wipe any previous stale demo data once to ensure pristine master-only state as requested
+const MASTER_ONLY_RESET_FLAG = 'mikrotik_v4_master_only_clean_reset';
+if (typeof window !== 'undefined' && !localStorage.getItem(MASTER_ONLY_RESET_FLAG)) {
+  resetToMockData();
+  localStorage.setItem(MASTER_ONLY_RESET_FLAG, 'true');
+}
+
 export default function App() {
   // Navigation View State
-  const [activeView, setActiveView] = useState<NavView>('dashboard');
+  const [activeView, setActiveView] = useState<NavView>('system_tenants');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
@@ -122,10 +130,10 @@ export default function App() {
   );
   const [tenants, setTenants] = useState<NetworkTenant[]>(() => {
     const rawTenants = loadData<NetworkTenant[]>(STORAGE_KEYS.TENANTS, mockTenants);
-    const validList = Array.isArray(rawTenants) && rawTenants.length > 0 ? rawTenants : mockTenants;
+    const validList = Array.isArray(rawTenants) ? rawTenants : [];
     return validList.map((t, idx) => {
-      const validId = t.id || (idx === 0 ? 'net-alfadaa' : `net-${Date.now() + idx}`);
-      const validName = t.name || t.settings?.networkName || (idx === 0 ? 'شبكة الفضاء اللاسلكية' : `شبكة رقم ${idx + 1}`);
+      const validId = t.id || `net-${Date.now() + idx}`;
+      const validName = t.name || t.settings?.networkName || `شبكة رقم ${idx + 1}`;
       return {
         ...t,
         id: validId,
@@ -151,17 +159,18 @@ export default function App() {
   );
 
   const [activeUserId, setActiveUserId] = useState<string>(() =>
-    loadData<string>(STORAGE_KEYS.ACTIVE_USER_ID, 'user-admin')
+    loadData<string>(STORAGE_KEYS.ACTIVE_USER_ID, 'user-system-owner')
   );
 
   const [users, setUsers] = useState<AppUser[]>(() => {
     const loadedUsers = loadData<AppUser[]>(STORAGE_KEYS.USERS, mockUsers);
+    const masterUser = mockUsers.find((u) => u.username === 'master') || mockUsers[0];
+    if (!Array.isArray(loadedUsers) || loadedUsers.length === 0) {
+      return [masterUser];
+    }
     if (!loadedUsers.some((u) => u.username === 'master')) {
-      const masterUser = mockUsers.find((u) => u.username === 'master');
-      if (masterUser) {
-        loadedUsers.unshift(masterUser);
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(loadedUsers));
-      }
+      loadedUsers.unshift(masterUser);
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(loadedUsers));
     }
     return loadedUsers;
   });
@@ -176,7 +185,7 @@ export default function App() {
     if (record?.networkId && record.networkId !== '' && record.networkId !== 'system') {
       return record.networkId;
     }
-    return tenants[0]?.id || 'net-alfadaa';
+    return tenants[0]?.id || 'net-microsys';
   }, [tenants]);
 
   // Active effective tenant for filtering data
@@ -187,7 +196,7 @@ export default function App() {
     if (activeUser?.networkId && activeUser.networkId !== 'system') {
       return activeUser.networkId;
     }
-    return tenants[0]?.id || 'net-alfadaa';
+    return tenants[0]?.id || 'net-microsys';
   }, [activeUser?.role, activeUser?.networkId, selectedTenantFilter, tenants]);
 
   // Current tenant ID for assigning to new records
@@ -198,14 +207,14 @@ export default function App() {
     if (selectedTenantFilter !== 'all' && selectedTenantFilter) {
       return selectedTenantFilter;
     }
-    return tenants[0]?.id || 'net-alfadaa';
+    return tenants[0]?.id || 'net-microsys';
   }, [activeUser?.networkId, selectedTenantFilter, tenants]);
 
   // Automatically derive current tenant object for settings and branding sync
   const currentTenant = useMemo(() => {
     const targetId = activeUser?.role === 'system_owner'
       ? (selectedTenantFilter !== 'all' ? selectedTenantFilter : null)
-      : (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : (tenants[0]?.id || 'net-alfadaa'));
+      : (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : (tenants[0]?.id || 'net-microsys'));
     if (!targetId) return null;
     return tenants.find((t) => t.id === targetId) || null;
   }, [tenants, activeUser?.role, activeUser?.networkId, selectedTenantFilter]);
@@ -355,6 +364,7 @@ export default function App() {
   const [selectedPaymentForReceipt, setSelectedPaymentForReceipt] = useState<PaymentRecord | null>(null);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isIncomeStatementOpen, setIsIncomeStatementOpen] = useState(false);
   const [isFinancialExportModalOpen, setIsFinancialExportModalOpen] = useState(false);
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
@@ -534,8 +544,8 @@ export default function App() {
     saveData(STORAGE_KEYS.SETTINGS, newSettings);
 
     const targetTenantId = activeUser?.role === 'system_owner'
-      ? (selectedTenantFilter !== 'all' ? selectedTenantFilter : 'net-alfadaa')
-      : (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : 'net-alfadaa');
+      ? (selectedTenantFilter !== 'all' ? selectedTenantFilter : (tenants[0]?.id || 'net-microsys'))
+      : (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : (tenants[0]?.id || 'net-microsys'));
 
     if (targetTenantId) {
       const updatedTenants = tenants.map((t) =>
@@ -1620,11 +1630,12 @@ export default function App() {
   };
 
   const handleDeleteUser = (userId: string) => {
-    if (userId === 'user-admin') return; // protect primary admin
+    if (userId === 'user-system-owner') return; // protect master owner
     const targetUser = users.find((u) => u.id === userId);
+    if (targetUser?.username === 'master') return;
     setUsers((prev) => prev.filter((u) => u.id !== userId));
     if (activeUserId === userId) {
-      setActiveUserId('user-admin');
+      setActiveUserId('user-system-owner');
     }
     if (targetUser) {
       logUserActivity(
@@ -1777,20 +1788,23 @@ export default function App() {
 
   // Reset Data
   const handleResetData = () => {
-    if (confirm('هل أنت متأكد من إعادة ضبط البيانات إلى الحالة الافتراضية؟')) {
+    if (confirm('هل أنت متأكد من تصفير كافة بيانات الشبكات والعودة لحساب الماستر فقط؟')) {
       resetToMockData();
-      setCategories(mockCategories);
-      setInvoices(mockInvoices);
-      setExpenses(mockExpenses);
+      setCategories([]);
+      setInvoices([]);
+      setExpenses([]);
       setExpenseCategories(mockExpenseCategories);
-      setDispatches(mockDispatches);
-      setSales(mockSales);
-      setPayments(mockPayments);
-      setOrders(mockCardOrders);
+      setDispatches([]);
+      setSales([]);
+      setPayments([]);
+      setOrders([]);
+      setTenants([]);
+      setActivityLogs([]);
       setUsers(mockUsers);
-      setActiveUserId('user-admin');
+      setActiveUserId('user-system-owner');
       setSettings(defaultNetworkSettings);
-      setPosPoints(synchronizePOSBalances(mockPOSPoints, mockInvoices, mockSales, mockPayments, mockDispatches));
+      setPosPoints([]);
+      setActiveView('system_tenants');
     }
   };
 
@@ -1857,6 +1871,7 @@ export default function App() {
         activeUser={activeUser}
         onResetData={handleResetData}
         onOpenLogin={() => handleOpenLoginPortal()}
+        onOpenAboutProgram={() => setIsAboutModalOpen(true)}
         onLogout={handleLogout}
         counts={{
           posPoints: scopedPOSPoints.length,
@@ -1905,6 +1920,7 @@ export default function App() {
           onOpenSettings={() => setIsSettingsModalOpen(true)}
           onOpenLogin={() => handleOpenLoginPortal()}
           onOpenChangePassword={() => setIsChangePasswordOpen(true)}
+          onOpenAboutProgram={() => setIsAboutModalOpen(true)}
           onLogout={handleLogout}
           onOpenUsers={() => setActiveView('users')}
           onToggleTheme={handleToggleTheme}
@@ -2045,6 +2061,9 @@ export default function App() {
                   sales={scopedSales}
                   payments={scopedPayments}
                   settings={settings}
+                  allUsers={users}
+                  allPosPoints={posPoints}
+                  tenants={tenants}
                   onAddPOS={handleAddPOS}
                   onUpdatePOS={handleUpdatePOS}
                   onDeletePOS={handleDeletePOS}
@@ -2103,6 +2122,9 @@ export default function App() {
                   activeUser={activeUser}
                   activityLogs={scopedActivityLogs}
                   settings={settings}
+                  allUsers={users}
+                  posPoints={posPoints}
+                  tenants={tenants}
                   onAddUser={handleAddUser}
                   onUpdateUser={handleUpdateUser}
                   onDeleteUser={handleDeleteUser}
@@ -2336,6 +2358,15 @@ export default function App() {
           settings={settings}
           onClose={() => setIsChangePasswordOpen(false)}
           onSave={handleSaveChangedPassword}
+        />
+      )}
+
+      {/* About Program Modal (Mirab Soft) */}
+      {isAboutModalOpen && (
+        <AboutProgramModal
+          isOpen={isAboutModalOpen}
+          settings={settings}
+          onClose={() => setIsAboutModalOpen(false)}
         />
       )}
 

@@ -22,6 +22,7 @@ import {
   Command,
   Building2,
   Globe,
+  Info,
 } from 'lucide-react';
 import { NetworkSettings, POSPoint, SalesRecord, PaymentRecord, AppUser, NetworkTenant } from '../types';
 import { NavView } from './Sidebar';
@@ -44,6 +45,7 @@ interface HeaderProps {
   onOpenSettings?: () => void;
   onOpenLogin?: () => void;
   onOpenChangePassword?: () => void;
+  onOpenAboutProgram?: () => void;
   onLogout?: () => void;
   onToggleTheme?: () => void;
   totalDebt?: number;
@@ -67,6 +69,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSettings,
   onOpenLogin,
   onOpenChangePassword,
+  onOpenAboutProgram,
   onLogout,
   onToggleTheme,
   totalDebt = 0,
@@ -385,6 +388,20 @@ export const Header: React.FC<HeaderProps> = ({
                         >
                           <Shield className="w-4 h-4 text-purple-400" />
                           <span>إدارة المستخدمين والصلاحيات</span>
+                        </button>
+                      )}
+
+                      {/* About Program */}
+                      {onOpenAboutProgram && (
+                        <button
+                          onClick={() => {
+                            setIsUserMenuOpen(false);
+                            onOpenAboutProgram();
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-cyan-300 hover:bg-slate-800 hover:text-cyan-200 transition"
+                        >
+                          <Info className="w-4 h-4 text-cyan-400" />
+                          <span>حول البرنامج (ميراب سوفت)</span>
                         </button>
                       )}
 
