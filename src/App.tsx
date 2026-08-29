@@ -160,7 +160,7 @@ export default function App() {
   );
 
   // Authentication & Login Modal State
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [loginModalTargetUser, setLoginModalTargetUser] = useState<AppUser | undefined>(undefined);
@@ -1199,6 +1199,10 @@ export default function App() {
 
   // Helper to check if the current activeView is permitted for activeUser
   const isCurrentViewPermitted = (view: NavView): boolean => {
+    if (activeUser?.role === 'pos_agent' && view !== 'pos_portal') {
+      return false;
+    }
+    
     const viewToModuleMap: Record<NavView, keyof UserPermissions> = {
       dashboard: 'dashboard',
       pos_portal: 'orders',

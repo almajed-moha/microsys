@@ -244,6 +244,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Filter items according to active user permissions
   const navItems = allNavItems.filter((item) => {
     if (!activeUser) return true;
+    
+    // Restrict POS Agent to ONLY see the POS Portal
+    if (activeUser.role === 'pos_agent') {
+      return item.id === 'pos_portal';
+    }
+    
+    // Hide POS Portal from other roles (optional, but requested implicitly by restricting POS agent to it, usually admins don't need to see "بوابتي" as a main nav item if they have everything else, but if they want to preview it, it's fine. Wait, the original code had a 'معاينة' badge for non-pos agents, so we let others see it if they have orders view permission).
     return hasPermission(activeUser, item.permissionModule, 'view');
   });
 
