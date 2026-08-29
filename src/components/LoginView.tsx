@@ -62,7 +62,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [showDevAccounts, setShowDevAccounts] = useState(false);
 
   const supportPhone = settings?.supportPhone || settings?.whatsappNumber || '770123456';
-  const networkName = settings?.networkName || 'شبكة المايكروتك';
+  const networkName = settings?.networkName || 'نظام إدارة الشبكات';
+  const networkSlogan = settings?.networkSlogan || 'نظام محاسبي معتمد لشبكات الإنترنت';
+  const logoUrl = settings?.logoUrl;
 
   // Handle Username & Password Submission
   const handleCredentialsSubmit = (e: React.FormEvent) => {
@@ -200,14 +202,20 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
         {/* Top Header & Branding */}
         <div className="p-6 sm:p-8 bg-slate-950/80 border-b border-slate-800 text-center relative">
-          <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-cyan-500 mx-auto flex items-center justify-center text-white shadow-xl shadow-indigo-500/20 mb-4">
-            <ShieldCheck className="w-9 h-9" />
-          </div>
+          {logoUrl ? (
+            <div className="w-20 h-20 mx-auto mb-4 bg-white rounded-3xl p-2 shadow-xl shadow-indigo-500/10">
+              <img src={logoUrl} alt={networkName} className="w-full h-full object-contain" />
+            </div>
+          ) : (
+            <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-cyan-500 mx-auto flex items-center justify-center text-white shadow-xl shadow-indigo-500/20 mb-4">
+              <ShieldCheck className="w-9 h-9" />
+            </div>
+          )}
           <h1 className="text-lg sm:text-xl font-black text-white leading-tight">
             {networkName}
           </h1>
           <p className="text-xs text-indigo-400 font-medium mt-1">
-            بوابة تسجيل الدخول الآمنة • MikroTik Accounting Portal
+            {networkSlogan}
           </p>
           <p className="text-[11px] text-slate-400 mt-2 max-w-xs mx-auto">
             أدخل بيانات الاعتماد الخاصة بك للوصول إلى النظام وإدارة العمليات وفق صلاحياتك المعتمدة.
@@ -463,7 +471,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
         {/* Footer */}
         <div className="p-4 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
-          <span>نظام محاسبي معتمد لشبكات الإنترنت</span>
+          <span>{networkSlogan}</span>
           <span className="font-mono">RBAC Security v3.5</span>
         </div>
       </div>

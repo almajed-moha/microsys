@@ -264,6 +264,39 @@ export default function App() {
     saveData(STORAGE_KEYS.ACTIVITY_LOGS, activityLogs);
   }, [activityLogs]);
 
+  // Ensure all POS points have corresponding users (Auto-recovery for existing data)
+  useEffect(() => {
+    let usersUpdated = false;
+    const newUsers = [...users];
+
+    posPoints.forEach(pos => {
+      const exists = newUsers.some(u => u.posPointId === pos.id);
+      if (!exists) {
+        newUsers.push({
+          id: `user-${pos.id}`,
+          name: pos.name,
+          username: pos.username || `pos_${pos.id.slice(-4)}`,
+          password: pos.password || '123456',
+          pinCode: pos.pinCode || '1234',
+          phone: pos.phone,
+          role: 'pos_agent',
+          posPointId: pos.id,
+          customRoleName: 'وكيل / نقطة بيع',
+          avatar: '🏪',
+          avatarBgColor: 'bg-emerald-600',
+          status: pos.status === 'active' ? 'active' : 'inactive',
+          permissions: getRoleDefaultPermissions('pos_agent'),
+          createdAt: pos.createdAt || new Date().toISOString(),
+        });
+        usersUpdated = true;
+      }
+    });
+
+    if (usersUpdated) {
+      setUsers(newUsers);
+    }
+  }, [posPoints, users]);
+
   // Theme synchronization effect (Dark / Light / System)
   useEffect(() => {
     const theme = settings.themeMode || 'dark';
@@ -420,22 +453,46 @@ export default function App() {
     setPosPoints((prev) => prev.map((p) => (p.id === updatedPOS.id ? updatedPOS : p)));
 
     // Synchronize POS portal user account
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.posPointId === updatedPOS.id) {
-          return {
-            ...u,
-            name: updatedPOS.name,
-            username: updatedPOS.username || u.username,
-            password: updatedPOS.password || u.password,
-            pinCode: updatedPOS.pinCode || u.pinCode,
-            phone: updatedPOS.phone || u.phone,
-            status: updatedPOS.status === 'active' ? 'active' : 'inactive',
-          };
-        }
-        return u;
-      })
-    );
+    setUsers((prev) => {
+      const userExists = prev.some((u) => u.posPointId === updatedPOS.id);
+      
+      if (userExists) {
+        return prev.map((u) => {
+          if (u.posPointId === updatedPOS.id) {
+            return {
+              ...u,
+              name: updatedPOS.name,
+              username: updatedPOS.username || u.username,
+              password: updatedPOS.password || u.password,
+              pinCode: updatedPOS.pinCode || u.pinCode,
+              phone: updatedPOS.phone || u.phone,
+              status: updatedPOS.status === 'active' ? 'active' : 'inactive',
+            };
+          }
+          return u;
+        });
+      } else {
+        // Create the missing user account if it doesn't exist yet
+        const posUser: AppUser = {
+          id: `user-${updatedPOS.id}`,
+          name: updatedPOS.name,
+          username: updatedPOS.username || `pos_${updatedPOS.id.slice(-4)}`,
+          password: updatedPOS.password || '123456',
+          pinCode: updatedPOS.pinCode || '1234',
+          phone: updatedPOS.phone,
+          role: 'pos_agent',
+          posPointId: updatedPOS.id,
+          customRoleName: 'وكيل / نقطة بيع',
+          avatar: '🏪',
+          avatarBgColor: 'bg-emerald-600',
+          status: updatedPOS.status === 'active' ? 'active' : 'inactive',
+          permissions: getRoleDefaultPermissions('pos_agent'),
+          createdAt: new Date().toISOString(),
+        };
+        // Ensure no conflicting username
+        return [...prev.filter(u => u.username !== posUser.username), posUser];
+      }
+    });
 
     logUserActivity(
       'تعديل نقطة بيع وحساب البوابة',
@@ -1769,6 +1826,7 @@ export default function App() {
         <LoginView
           users={users}
           activeUser={loginModalTargetUser || activeUser}
+          settings={settings}
           isModal={true}
           onClose={() => {
             setIsLoginModalOpen(false);
@@ -1783,6 +1841,7 @@ export default function App() {
         <LoginView
           users={users}
           activeUser={activeUser}
+          settings={settings}
           isModal={false}
           onLoginSuccess={handleLoginSuccess}
         />

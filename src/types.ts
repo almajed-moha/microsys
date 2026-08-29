@@ -371,6 +371,7 @@ export interface DhcpLease {
 export interface NetworkSettings {
   networkName: string; // اسم الشبكة الرئيسي
   networkSlogan: string;
+  logoUrl?: string; // رابط الشعار (اختياري)
   currency: string;
   currencySymbol: string;
   hotspotDns: string; // e.g. "net.wifi" or "10.0.0.1"

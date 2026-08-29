@@ -159,7 +159,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Middle/Right Side (RTL End): Search & Quick Actions & Stats */}
           <div className="flex items-center space-x-2 sm:space-x-3 space-x-reverse">
             {/* Global Search Button */}
-            {onOpenGlobalSearch && (
+            {onOpenGlobalSearch && hasPermission(activeUser, 'dashboard', 'view') && (
               <button
                 onClick={onOpenGlobalSearch}
                 className="flex items-center gap-2 px-3 py-1.5 sm:py-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 hover:border-indigo-500/50 shadow-sm transition group"
@@ -176,26 +176,28 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* Quick Metrics */}
-            <div className="hidden xl:flex items-center gap-4 bg-slate-950/60 px-3.5 py-1.5 rounded-xl border border-slate-800 text-xs">
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-                <span>مبيعات اليوم:</span>
-                <span className="font-bold text-emerald-400 font-mono">
-                  {(totalSalesToday ?? 0).toLocaleString()} {safeSettings.currencySymbol}
-                </span>
+            {hasPermission(activeUser, 'dashboard', 'viewFinancialMetrics') && (
+              <div className="hidden xl:flex items-center gap-4 bg-slate-950/60 px-3.5 py-1.5 rounded-xl border border-slate-800 text-xs">
+                <div className="flex items-center gap-1.5 text-slate-300">
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>مبيعات اليوم:</span>
+                  <span className="font-bold text-emerald-400 font-mono">
+                    {(totalSalesToday ?? 0).toLocaleString()} {safeSettings.currencySymbol}
+                  </span>
+                </div>
+                <div className="w-px h-3.5 bg-slate-800"></div>
+                <div className="flex items-center gap-1.5 text-slate-300">
+                  <DollarSign className="w-3.5 h-3.5 text-amber-400" />
+                  <span>المديونيات:</span>
+                  <span className="font-bold text-amber-400 font-mono">
+                    {(totalDebt ?? 0).toLocaleString()} {safeSettings.currencySymbol}
+                  </span>
+                </div>
               </div>
-              <div className="w-px h-3.5 bg-slate-800"></div>
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <DollarSign className="w-3.5 h-3.5 text-amber-400" />
-                <span>المديونيات:</span>
-                <span className="font-bold text-amber-400 font-mono">
-                  {(totalDebt ?? 0).toLocaleString()} {safeSettings.currencySymbol}
-                </span>
-              </div>
-            </div>
+            )}
 
             {/* Pending Orders Alert Pill */}
-            {pendingOrdersCount > 0 && (
+            {pendingOrdersCount > 0 && hasPermission(activeUser, 'orders', 'view') && (
               <button
                 onClick={() => setCurrentTab('orders')}
                 className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 text-xs font-bold transition shadow-xs"
@@ -207,7 +209,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* Quick Payment Button */}
-            {onOpenQuickPayment && (
+            {onOpenQuickPayment && hasPermission(activeUser, 'payments', 'addPayment') && (
               <button
                 onClick={onOpenQuickPayment}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition shadow-xs"
@@ -219,7 +221,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* Quick Sale Button */}
-            {onOpenQuickSale && (
+            {onOpenQuickSale && hasPermission(activeUser, 'invoices', 'createSaleInvoice') && (
               <button
                 onClick={onOpenQuickSale}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition"
@@ -231,14 +233,16 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* AI Assistant Button */}
-            <button
-              onClick={onOpenAI}
-              className="p-2 sm:px-3 sm:py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-xs shadow-md shadow-purple-600/20 transition ring-1 ring-purple-400/40 flex items-center gap-1.5"
-              title="مساعد الذكاء الاصطناعي وتحليل المبيعات"
-            >
-              <Sparkles className="w-4 h-4 text-yellow-300 animate-spin" style={{ animationDuration: '6s' }} />
-              <span className="hidden md:inline">المستشار الذكي</span>
-            </button>
+            {hasPermission(activeUser, 'settings', 'useAIAssistant') && (
+              <button
+                onClick={onOpenAI}
+                className="p-2 sm:px-3 sm:py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-xs shadow-md shadow-purple-600/20 transition ring-1 ring-purple-400/40 flex items-center gap-1.5"
+                title="مساعد الذكاء الاصطناعي وتحليل المبيعات"
+              >
+                <Sparkles className="w-4 h-4 text-yellow-300 animate-spin" style={{ animationDuration: '6s' }} />
+                <span className="hidden md:inline">المستشار الذكي</span>
+              </button>
+            )}
 
             {/* Quick Theme Toggle Button */}
             {onToggleTheme && (
@@ -257,13 +261,15 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* Settings Button */}
-            <button
-              onClick={onOpenSettings}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
-              title="إعدادات الشبكة والمظهر والمايكروتك"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
+            {hasPermission(activeUser, 'settings', 'view') && (
+              <button
+                onClick={onOpenSettings}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
+                title="إعدادات الشبكة والمظهر والمايكروتك"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            )}
 
             {/* Active User Badge & Quick Profile Menu */}
             {activeUser ? (

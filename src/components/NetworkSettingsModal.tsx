@@ -188,6 +188,20 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
             />
           </div>
 
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1">
+              رابط الشعار (لوجو - اختياري):
+            </label>
+            <input
+              type="text"
+              placeholder="مثال: https://example.com/logo.png"
+              value={formData.logoUrl || ''}
+              onChange={(e) => setFormData({ ...formData, logoUrl: e.target.value })}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-indigo-500 text-left"
+              dir="ltr"
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-slate-300 font-semibold mb-1">
