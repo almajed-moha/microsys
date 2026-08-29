@@ -32,7 +32,8 @@ import {
   Tag,
   ShieldCheck,
   AlertCircle,
-  Lock
+  Lock,
+  Database,
 } from 'lucide-react';
 import {
   CardCategory,
@@ -88,6 +89,7 @@ interface GlobalSearchModalProps {
   onOpenQuickPayment?: (posId?: string) => void;
   onOpenAI?: () => void;
   onOpenSettings?: () => void;
+  onOpenBackup?: () => void;
   onOpenIncomeStatement?: () => void;
   onOpenFinancialExport?: () => void;
   onOpenLogin?: () => void;
@@ -117,6 +119,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
   onOpenQuickPayment,
   onOpenAI,
   onOpenSettings,
+  onOpenBackup,
   onOpenIncomeStatement,
   onOpenFinancialExport,
   onOpenLogin,

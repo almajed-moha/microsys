@@ -23,6 +23,7 @@ import {
   Building2,
   Globe,
   Info,
+  Database,
 } from 'lucide-react';
 import { NetworkSettings, POSPoint, SalesRecord, PaymentRecord, AppUser, NetworkTenant } from '../types';
 import { NavView } from './Sidebar';
@@ -43,6 +44,7 @@ interface HeaderProps {
   onOpenQuickPayment?: () => void;
   onOpenAI?: () => void;
   onOpenSettings?: () => void;
+  onOpenBackup?: () => void;
   onOpenLogin?: () => void;
   onOpenChangePassword?: () => void;
   onOpenAboutProgram?: () => void;
@@ -67,6 +69,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenQuickPayment,
   onOpenAI,
   onOpenSettings,
+  onOpenBackup,
   onOpenLogin,
   onOpenChangePassword,
   onOpenAboutProgram,
@@ -298,6 +301,17 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
+            {/* Database & Backup Button */}
+            {onOpenBackup && hasPermission(activeUser, 'settings', 'backupAndRestore') && (
+              <button
+                onClick={onOpenBackup}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-indigo-200 border border-slate-700 transition"
+                title="النسخ الاحتياطي واستعادة قاعدة البيانات (JSON)"
+              >
+                <Database className="w-4 h-4 text-indigo-400" />
+              </button>
+            )}
+
             {/* Settings Button */}
             {hasPermission(activeUser, 'settings', 'view') && (
               <button
@@ -388,6 +402,20 @@ export const Header: React.FC<HeaderProps> = ({
                         >
                           <Shield className="w-4 h-4 text-purple-400" />
                           <span>إدارة المستخدمين والصلاحيات</span>
+                        </button>
+                      )}
+
+                      {/* Backup & Database (if permitted) */}
+                      {onOpenBackup && hasPermission(activeUser, 'settings', 'backupAndRestore') && (
+                        <button
+                          onClick={() => {
+                            setIsUserMenuOpen(false);
+                            onOpenBackup();
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-slate-200 hover:bg-slate-800 hover:text-white transition"
+                        >
+                          <Database className="w-4 h-4 text-indigo-400" />
+                          <span>النسخ الاحتياطي وقاعدة البيانات (JSON)</span>
                         </button>
                       )}
 

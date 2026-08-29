@@ -591,3 +591,57 @@ export interface UserActivityLog {
   status?: 'success' | 'warning' | 'danger' | 'info';
 }
 
+export interface SystemDatabaseBackupCounts {
+  tenants?: number;
+  users?: number;
+  categories?: number;
+  posPoints?: number;
+  invoices?: number;
+  expenses?: number;
+  expenseCategories?: number;
+  dispatches?: number;
+  sales?: number;
+  payments?: number;
+  orders?: number;
+  templates?: number;
+  vouchers?: number;
+  activityLogs?: number;
+}
+
+export interface SystemDatabaseBackupData {
+  tenants?: NetworkTenant[];
+  users?: AppUser[];
+  categories?: CardCategory[];
+  posPoints?: POSPoint[];
+  invoices?: InvoiceRecord[];
+  expenses?: ExpenseRecord[];
+  expenseCategories?: ExpenseCategory[];
+  dispatches?: CardBatchDispatch[];
+  sales?: SalesRecord[];
+  payments?: PaymentRecord[];
+  orders?: CardOrder[];
+  settings?: NetworkSettings;
+  templates?: CardTemplate[];
+  vouchers?: GeneratedVoucher[];
+  activityLogs?: UserActivityLog[];
+}
+
+export interface SystemDatabaseBackup {
+  version: string;
+  app: string;
+  backupType: 'full_system' | 'single_network';
+  exportDate: string;
+  timestamp: string;
+  exportedBy?: {
+    id?: string;
+    name?: string;
+    username?: string;
+    role?: string;
+  };
+  networkId?: string;
+  networkName?: string;
+  counts: SystemDatabaseBackupCounts;
+  data: SystemDatabaseBackupData;
+  schemaSignature?: string;
+}
+

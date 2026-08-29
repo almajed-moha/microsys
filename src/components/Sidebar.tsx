@@ -28,6 +28,7 @@ import {
   ShoppingBag,
   Server,
   Info,
+  Database,
 } from 'lucide-react';
 import {
   NetworkSettings,
@@ -92,6 +93,7 @@ interface SidebarProps {
   };
   onOpenSettings?: () => void;
   onOpenSettingsModal?: () => void;
+  onOpenBackup?: () => void;
   onOpenAI?: () => void;
   onOpenAIModal?: () => void;
   onOpenNewPayment?: () => void;
@@ -125,6 +127,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   counts,
   onOpenSettings,
   onOpenSettingsModal,
+  onOpenBackup,
   onOpenAI,
   onOpenAIModal,
   onOpenNewPayment,
@@ -406,6 +409,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   AI
                 </span>
               )}
+            </button>
+          )}
+
+          {/* Database Backup & Restore Button */}
+          {onOpenBackup && (!activeUser || hasPermission(activeUser, 'settings', 'backupAndRestore')) && (
+            <button
+              onClick={() => {
+                onOpenBackup();
+                handleClose();
+              }}
+              title="النسخ الاحتياطي وقاعدة البيانات (JSON)"
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-indigo-300 hover:text-white hover:bg-slate-800/70 group ${
+                isCollapsed ? 'lg:justify-center' : 'justify-start'
+              }`}
+            >
+              <Database className="w-5 h-5 text-indigo-400 shrink-0 group-hover:scale-110 transition-transform" />
+              {!isCollapsed && <span>النسخ الاحتياطي (JSON)</span>}
             </button>
           )}
 

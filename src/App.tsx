@@ -31,6 +31,7 @@ import {
   ChangePasswordModal,
   SystemTenantsView,
   AboutProgramModal,
+  DatabaseBackupModal,
 } from './components';
 import {
   CardCategory,
@@ -364,6 +365,7 @@ export default function App() {
   const [selectedPaymentForReceipt, setSelectedPaymentForReceipt] = useState<PaymentRecord | null>(null);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isDatabaseBackupOpen, setIsDatabaseBackupOpen] = useState(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isIncomeStatementOpen, setIsIncomeStatementOpen] = useState(false);
   const [isFinancialExportModalOpen, setIsFinancialExportModalOpen] = useState(false);
@@ -1808,24 +1810,73 @@ export default function App() {
     }
   };
 
-  // Restore Backup
+  // Restore System Database Backup
+  const handleRestoreDatabase = (
+    backupData: any,
+    mode: 'overwrite' | 'merge' = 'overwrite',
+    backupType?: 'full_system' | 'single_network'
+  ) => {
+    if (!backupData || typeof backupData !== 'object') return;
+
+    const mergeList = <T extends { id: string }>(current: T[], incoming?: T[]): T[] => {
+      if (!incoming || incoming.length === 0) return current;
+      if (mode === 'overwrite') return incoming;
+      // Merge mode
+      const map = new Map<string, T>();
+      current.forEach((item) => map.set(item.id, item));
+      incoming.forEach((item) => map.set(item.id, item));
+      return Array.from(map.values());
+    };
+
+    const newCategories = mergeList(categories, backupData.categories);
+    const newInvoices = mergeList(invoices, backupData.invoices);
+    const newExpenses = mergeList(expenses, backupData.expenses);
+    const newExpenseCategories = mergeList(expenseCategories, backupData.expenseCategories);
+    const newDispatches = mergeList(dispatches, backupData.dispatches);
+    const newSales = mergeList(sales, backupData.sales);
+    const newPayments = mergeList(payments, backupData.payments);
+    const newOrders = mergeList(orders, backupData.orders);
+    const newTenants = mergeList(tenants, backupData.tenants);
+    const newUsers = mergeList(users, backupData.users);
+    const newLogs = mergeList(activityLogs, backupData.activityLogs);
+
+    let newPOS = mergeList(posPoints, backupData.posPoints);
+    newPOS = synchronizePOSBalances(newPOS, newInvoices, newSales, newPayments, newDispatches);
+
+    // Update States
+    if (backupData.categories || mode === 'overwrite') setCategories(newCategories);
+    if (backupData.invoices || mode === 'overwrite') setInvoices(newInvoices);
+    if (backupData.expenses || mode === 'overwrite') setExpenses(newExpenses);
+    if (backupData.expenseCategories || mode === 'overwrite') setExpenseCategories(newExpenseCategories);
+    if (backupData.dispatches || mode === 'overwrite') setDispatches(newDispatches);
+    if (backupData.sales || mode === 'overwrite') setSales(newSales);
+    if (backupData.payments || mode === 'overwrite') setPayments(newPayments);
+    if (backupData.orders || mode === 'overwrite') setOrders(newOrders);
+    if (backupData.posPoints || mode === 'overwrite') setPosPoints(newPOS);
+    if (backupData.tenants && backupData.tenants.length > 0) setTenants(newTenants);
+    if (backupData.users && backupData.users.length > 0) setUsers(newUsers);
+    if (backupData.activityLogs && backupData.activityLogs.length > 0) setActivityLogs(newLogs);
+    if (backupData.settings) setSettings(backupData.settings);
+
+    // Save directly to localStorage for instant durability
+    saveData(STORAGE_KEYS.CATEGORIES, newCategories);
+    saveData(STORAGE_KEYS.INVOICES, newInvoices);
+    saveData(STORAGE_KEYS.EXPENSES, newExpenses);
+    saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, newExpenseCategories);
+    saveData(STORAGE_KEYS.DISPATCHES, newDispatches);
+    saveData(STORAGE_KEYS.SALES, newSales);
+    saveData(STORAGE_KEYS.PAYMENTS, newPayments);
+    saveData(STORAGE_KEYS.ORDERS, newOrders);
+    saveData(STORAGE_KEYS.POS_POINTS, newPOS);
+    if (backupData.tenants && backupData.tenants.length > 0) saveData(STORAGE_KEYS.TENANTS, newTenants);
+    if (backupData.users && backupData.users.length > 0) saveData(STORAGE_KEYS.USERS, newUsers);
+    if (backupData.activityLogs && backupData.activityLogs.length > 0) saveData(STORAGE_KEYS.ACTIVITY_LOGS, newLogs);
+    if (backupData.settings) saveData(STORAGE_KEYS.SETTINGS, backupData.settings);
+  };
+
+  // Restore Backup (Legacy Compatibility)
   const handleRestoreData = (backup: any) => {
-    if (backup.categories) setCategories(backup.categories);
-    if (backup.invoices) setInvoices(backup.invoices);
-    if (backup.expenses) setExpenses(backup.expenses);
-    if (backup.expenseCategories) setExpenseCategories(backup.expenseCategories);
-    if (backup.dispatches) setDispatches(backup.dispatches);
-    if (backup.sales) setSales(backup.sales);
-    if (backup.payments) setPayments(backup.payments);
-    if (backup.orders) setOrders(backup.orders);
-    if (backup.settings) setSettings(backup.settings);
-    if (backup.posPoints) {
-      const restoredInvoices = backup.invoices || invoices;
-      const restoredSales = backup.sales || sales;
-      const restoredPayments = backup.payments || payments;
-      const restoredDispatches = backup.dispatches || dispatches;
-      setPosPoints(synchronizePOSBalances(backup.posPoints, restoredInvoices, restoredSales, restoredPayments, restoredDispatches));
-    }
+    handleRestoreDatabase(backup.data || backup, 'overwrite', backup.backupType);
   };
 
   // Quick Triggers
@@ -1855,6 +1906,7 @@ export default function App() {
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
+        onOpenBackup={() => setIsDatabaseBackupOpen(true)}
         onOpenAI={() => setIsAIModalOpen(true)}
         onOpenNewPayment={() => handleOpenPaymentModal()}
         onOpenNewSale={() => setActiveView('invoices')}
@@ -1918,6 +1970,7 @@ export default function App() {
           onOpenQuickPayment={() => handleOpenPaymentModal()}
           onOpenAI={() => setIsAIModalOpen(true)}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
+          onOpenBackup={() => setIsDatabaseBackupOpen(true)}
           onOpenLogin={() => handleOpenLoginPortal()}
           onOpenChangePassword={() => setIsChangePasswordOpen(true)}
           onOpenAboutProgram={() => setIsAboutModalOpen(true)}
@@ -2260,7 +2313,34 @@ export default function App() {
             settings,
           }}
           onRestoreData={handleRestoreData}
+          onOpenBackupModal={() => setIsDatabaseBackupOpen(true)}
           onClose={() => setIsSettingsModalOpen(false)}
+        />
+      )}
+
+      {/* 6.1 Dedicated Database Backup & Restore Center (JSON) */}
+      {isDatabaseBackupOpen && (
+        <DatabaseBackupModal
+          activeUser={activeUser}
+          tenants={tenants}
+          users={users}
+          categories={categories}
+          posPoints={posPoints}
+          invoices={invoices}
+          expenses={expenses}
+          expenseCategories={expenseCategories}
+          dispatches={dispatches}
+          sales={sales}
+          payments={payments}
+          orders={orders}
+          settings={settings}
+          activityLogs={activityLogs}
+          selectedTenantFilter={selectedTenantFilter}
+          onRestoreDatabase={handleRestoreDatabase}
+          onClose={() => setIsDatabaseBackupOpen(false)}
+          onLogActivity={(action, title, details, status) => {
+            logUserActivity(action, 'backup', 'قاعدة البيانات والنسخ الاحتياطي', title, details, 'system');
+          }}
         />
       )}
 

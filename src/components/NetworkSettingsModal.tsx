@@ -24,6 +24,7 @@ interface NetworkSettingsModalProps {
   onResetData: () => void;
   allAppData: any;
   onRestoreData: (data: any) => void;
+  onOpenBackupModal?: () => void;
   onClose: () => void;
 }
 
@@ -33,6 +34,7 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
   onResetData,
   allAppData,
   onRestoreData,
+  onOpenBackupModal,
   onClose,
 }) => {
   const [formData, setFormData] = useState<NetworkSettings>({
@@ -335,31 +337,51 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
 
           {/* Backup & Data Section */}
           <div className="pt-3 border-t border-slate-800 space-y-2">
-            <label className="block text-slate-300 font-bold text-xs flex items-center gap-1.5">
-              <Database className="w-4 h-4 text-indigo-400" />
-              <span>إدارة النسخ الاحتياطي والبيانات:</span>
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="block text-slate-300 font-bold text-xs flex items-center gap-1.5">
+                <Database className="w-4 h-4 text-indigo-400" />
+                <span>إدارة النسخ الاحتياطي والبيانات:</span>
+              </label>
+              {onOpenBackupModal && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenBackupModal();
+                  }}
+                  className="text-[11px] text-indigo-400 hover:text-indigo-300 font-bold underline"
+                >
+                  مركز النسخ والتحكم المتقدم
+                </button>
+              )}
+            </div>
 
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={handleBackupDownload}
-                className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg flex items-center justify-center gap-1.5 font-semibold transition"
+                onClick={onOpenBackupModal ? () => { onClose(); onOpenBackupModal(); } : handleBackupDownload}
+                className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg flex items-center justify-center gap-1.5 font-semibold transition text-xs"
               >
                 <Download className="w-4 h-4 text-indigo-400" />
-                <span>تحميل نسخة احتياطية (JSON)</span>
+                <span>تصدير نسخة احتياطية (JSON)</span>
               </button>
 
-              <label className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg flex items-center justify-center gap-1.5 font-semibold cursor-pointer transition">
+              <button
+                type="button"
+                onClick={onOpenBackupModal ? () => { onClose(); onOpenBackupModal(); } : undefined}
+                className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg flex items-center justify-center gap-1.5 font-semibold cursor-pointer transition text-xs relative"
+              >
                 <Upload className="w-4 h-4 text-emerald-400" />
                 <span>استعادة نسخة احتياطية</span>
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </label>
+                {!onOpenBackupModal && (
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleFileUpload}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                )}
+              </button>
             </div>
 
             <button
