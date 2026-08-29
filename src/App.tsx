@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Header,
   Sidebar,
@@ -143,12 +143,84 @@ export default function App() {
   const [activeUserId, setActiveUserId] = useState<string>(() =>
     loadData<string>(STORAGE_KEYS.ACTIVE_USER_ID, 'user-admin')
   );
+  const [selectedTenantFilter, setSelectedTenantFilter] = useState<string>('all');
   const [activityLogs, setActivityLogs] = useState<UserActivityLog[]>(() =>
     loadData<UserActivityLog[]>(STORAGE_KEYS.ACTIVITY_LOGS, initialActivityLogs)
   );
 
   // Derive active user object safely
   const activeUser = users.find((u) => u.id === activeUserId) || users[0] || mockUsers[0];
+
+  // Helper to extract or fallback tenant ID for any item
+  const getRecordTenantId = useCallback((record?: { networkId?: string }) => record?.networkId || 'net-alfadaa', []);
+
+  // Active effective tenant for filtering data
+  const effectiveTenantId: string | null = activeUser?.role === 'system_owner'
+    ? (selectedTenantFilter === 'all' ? null : selectedTenantFilter)
+    : (activeUser?.networkId || 'net-alfadaa');
+
+  // Current tenant ID for assigning to new records
+  const currentTenantId: string = activeUser?.networkId && activeUser.networkId !== 'system'
+    ? activeUser.networkId
+    : (selectedTenantFilter !== 'all' ? selectedTenantFilter : (tenants[0]?.id || 'net-alfadaa'));
+
+  // Scoped collections based on tenant isolation
+  const scopedCategories = useMemo(() => 
+    effectiveTenantId ? categories.filter((c) => getRecordTenantId(c) === effectiveTenantId) : categories,
+    [categories, effectiveTenantId, getRecordTenantId]
+  );
+
+  const scopedPOSPoints = useMemo(() => 
+    effectiveTenantId ? posPoints.filter((p) => getRecordTenantId(p) === effectiveTenantId) : posPoints,
+    [posPoints, effectiveTenantId, getRecordTenantId]
+  );
+
+  const scopedInvoices = useMemo(() => 
+    effectiveTenantId ? invoices.filter((i) => getRecordTenantId(i) === effectiveTenantId) : invoices,
+    [invoices, effectiveTenantId, getRecordTenantId]
+  );
+
+  const scopedExpenses = useMemo(() => 
+    effectiveTenantId ? expenses.filter((e) => getRecordTenantId(e) === effectiveTenantId) : expenses,
+    [expenses, effectiveTenantId, getRecordTenantId]
+  );
+
+  const scopedExpenseCategories = useMemo(() => 
+    effectiveTenantId ? expenseCategories.filter((ec) => getRecordTenantId(ec) === effectiveTenantId) : expenseCategories,
+    [expenseCategories, effectiveTenantId, getRecordTenantId]
+  );
+
+  const scopedDispatches = useMemo(() => 
+    effectiveTenantId ? dispatches.filter((d) => getRecordTenantId(d) === effectiveTenantId) : dispatches,
+    [dispatches, effectiveTenantId, getRecordTenantId]
+  );
+
+  const scopedSales = useMemo(() => 
+    effectiveTenantId ? sales.filter((s) => getRecordTenantId(s) === effectiveTenantId) : sales,
+    [sales, effectiveTenantId, getRecordTenantId]
+  );
+
+  const scopedPayments = useMemo(() => 
+    effectiveTenantId ? payments.filter((p) => getRecordTenantId(p) === effectiveTenantId) : payments,
+    [payments, effectiveTenantId, getRecordTenantId]
+  );
+
+  const scopedOrders = useMemo(() => 
+    effectiveTenantId ? orders.filter((o) => getRecordTenantId(o) === effectiveTenantId) : orders,
+    [orders, effectiveTenantId, getRecordTenantId]
+  );
+
+  const scopedUsers = useMemo(() => 
+    effectiveTenantId 
+      ? users.filter((u) => u.role !== 'system_owner' && getRecordTenantId(u) === effectiveTenantId) 
+      : users,
+    [users, effectiveTenantId, getRecordTenantId]
+  );
+
+  const scopedActivityLogs = useMemo(() => 
+    effectiveTenantId ? activityLogs.filter((l) => getRecordTenantId(l) === effectiveTenantId) : activityLogs,
+    [activityLogs, effectiveTenantId, getRecordTenantId]
+  );
 
   // Helper to log user activities
   const logUserActivity = useCallback(
@@ -168,9 +240,10 @@ export default function App() {
         details,
         actionType,
       });
+      newEntry.networkId = activeUser.networkId || currentTenantId;
       setActivityLogs((prev) => [newEntry, ...prev]);
     },
-    [activeUser]
+    [activeUser, currentTenantId]
   );
 
   // Authentication & Login Modal State
@@ -372,6 +445,21 @@ export default function App() {
     const prevSettings = settings;
     setSettings(newSettings);
 
+    // If active tenant exists, update tenant settings in tenants list
+    if (effectiveTenantId) {
+      const updatedTenants = tenants.map((t) =>
+        t.id === effectiveTenantId
+          ? {
+              ...t,
+              name: newSettings.networkName || t.name,
+              settings: newSettings,
+            }
+          : t
+      );
+      setTenants(updatedTenants);
+      localStorage.setItem('mikrotik_pos_tenants', JSON.stringify(updatedTenants));
+    }
+
     const isThemeChanged = prevSettings.themeMode !== newSettings.themeMode;
     const log = buildActivityLog(activeUser, {
       action: 'تحديث إعدادات النظام',
@@ -420,7 +508,11 @@ export default function App() {
         name: `مدير ${tenantToSave.name}`,
         username: tenantToSave.adminUsername,
         password: adminPassword || 'adminpassword',
+        pinCode: '1234',
         role: 'super_admin',
+        customRoleName: `مدير شبكة ${tenantToSave.name}`,
+        avatar: '🌐',
+        avatarBgColor: 'bg-blue-600',
         status: 'active',
         permissions: getRoleDefaultPermissions('super_admin'),
         createdAt: new Date().toISOString().split('T')[0],
@@ -428,34 +520,115 @@ export default function App() {
       const updatedUsers = [...users, newAdmin];
       setUsers(updatedUsers);
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
+
+      // Initialize default card categories and expense categories for this new tenant
+      const defaultCategoriesForNewTenant: CardCategory[] = [
+        {
+          id: `cat-${tenantToSave.id}-1`,
+          networkId: tenantToSave.id,
+          name: 'فئة 100 ريال (1 جيجا)',
+          code: '100_1D',
+          retailPrice: 100,
+          wholesalePrice: 90,
+          costPrice: 70,
+          warehouseStock: 200,
+          validityDays: 1,
+          uptimeLimit: '24h',
+          quotaLimit: '1G',
+          colorTheme: 'indigo',
+          mikrotikProfile: '1GB-1Day',
+        },
+        {
+          id: `cat-${tenantToSave.id}-2`,
+          networkId: tenantToSave.id,
+          name: 'فئة 200 ريال (2.5 جيجا)',
+          code: '200_3D',
+          retailPrice: 200,
+          wholesalePrice: 180,
+          costPrice: 140,
+          warehouseStock: 150,
+          validityDays: 3,
+          uptimeLimit: '72h',
+          quotaLimit: '2.5G',
+          colorTheme: 'cyan',
+          mikrotikProfile: '2.5GB-3Days',
+        },
+        {
+          id: `cat-${tenantToSave.id}-3`,
+          networkId: tenantToSave.id,
+          name: 'فئة 500 ريال (7 جيجا)',
+          code: '500_7D',
+          retailPrice: 500,
+          wholesalePrice: 450,
+          costPrice: 350,
+          warehouseStock: 100,
+          validityDays: 7,
+          uptimeLimit: '168h',
+          quotaLimit: '7G',
+          colorTheme: 'purple',
+          mikrotikProfile: '7GB-7Days',
+        },
+      ];
+      setCategories((prev) => [...prev, ...defaultCategoriesForNewTenant]);
+
+      const defaultExpenseCategoriesForNewTenant: ExpenseCategory[] = [
+        { id: `expcat-${tenantToSave.id}-1`, networkId: tenantToSave.id, name: 'سعات وخطوط الإنترنت (Bandwidth)' },
+        { id: `expcat-${tenantToSave.id}-2`, networkId: tenantToSave.id, name: 'إيجار الأبراج والمواقع' },
+        { id: `expcat-${tenantToSave.id}-3`, networkId: tenantToSave.id, name: 'الكهرباء والطاقة الشمسية' },
+        { id: `expcat-${tenantToSave.id}-4`, networkId: tenantToSave.id, name: 'الصيانة والقطع الفنية' },
+        { id: `expcat-${tenantToSave.id}-5`, networkId: tenantToSave.id, name: 'مصاريف تسويق ومطبوعات' },
+      ];
+      setExpenseCategories((prev) => [...prev, ...defaultExpenseCategoriesForNewTenant]);
     }
     setTenants(updatedTenants);
     localStorage.setItem('mikrotik_pos_tenants', JSON.stringify(updatedTenants));
     
     logUserActivity(
       isExisting ? 'تحديث بيانات شبكة' : 'إضافة شبكة جديدة',
+      'systemTenants',
+      'إدارة جوار الشبكات (Multi-Tenant SaaS)',
       `تم ${isExisting ? 'تحديث' : 'إضافة'} شبكة: ${tenantToSave.name}`,
-      'systemTenants'
+      `اسم مستخدم الإدارة: @${tenantToSave.adminUsername}`,
+      'create'
     );
   };
 
   const handleDeleteTenant = (tenantId: string) => {
-    const tenantToDelete = tenants.find(t => t.id === tenantId);
+    const tenantToDelete = tenants.find((t) => t.id === tenantId);
     if (!tenantToDelete) return;
 
-    const updatedTenants = tenants.filter(t => t.id !== tenantId);
+    if (!confirm(`هل أنت متأكد من حذف شبكة "${tenantToDelete.name}" وكافة بياناتها ومستخدميها ونقاط بيعها نهائياً؟`)) {
+      return;
+    }
+
+    const updatedTenants = tenants.filter((t) => t.id !== tenantId);
     setTenants(updatedTenants);
     localStorage.setItem('mikrotik_pos_tenants', JSON.stringify(updatedTenants));
 
-    // Remove users associated with this tenant
-    const updatedUsers = users.filter(u => u.networkId !== tenantId);
-    setUsers(updatedUsers);
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
+    // Cascade remove all records associated with this tenant
+    setUsers((prev) => prev.filter((u) => getRecordTenantId(u) !== tenantId));
+    setCategories((prev) => prev.filter((c) => getRecordTenantId(c) !== tenantId));
+    setPosPoints((prev) => prev.filter((p) => getRecordTenantId(p) !== tenantId));
+    setInvoices((prev) => prev.filter((i) => getRecordTenantId(i) !== tenantId));
+    setExpenses((prev) => prev.filter((e) => getRecordTenantId(e) !== tenantId));
+    setExpenseCategories((prev) => prev.filter((ec) => getRecordTenantId(ec) !== tenantId));
+    setDispatches((prev) => prev.filter((d) => getRecordTenantId(d) !== tenantId));
+    setSales((prev) => prev.filter((s) => getRecordTenantId(s) !== tenantId));
+    setPayments((prev) => prev.filter((p) => getRecordTenantId(p) !== tenantId));
+    setOrders((prev) => prev.filter((o) => getRecordTenantId(o) !== tenantId));
+    setActivityLogs((prev) => prev.filter((l) => getRecordTenantId(l) !== tenantId));
+
+    if (selectedTenantFilter === tenantId) {
+      setSelectedTenantFilter('all');
+    }
 
     logUserActivity(
       'حذف شبكة',
-      `تم حذف شبكة: ${tenantToDelete.name} مع جميع مستخدميها`,
-      'systemTenants'
+      'systemTenants',
+      'إدارة جوار الشبكات (Multi-Tenant SaaS)',
+      `تم حذف شبكة: ${tenantToDelete.name} مع جميع مستخدميها وبياناتها`,
+      undefined,
+      'delete'
     );
   };
 
@@ -498,6 +671,7 @@ export default function App() {
     const newPos: POSPoint = {
       ...newPosData,
       id: newPosId,
+      networkId: newPosData.networkId || currentTenantId,
       username: finalUsername,
       password: finalPassword,
       pinCode: finalPin,
@@ -509,6 +683,7 @@ export default function App() {
     // Create synchronized Portal user for the POS Point
     const posUser: AppUser = {
       id: `user-${newPos.id}`,
+      networkId: newPos.networkId,
       name: newPos.name,
       username: finalUsername,
       password: finalPassword,
@@ -627,6 +802,7 @@ export default function App() {
 
     const newInvoice: InvoiceRecord = {
       ...invoiceData,
+      networkId: invoiceData.networkId || currentTenantId,
       invoiceNumber: finalInvoiceNumber,
       id: `inv-${Date.now()}`,
       timestamp: new Date().toISOString(),
@@ -763,6 +939,7 @@ export default function App() {
     const nextOrderNumber = generateNextOrderNumber(orders, today);
     const newOrder: CardOrder = {
       ...orderData,
+      networkId: orderData.networkId || currentTenantId,
       id: `ord-${Date.now()}`,
       orderNumber: nextOrderNumber,
       status: 'pending',
@@ -832,6 +1009,7 @@ export default function App() {
 
     const newInvoice: InvoiceRecord = {
       id: `inv-${Date.now()}`,
+      networkId: targetOrder.networkId || currentTenantId,
       invoiceNumber: autoNumber,
       type: 'sale',
       posPointId: targetOrder.posPointId,
@@ -918,6 +1096,7 @@ export default function App() {
 
     const newExpense: ExpenseRecord = {
       ...expenseData,
+      networkId: expenseData.networkId || currentTenantId,
       voucherNumber: finalVoucherNumber,
       id: `exp-${Date.now()}`,
       timestamp: new Date().toISOString(),
@@ -966,6 +1145,7 @@ export default function App() {
   const handleAddExpenseCategory = (catData: Omit<ExpenseCategory, 'id'>) => {
     const newCat: ExpenseCategory = {
       ...catData,
+      networkId: catData.networkId || currentTenantId,
       id: `expcat-${Date.now()}`,
     };
     setExpenseCategories((prev) => [...prev, newCat]);
@@ -991,6 +1171,7 @@ export default function App() {
   const handleAddSale = (saleData: Omit<SalesRecord, 'id' | 'timestamp'>) => {
     const newSale: SalesRecord = {
       ...saleData,
+      networkId: saleData.networkId || currentTenantId,
       id: `sale-${Date.now()}`,
       timestamp: new Date().toISOString(),
     };
@@ -1016,6 +1197,7 @@ export default function App() {
   const handleAddCategory = (catData: Omit<CardCategory, 'id'>) => {
     const newCat: CardCategory = {
       ...catData,
+      networkId: catData.networkId || currentTenantId,
       id: `cat-${Date.now()}`,
     };
     setCategories((prev) => [...prev, newCat]);
@@ -1066,6 +1248,7 @@ export default function App() {
   const handleAddDispatch = (dispatchData: Omit<CardBatchDispatch, 'id' | 'soldCount'>) => {
     const newDispatch: CardBatchDispatch = {
       ...dispatchData,
+      networkId: dispatchData.networkId || currentTenantId,
       id: `disp-${Date.now()}`,
       soldCount: 0,
     };
@@ -1150,6 +1333,7 @@ export default function App() {
   const handleAddPayment = (paymentData: Omit<PaymentRecord, 'id' | 'timestamp'>) => {
     const newPayment: PaymentRecord = {
       ...paymentData,
+      networkId: paymentData.networkId || currentTenantId,
       id: `pay-${Date.now()}`,
       timestamp: new Date().toISOString(),
     };
@@ -1208,6 +1392,7 @@ export default function App() {
   const handleAddUser = (newUserData: Omit<AppUser, 'id' | 'createdAt'>) => {
     const newUser: AppUser = {
       ...newUserData,
+      networkId: newUserData.networkId || currentTenantId,
       id: `user-${Date.now()}`,
       createdAt: new Date().toISOString().split('T')[0],
       lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -1420,10 +1605,10 @@ export default function App() {
     setIsPaymentModalOpen(true);
   };
 
-  const statementPOS = (posPoints || []).find((p) => p?.id === statementPOSId);
-  const totalDebt = (posPoints || []).reduce((acc, p) => acc + (p?.currentDebt || 0), 0);
+  const statementPOS = (scopedPOSPoints || []).find((p) => p?.id === statementPOSId);
+  const totalDebt = (scopedPOSPoints || []).reduce((acc, p) => acc + (p?.currentDebt || 0), 0);
   const todayStr = new Date().toISOString().split('T')[0];
-  const totalSalesToday = (invoices || [])
+  const totalSalesToday = (scopedInvoices || [])
     .filter((inv) => inv && inv.type === 'sale' && (inv.date === todayStr || inv.date?.startsWith(todayStr)))
     .reduce((acc, inv) => acc + (inv?.totalWholesaleAmount || 0), 0);
 
@@ -1445,30 +1630,30 @@ export default function App() {
         onOpenNewPayment={() => handleOpenPaymentModal()}
         onOpenNewSale={() => setActiveView('invoices')}
         settings={settings}
-        posPoints={posPoints}
-        sales={sales}
-        payments={payments}
-        categories={categories}
-        dispatches={dispatches}
-        invoices={invoices}
-        expenses={expenses}
-        users={users}
-        orders={orders}
+        posPoints={scopedPOSPoints}
+        sales={scopedSales}
+        payments={scopedPayments}
+        categories={scopedCategories}
+        dispatches={scopedDispatches}
+        invoices={scopedInvoices}
+        expenses={scopedExpenses}
+        users={scopedUsers}
+        orders={scopedOrders}
         activeUser={activeUser}
         onResetData={handleResetData}
         onOpenLogin={() => handleOpenLoginPortal()}
         onLogout={handleLogout}
         counts={{
-          posPoints: posPoints.length,
-          sales: sales.length,
-          payments: payments.length,
-          categories: categories.length,
-          dispatches: dispatches.length,
-          invoices: invoices.length,
-          expenses: expenses.length,
-          users: users.length,
-          orders: orders.length,
-          pendingOrders: orders.filter((o) => o.status === 'pending').length,
+          posPoints: scopedPOSPoints.length,
+          sales: scopedSales.length,
+          payments: scopedPayments.length,
+          categories: scopedCategories.length,
+          dispatches: scopedDispatches.length,
+          invoices: scopedInvoices.length,
+          expenses: scopedExpenses.length,
+          users: scopedUsers.length,
+          orders: scopedOrders.length,
+          pendingOrders: scopedOrders.filter((o) => o.status === 'pending').length,
         }}
       />
 
@@ -1485,7 +1670,18 @@ export default function App() {
           }}
           settings={settings}
           activeUser={activeUser}
-          pendingOrdersCount={orders.filter((o) => o.status === 'pending').length}
+          tenants={tenants}
+          selectedTenantFilter={selectedTenantFilter}
+          onSelectTenantFilter={(tenantId) => {
+            setSelectedTenantFilter(tenantId);
+            if (tenantId !== 'all') {
+              const selectedTenant = tenants.find((t) => t.id === tenantId);
+              if (selectedTenant) {
+                setSettings(selectedTenant.settings);
+              }
+            }
+          }}
+          pendingOrdersCount={scopedOrders.filter((o) => o.status === 'pending').length}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           onOpenGlobalSearch={() => setIsGlobalSearchOpen(true)}
           onOpenQuickSale={() => setActiveView('invoices')}
@@ -1546,13 +1742,13 @@ export default function App() {
 
               {activeView === 'dashboard' && (
                 <DashboardView
-                  categories={categories}
-                  posPoints={posPoints}
-                  sales={sales}
-                  payments={payments}
-                  dispatches={dispatches}
-                  invoices={invoices}
-                  expenses={expenses}
+                  categories={scopedCategories}
+                  posPoints={scopedPOSPoints}
+                  sales={scopedSales}
+                  payments={scopedPayments}
+                  dispatches={scopedDispatches}
+                  invoices={scopedInvoices}
+                  expenses={scopedExpenses}
                   settings={settings}
                   onNavigateToTab={(tab) => setActiveView(tab as any)}
                   onSelectPOSForStatement={(id) => setStatementPOSId(id)}
@@ -1567,11 +1763,11 @@ export default function App() {
               {activeView === 'pos_portal' && (
                 <POSPortalView
                   activeUser={activeUser}
-                  posPoints={posPoints}
-                  categories={categories}
-                  orders={orders}
-                  invoices={invoices}
-                  payments={payments}
+                  posPoints={scopedPOSPoints}
+                  categories={scopedCategories}
+                  orders={scopedOrders}
+                  invoices={scopedInvoices}
+                  payments={scopedPayments}
                   settings={settings}
                   onCreateOrder={handleCreateOrder}
                   onCancelOrder={handleCancelOrder}
@@ -1580,10 +1776,10 @@ export default function App() {
 
               {activeView === 'orders' && (
                 <OrdersManagementView
-                  orders={orders}
-                  posPoints={posPoints}
-                  categories={categories}
-                  invoices={invoices}
+                  orders={scopedOrders}
+                  posPoints={scopedPOSPoints}
+                  categories={scopedCategories}
+                  invoices={scopedInvoices}
                   settings={settings}
                   activeUser={activeUser}
                   onUpdateOrderStatus={handleUpdateOrderStatus}
@@ -1595,9 +1791,9 @@ export default function App() {
 
               {activeView === 'invoices' && (
                 <InvoicesView
-                  invoices={invoices}
-                  posPoints={posPoints}
-                  categories={categories}
+                  invoices={scopedInvoices}
+                  posPoints={scopedPOSPoints}
+                  categories={scopedCategories}
                   settings={settings}
                   onAddInvoice={handleAddInvoice}
                   onUpdateInvoice={handleUpdateInvoice}
@@ -1610,8 +1806,8 @@ export default function App() {
 
               {activeView === 'expenses' && (
                 <ExpensesView
-                  expenses={expenses}
-                  categories={expenseCategories}
+                  expenses={scopedExpenses}
+                  categories={scopedExpenseCategories}
                   settings={settings}
                   onAddExpense={handleAddExpense}
                   onUpdateExpense={handleUpdateExpense}
@@ -1627,11 +1823,11 @@ export default function App() {
 
               {activeView === 'pos' && (
                 <POSPointsView
-                  posPoints={posPoints}
-                  categories={categories}
-                  dispatches={dispatches}
-                  sales={sales}
-                  payments={payments}
+                  posPoints={scopedPOSPoints}
+                  categories={scopedCategories}
+                  dispatches={scopedDispatches}
+                  sales={scopedSales}
+                  payments={scopedPayments}
                   settings={settings}
                   onAddPOS={handleAddPOS}
                   onUpdatePOS={handleUpdatePOS}
@@ -1652,8 +1848,8 @@ export default function App() {
 
               {activeView === 'payments' && (
                 <PaymentsView
-                  payments={payments}
-                  posPoints={posPoints}
+                  payments={scopedPayments}
+                  posPoints={scopedPOSPoints}
                   settings={settings}
                   onAddPayment={handleAddPayment}
                   onUpdatePayment={handleUpdatePayment}
@@ -1668,7 +1864,7 @@ export default function App() {
 
               {activeView === 'categories' && (
                 <CategoriesView
-                  categories={categories}
+                  categories={scopedCategories}
                   settings={settings}
                   onAddCategory={handleAddCategory}
                   onUpdateCategory={handleUpdateCategory}
@@ -1680,16 +1876,16 @@ export default function App() {
               {activeView === 'mikrotik' && (
                 <MikrotikLiveView
                   settings={settings}
-                  categories={categories}
+                  categories={scopedCategories}
                   onUpdateSettings={(newSettings) => setSettings(newSettings)}
                 />
               )}
 
               {activeView === 'users' && (
                 <UsersAndPermissionsView
-                  users={users}
+                  users={scopedUsers}
                   activeUser={activeUser}
-                  activityLogs={activityLogs}
+                  activityLogs={scopedActivityLogs}
                   settings={settings}
                   onAddUser={handleAddUser}
                   onUpdateUser={handleUpdateUser}
@@ -1703,10 +1899,10 @@ export default function App() {
               {/* Legacy fallback tabs */}
               {activeView === 'sales' && (
                 <SalesView
-                  sales={sales}
-                  posPoints={posPoints}
-                  categories={categories}
-                  dispatches={dispatches}
+                  sales={scopedSales}
+                  posPoints={scopedPOSPoints}
+                  categories={scopedCategories}
+                  dispatches={scopedDispatches}
                   settings={settings}
                   onAddSale={handleAddSale}
                   onUpdateSale={handleUpdateSale}
@@ -1718,9 +1914,9 @@ export default function App() {
 
               {activeView === 'dispatches' && (
                 <BatchDispatchView
-                  dispatches={dispatches}
-                  posPoints={posPoints}
-                  categories={categories}
+                  dispatches={scopedDispatches}
+                  posPoints={scopedPOSPoints}
+                  categories={scopedCategories}
                   settings={settings}
                   onAddDispatch={handleAddDispatch}
                   onUpdateDispatch={handleUpdateDispatch}
@@ -1770,10 +1966,10 @@ export default function App() {
       {statementPOS && (
         <POSAccountStatementModal
           posPoint={statementPOS}
-          categories={categories}
-          sales={sales}
-          payments={payments}
-          dispatches={dispatches}
+          categories={scopedCategories}
+          sales={scopedSales}
+          payments={scopedPayments}
+          dispatches={scopedDispatches}
           settings={settings}
           initialPaperFormat={statementPaperMode}
           onClose={() => setStatementPOSId(null)}
@@ -1785,7 +1981,7 @@ export default function App() {
       {/* 4. Record Payment Modal */}
       {isPaymentModalOpen && (
         <PaymentModal
-          posPoints={posPoints}
+          posPoints={scopedPOSPoints}
           initialPOSId={paymentTargetPOSId}
           settings={settings}
           onAddPayment={handleAddPayment}
@@ -1799,9 +1995,9 @@ export default function App() {
       {/* 5. AI Smart Assistant Modal */}
       {isAIModalOpen && (
         <AIAssistantModal
-          categories={categories}
-          posPoints={posPoints}
-          sales={sales}
+          categories={scopedCategories}
+          posPoints={scopedPOSPoints}
+          sales={scopedSales}
           settings={settings}
           onClose={() => setIsAIModalOpen(false)}
         />
@@ -1834,8 +2030,8 @@ export default function App() {
       {selectedSaleForReceipt && (
         <SaleReceiptModal
           sale={selectedSaleForReceipt}
-          posPoints={posPoints}
-          categories={categories}
+          posPoints={scopedPOSPoints}
+          categories={scopedCategories}
           settings={settings}
           onClose={() => setSelectedSaleForReceipt(null)}
         />
@@ -1845,10 +2041,10 @@ export default function App() {
       {selectedPaymentForReceipt && (
         <OfficialPaymentReceiptModal
           payment={selectedPaymentForReceipt}
-          posPoints={posPoints}
+          posPoints={scopedPOSPoints}
           settings={settings}
-          sales={sales}
-          payments={payments}
+          sales={scopedSales}
+          payments={scopedPayments}
           onClose={() => setSelectedPaymentForReceipt(null)}
         />
       )}
@@ -1857,13 +2053,13 @@ export default function App() {
       {isIncomeStatementOpen && (
         <IncomeStatementModal
           isOpen={isIncomeStatementOpen}
-          invoices={invoices}
-          expenses={expenses}
-          expenseCategories={expenseCategories}
-          cardCategories={categories}
-          posPoints={posPoints}
-          payments={payments}
-          sales={sales}
+          invoices={scopedInvoices}
+          expenses={scopedExpenses}
+          expenseCategories={scopedExpenseCategories}
+          cardCategories={scopedCategories}
+          posPoints={scopedPOSPoints}
+          payments={scopedPayments}
+          sales={scopedSales}
           settings={settings}
           activeUser={activeUser}
           canPrint={hasPermission(activeUser, 'dashboard', 'printIncomeStatement')}
@@ -1876,13 +2072,13 @@ export default function App() {
         <FinancialExportModal
           isOpen={isFinancialExportModalOpen}
           onClose={() => setIsFinancialExportModalOpen(false)}
-          invoices={invoices}
-          sales={sales}
-          expenses={expenses}
-          posPoints={posPoints}
-          categories={categories}
-          expenseCategories={expenseCategories}
-          payments={payments}
+          invoices={scopedInvoices}
+          sales={scopedSales}
+          expenses={scopedExpenses}
+          posPoints={scopedPOSPoints}
+          categories={scopedCategories}
+          expenseCategories={scopedExpenseCategories}
+          payments={scopedPayments}
           settings={settings}
         />
       )}
@@ -1904,14 +2100,14 @@ export default function App() {
         onOpenFinancialExport={() => setIsFinancialExportModalOpen(true)}
         onOpenLogin={() => handleOpenLoginPortal()}
         onToggleTheme={handleToggleTheme}
-        categories={categories}
-        posPoints={posPoints}
-        invoices={invoices}
-        expenses={expenses}
-        payments={payments}
-        sales={sales}
-        dispatches={dispatches}
-        users={users}
+        categories={scopedCategories}
+        posPoints={scopedPOSPoints}
+        invoices={scopedInvoices}
+        expenses={scopedExpenses}
+        payments={scopedPayments}
+        sales={scopedSales}
+        dispatches={scopedDispatches}
+        users={scopedUsers}
         settings={settings}
         activeUser={activeUser}
       />

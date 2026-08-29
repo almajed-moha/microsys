@@ -14,6 +14,7 @@ import {
   AppUser,
   CardOrder,
   CardOrderItem,
+  NetworkTenant,
 } from './types';
 import { getRoleDefaultPermissions } from './utils/permissions';
 
@@ -1450,6 +1451,7 @@ export const initialUsers: AppUser[] = [
   },
   {
     id: "user-admin",
+    networkId: "net-alfadaa",
     name: "م. ماجد الورد",
     username: "admin",
     password: "adminpassword",
@@ -1468,6 +1470,7 @@ export const initialUsers: AppUser[] = [
   },
   {
     id: "user-accountant",
+    networkId: "net-alfadaa",
     name: "أ. عبد الله السعدي",
     username: "accountant",
     password: "accpassword",
@@ -1486,6 +1489,7 @@ export const initialUsers: AppUser[] = [
   },
   {
     id: "user-sales1",
+    networkId: "net-alfadaa",
     name: "سالم بن علي",
     username: "sales1",
     password: "salespassword",
@@ -1506,6 +1510,7 @@ export const initialUsers: AppUser[] = [
   },
   {
     id: "user-cashier",
+    networkId: "net-alfadaa",
     name: "فاطمة القدسي",
     username: "cashier",
     password: "cashierpassword",
@@ -1524,6 +1529,7 @@ export const initialUsers: AppUser[] = [
   },
   {
     id: "user-netadmin",
+    networkId: "net-alfadaa",
     name: "م. عمار الحمادي",
     username: "netadmin",
     password: "netadminpassword",
@@ -1542,6 +1548,7 @@ export const initialUsers: AppUser[] = [
   },
   {
     id: "user-auditor",
+    networkId: "net-alfadaa",
     name: "د. خالد الزبيري",
     username: "auditor",
     password: "auditorpassword",
@@ -1560,6 +1567,7 @@ export const initialUsers: AppUser[] = [
   },
   {
     id: "user-pos1",
+    networkId: "net-alfadaa",
     name: "أبو أحمد الشامي",
     username: "pos_amana",
     password: "pospassword1",
@@ -1578,6 +1586,7 @@ export const initialUsers: AppUser[] = [
   },
   {
     id: "user-pos2",
+    networkId: "net-alfadaa",
     name: "محمد اليعري",
     username: "pos_diwan",
     password: "pospassword2",

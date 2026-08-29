@@ -453,12 +453,16 @@ export const LoginView: React.FC<LoginViewProps> = ({
             {showDevAccounts && (
               <div className="mt-2 p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5 text-[11px] animate-fade-in">
                 <div className="flex items-center justify-between py-1 border-b border-slate-850">
+                  <span className="text-amber-300 font-bold">مالك النظام العام (master):</span>
+                  <span className="font-mono text-amber-400">كلمة المرور: masterpassword | PIN: 0000</span>
+                </div>
+                <div className="flex items-center justify-between py-1 border-b border-slate-850">
                   <span className="text-slate-300 font-bold">المدير العام (admin):</span>
-                  <span className="font-mono text-indigo-400">كلمة المرور: 123456 | PIN: 1234</span>
+                  <span className="font-mono text-indigo-400">كلمة المرور: adminpassword | PIN: 1234</span>
                 </div>
                 <div className="flex items-center justify-between py-1 border-b border-slate-850">
                   <span className="text-slate-300 font-bold">المحاسب (accountant):</span>
-                  <span className="font-mono text-indigo-400">كلمة المرور: 123456 | PIN: 1234</span>
+                  <span className="font-mono text-indigo-400">كلمة المرور: accpassword | PIN: 2233</span>
                 </div>
                 <div className="flex items-center justify-between py-1">
                   <span className="text-slate-300 font-bold">نقاط البيع والموزعين:</span>

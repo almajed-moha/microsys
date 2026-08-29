@@ -2,6 +2,7 @@ export type Currency = 'YER' | 'SAR' | 'USD' | 'IQD' | 'EGP' | 'LYD' | 'OMR' | '
 
 export interface CardCategory {
   id: string;
+  networkId?: string;
   name: string; // e.g. "كارت 100 ريال", "كارت 200 ريال", "كارت 500 ريال", "كارت 1000 ريال"
   code: string; // e.g. "100_1H", "200_3H", "500_1D", "1000_3D"
   uptimeLimit: string; // e.g. "1h", "3h", "1d", "3d", "7d", "30d"
@@ -22,6 +23,7 @@ export interface CardCategory {
 
 export interface POSPoint {
   id: string;
+  networkId?: string;
   name: string; // e.g. "سوبرماركت البركة"
   managerName: string;
   phone: string;
@@ -55,6 +57,7 @@ export type CardOrderPriority = 'normal' | 'urgent' | 'low';
 
 export interface CardOrder {
   id: string;
+  networkId?: string;
   orderNumber: string; // e.g. "ORD-2026-001"
   posPointId: string;
   posPointName: string;
@@ -79,6 +82,7 @@ export interface CardOrder {
 
 export interface CardBatchDispatch {
   id: string;
+  networkId?: string;
   date: string;
   posPointId: string;
   categoryId: string;
@@ -112,6 +116,7 @@ export interface InvoiceItem {
 
 export interface InvoiceRecord {
   id: string;
+  networkId?: string;
   invoiceNumber: string; // e.g. "INV-2026-001" or "RET-2026-001"
   type: 'sale' | 'return'; // 'sale' = فاتورة مبيعات/تسليم دفعة, 'return' = فاتورة مرتجع كروت
   date: string; // YYYY-MM-DD
@@ -134,6 +139,7 @@ export interface InvoiceRecord {
 
 export interface ExpenseCategory {
   id: string;
+  networkId?: string;
   name: string; // e.g. "سعات وباقات الإنترنت الرئيسية (المزود)", "إيجارات الأبراج والمواقع", "الكهرباء والطاقة والمحروقات"
   description?: string;
   icon?: string;
@@ -143,6 +149,7 @@ export interface ExpenseCategory {
 
 export interface ExpenseRecord {
   id: string;
+  networkId?: string;
   voucherNumber: string; // e.g. "EXP-2026-001"
   date: string; // YYYY-MM-DD
   timestamp: string; // ISO string
@@ -170,6 +177,7 @@ export interface FinancialSummary {
 
 export interface SalesRecord {
   id: string;
+  networkId?: string;
   date: string; // YYYY-MM-DD
   timestamp: string; // ISO string
   posPointId: string;
@@ -187,6 +195,7 @@ export interface SalesRecord {
 
 export interface PaymentRecord {
   id: string;
+  networkId?: string;
   date: string;
   timestamp: string;
   posPointId: string;
@@ -199,6 +208,7 @@ export interface PaymentRecord {
 
 export interface CardTemplate {
   id: string;
+  networkId?: string;
   name: string; // e.g. "قالب كروت فئة 500 ريال الذهبي", "قالب باقة VIP 1000", "قالب A4 - 18 كارت"
   description?: string;
   categoryId?: string; // فئة مقترنة اختيارياً
@@ -255,6 +265,7 @@ export interface CardTemplate {
 
 export interface GeneratedVoucher {
   id: string;
+  networkId?: string;
   username: string;
   password?: string;
   categoryId: string;
@@ -561,6 +572,7 @@ export interface AppUser {
 
 export interface UserActivityLog {
   id: string;
+  networkId?: string;
   userId: string;
   userName: string;
   userRole?: UserRole | string;

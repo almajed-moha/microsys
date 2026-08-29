@@ -19,9 +19,11 @@ import {
   Sun,
   Moon,
   Search,
-  Command
+  Command,
+  Building2,
+  Globe,
 } from 'lucide-react';
-import { NetworkSettings, POSPoint, SalesRecord, PaymentRecord, AppUser } from '../types';
+import { NetworkSettings, POSPoint, SalesRecord, PaymentRecord, AppUser, NetworkTenant } from '../types';
 import { NavView } from './Sidebar';
 import { ROLE_DEFINITIONS, hasPermission } from '../utils/permissions';
 
@@ -30,6 +32,9 @@ interface HeaderProps {
   setCurrentTab: (tab: NavView) => void;
   settings?: NetworkSettings;
   activeUser?: AppUser;
+  tenants?: NetworkTenant[];
+  selectedTenantFilter?: string;
+  onSelectTenantFilter?: (tenantId: string) => void;
   pendingOrdersCount?: number;
   onToggleSidebar: () => void;
   onOpenGlobalSearch?: () => void;
@@ -50,6 +55,9 @@ export const Header: React.FC<HeaderProps> = ({
   setCurrentTab,
   settings,
   activeUser,
+  tenants = [],
+  selectedTenantFilter = 'all',
+  onSelectTenantFilter,
   pendingOrdersCount = 0,
   onToggleSidebar,
   onOpenGlobalSearch,
@@ -194,6 +202,27 @@ export const Header: React.FC<HeaderProps> = ({
                     {(totalDebt ?? 0).toLocaleString()} {safeSettings.currencySymbol}
                   </span>
                 </div>
+              </div>
+            )}
+
+            {/* SaaS Master Tenant Filter Dropdown */}
+            {activeUser?.role === 'system_owner' && onSelectTenantFilter && tenants.length > 0 && (
+              <div className="flex items-center gap-1.5 bg-slate-950/80 px-2 py-1 rounded-xl border border-indigo-500/30 text-xs shadow-inner">
+                <Building2 className="w-4 h-4 text-indigo-400 shrink-0" />
+                <span className="text-slate-400 font-semibold hidden lg:inline text-[11px]">معاينة:</span>
+                <select
+                  value={selectedTenantFilter}
+                  onChange={(e) => onSelectTenantFilter(e.target.value)}
+                  className="bg-slate-900 text-indigo-300 border border-slate-700/80 rounded-lg px-2 py-1 text-xs font-bold focus:outline-none focus:border-indigo-500 cursor-pointer"
+                  title="تصفية وعزل بيانات شبكة محددة لمالك النظام"
+                >
+                  <option value="all">🏢 كافة الشبكات (نظرة شاملة)</option>
+                  {tenants.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      🌐 {t.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
 
