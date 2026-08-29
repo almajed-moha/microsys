@@ -18,6 +18,7 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<NetworkTenant | null>(null);
+  const [deleteConfirmTenant, setDeleteConfirmTenant] = useState<NetworkTenant | null>(null);
 
   const handleOpenModal = (tenant: NetworkTenant | null = null) => {
     setEditingTenant(tenant);
@@ -45,6 +46,48 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
           onClose={handleCloseModal}
         />
       )}
+      
+      {deleteConfirmTenant && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-12 h-12 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-500 shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-white">حذف الشبكة</h3>
+                <p className="text-sm text-slate-400 mt-1">هل أنت متأكد من رغبتك في حذف شبكة "{deleteConfirmTenant.name}"؟</p>
+              </div>
+            </div>
+            
+            <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4 mb-6">
+              <p className="text-sm text-rose-400 font-bold flex items-start gap-2">
+                <ShieldAlert className="w-5 h-5 shrink-0" />
+                <span>تحذير: سيتم حذف جميع حسابات المستخدمين المرتبطة بهذه الشبكة بشكل نهائي ولا يمكن التراجع عن هذا الإجراء.</span>
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirmTenant(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold transition"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={() => {
+                  onDeleteTenant?.(deleteConfirmTenant.id);
+                  setDeleteConfirmTenant(null);
+                }}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold transition shadow-lg shadow-rose-600/20"
+              >
+                نعم، احذف الشبكة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -141,11 +184,7 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
                         إدارة
                       </button>
                       <button 
-                        onClick={() => {
-                          if(window.confirm('هل أنت متأكد من حذف هذه الشبكة؟ سيتم حذف جميع المستخدمين المرتبطين بها بشكل نهائي.')) {
-                            onDeleteTenant?.(tenant.id);
-                          }
-                        }}
+                        onClick={() => setDeleteConfirmTenant(tenant)}
                         className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-xs font-bold transition border border-rose-500/20"
                         title="حذف الشبكة"
                       >

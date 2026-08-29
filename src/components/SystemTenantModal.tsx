@@ -13,10 +13,10 @@ export const SystemTenantModal: React.FC<SystemTenantModalProps> = ({
   onSave,
   onClose,
 }) => {
-  const [formData, setFormData] = useState<Partial<NetworkTenant>>({
+  const [formData, setFormData] = useState<Partial<NetworkTenant> & { adminPassword?: string }>({
     id: `net-${Date.now()}`,
     name: '',
-    adminUsername: 'admin',
+    adminUsername: '',
     status: 'active',
     createdAt: new Date().toISOString().split('T')[0],
     settings: {

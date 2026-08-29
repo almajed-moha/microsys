@@ -406,25 +406,28 @@ export default function App() {
         localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
       }
     } else {
+      const adminExists = users.some(u => u.username.toLowerCase() === tenantToSave.adminUsername.toLowerCase());
+      if (adminExists) {
+        alert('اسم المستخدم لمدير الشبكة محجوز أو موجود مسبقاً، يرجى اختيار اسم آخر.');
+        return;
+      }
+
       updatedTenants = [...tenants, tenantToSave];
       
-      const adminExists = users.some(u => u.username === tenantToSave.adminUsername);
-      if (!adminExists) {
-        const newAdmin: AppUser = {
-          id: `user-${Date.now()}`,
-          networkId: tenantToSave.id,
-          name: `مدير ${tenantToSave.name}`,
-          username: tenantToSave.adminUsername,
-          password: adminPassword || 'adminpassword',
-          role: 'super_admin',
-          status: 'active',
-          permissions: getRoleDefaultPermissions('super_admin'),
-          createdAt: new Date().toISOString().split('T')[0],
-        };
-        const updatedUsers = [...users, newAdmin];
-        setUsers(updatedUsers);
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
-      }
+      const newAdmin: AppUser = {
+        id: `user-${Date.now()}`,
+        networkId: tenantToSave.id,
+        name: `مدير ${tenantToSave.name}`,
+        username: tenantToSave.adminUsername,
+        password: adminPassword || 'adminpassword',
+        role: 'super_admin',
+        status: 'active',
+        permissions: getRoleDefaultPermissions('super_admin'),
+        createdAt: new Date().toISOString().split('T')[0],
+      };
+      const updatedUsers = [...users, newAdmin];
+      setUsers(updatedUsers);
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
     }
     setTenants(updatedTenants);
     localStorage.setItem('mikrotik_pos_tenants', JSON.stringify(updatedTenants));
@@ -1298,6 +1301,16 @@ export default function App() {
     setIsLoggedIn(true);
     setIsLoginModalOpen(false);
     setActiveView(targetView);
+
+    if (user.networkId) {
+      const userTenant = tenants.find(t => t.id === user.networkId);
+      if (userTenant) {
+        setSettings(userTenant.settings);
+      }
+    } else {
+      // For master user, reset to default network settings
+      setSettings(defaultNetworkSettings);
+    }
 
     // High-visibility Feedback Banner
     setUserLoginFeedback({
