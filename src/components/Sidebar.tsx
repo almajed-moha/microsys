@@ -26,6 +26,7 @@ import {
   LogIn,
   LogOut,
   ShoppingBag,
+  Server,
 } from 'lucide-react';
 import {
   NetworkSettings,
@@ -42,6 +43,7 @@ import {
 import { hasPermission, ROLE_DEFINITIONS } from '../utils/permissions';
 
 export type NavView =
+  | 'system_tenants'
   | 'dashboard'
   | 'mikrotik'
   | 'invoices'
@@ -147,6 +149,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const pendingOrdersCount = counts?.pendingOrders ?? orders?.filter((o) => o.status === 'pending').length ?? 0;
 
   const allNavItems = [
+    {
+      id: 'system_tenants' as NavView,
+      permissionModule: 'systemTenants' as const,
+      label: 'إدارة الشبكات المشتركة',
+      icon: Server,
+      badge: 'SaaS',
+      color: 'text-fuchsia-400',
+      activeBg: 'bg-fuchsia-600 text-white shadow-lg shadow-fuchsia-600/30',
+    },
     {
       id: 'dashboard' as NavView,
       permissionModule: 'dashboard' as const,

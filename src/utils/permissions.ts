@@ -30,6 +30,16 @@ export interface RoleMeta {
 }
 
 export const ROLE_DEFINITIONS: Record<UserRole, RoleMeta> = {
+  system_owner: {
+    role: 'system_owner',
+    title: 'مالك النظام (System Owner)',
+    badge: 'مالك النظام',
+    description: 'صلاحيات عليا للتحكم بالشبكات (Tenants) وإضافة مدراء للشبكات.',
+    color: 'text-indigo-400',
+    bgLight: 'bg-indigo-500/10',
+    borderLight: 'border-indigo-500/30',
+    icon: 'Server',
+  },
   super_admin: {
     role: 'super_admin',
     title: 'المدير العام (Super Admin)',
@@ -205,6 +215,10 @@ export function createFullPermissions(): UserPermissions {
       resetDatabase: true,
       useAIAssistant: true,
     },
+    systemTenants: {
+      view: true,
+      manage: true,
+    },
   };
 }
 
@@ -297,13 +311,22 @@ export function createEmptyPermissions(): UserPermissions {
       resetDatabase: false,
       useAIAssistant: false,
     },
+    systemTenants: {
+      view: false,
+      manage: false,
+    },
   };
 }
 
 export function getRoleDefaultPermissions(role: UserRole): UserPermissions {
   switch (role) {
-    case 'super_admin':
+    case 'system_owner':
       return createFullPermissions();
+
+    case 'super_admin':
+      const perms = createFullPermissions();
+      perms.systemTenants = { view: false, manage: false };
+      return perms;
 
     case 'accountant':
       return {
@@ -1047,7 +1070,8 @@ export function hasPermission(
   action?: string
 ): boolean {
   if (!user) return false;
-  if (user.role === 'super_admin') return true;
+  if (user.role === 'system_owner') return true;
+  if (user.role === 'super_admin' && module !== 'systemTenants') return true;
 
   const modulePerms = user.permissions?.[module];
   if (!modulePerms) return false;

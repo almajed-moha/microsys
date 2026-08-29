@@ -1,0 +1,151 @@
+import React, { useState, useEffect } from 'react';
+import { Server, Save, X } from 'lucide-react';
+import { NetworkTenant } from '../types';
+
+interface SystemTenantModalProps {
+  tenant: NetworkTenant | null;
+  onSave: (tenant: NetworkTenant) => void;
+  onClose: () => void;
+}
+
+export const SystemTenantModal: React.FC<SystemTenantModalProps> = ({
+  tenant,
+  onSave,
+  onClose,
+}) => {
+  const [formData, setFormData] = useState<Partial<NetworkTenant>>({
+    id: `net-${Date.now()}`,
+    name: '',
+    adminUsername: 'admin',
+    status: 'active',
+    createdAt: new Date().toISOString().split('T')[0],
+    settings: {
+      networkName: '',
+      networkSlogan: '',
+      currency: 'YER',
+      currencySymbol: 'ر.ي',
+      hotspotDns: 'wifi.net',
+      loginPageUrl: 'http://wifi.net/login',
+      supportPhone: '',
+      whatsappNumber: '',
+      autoReconciliation: true,
+      enableQrCodeOnCards: true,
+      themeMode: 'dark',
+    }
+  });
+
+  useEffect(() => {
+    if (tenant) {
+      setFormData(tenant);
+    }
+  }, [tenant]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name || !formData.adminUsername) return;
+    onSave(formData as NetworkTenant);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+          <h3 className="text-lg font-black text-white flex items-center gap-2">
+            <Server className="w-5 h-5 text-indigo-400" />
+            <span>{tenant ? 'تعديل بيانات الشبكة' : 'إضافة شبكة جديدة'}</span>
+          </h3>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div>
+            <label className="block text-slate-300 text-sm font-bold mb-1.5">
+              اسم الشبكة (Tenant Name):
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.name || ''}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value, settings: { ...formData.settings!, networkName: e.target.value } })}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+              placeholder="مثال: شبكة الفضاء اللاسلكية"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-300 text-sm font-bold mb-1.5">
+              معرف الشبكة (ID) <span className="text-slate-500 text-xs font-normal">- يجب أن يكون فريداً وبالإنجليزية</span>
+            </label>
+            <input
+              type="text"
+              required
+              disabled={!!tenant}
+              value={formData.id || ''}
+              onChange={(e) => setFormData({ ...formData, id: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono disabled:opacity-50 text-left"
+              dir="ltr"
+              placeholder="e.g. net-alfadaa"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-300 text-sm font-bold mb-1.5">
+              اسم مستخدم المدير (Super Admin Username)
+            </label>
+            <input
+              type="text"
+              required
+              disabled={!!tenant}
+              value={formData.adminUsername || ''}
+              onChange={(e) => setFormData({ ...formData, adminUsername: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono disabled:opacity-50 text-left"
+              dir="ltr"
+              placeholder="e.g. admin_alfadaa"
+            />
+            {!tenant && (
+              <p className="text-xs text-indigo-400 mt-1">
+                كلمة المرور الافتراضية ستكون: adminpassword
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-slate-300 text-sm font-bold mb-1.5">
+              حالة الاشتراك:
+            </label>
+            <select
+              value={formData.status || 'active'}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value as 'active' | 'suspended' })}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value="active">نشط (Active)</option>
+              <option value="suspended">موقوف (Suspended)</option>
+            </select>
+          </div>
+
+          <div className="pt-4 flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold transition"
+            >
+              إلغاء
+            </button>
+            <button
+              type="submit"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition shadow-lg shadow-indigo-600/20"
+            >
+              <Save className="w-4 h-4" />
+              <span>حفظ</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};

@@ -368,6 +368,15 @@ export interface DhcpLease {
   expiresAfter?: string;
 }
 
+export interface NetworkTenant {
+  id: string;
+  name: string;
+  adminUsername: string;
+  status: 'active' | 'suspended';
+  createdAt: string;
+  settings: NetworkSettings;
+}
+
 export interface NetworkSettings {
   networkName: string; // اسم الشبكة الرئيسي
   networkSlogan: string;
@@ -398,6 +407,7 @@ export interface POSCardInventory {
 // ==========================================
 
 export type UserRole =
+  | 'system_owner'      // مالك النظام (مدير كل الشبكات)
   | 'super_admin'       // المدير العام (كامل الصلاحيات)
   | 'accountant'        // المحاسب المالي
   | 'sales_agent'       // مندوب التوزيع والمبيعات
@@ -497,6 +507,11 @@ export interface UsersAndPermissionsModulePermissions {
   switchActiveUser: boolean;      // التبديل وتجربة المستخدمين
 }
 
+export interface SystemTenantsPermissions {
+  view: boolean;                  // عرض الشبكات (Tenants)
+  manage: boolean;                // إضافة وتعديل الشبكات
+}
+
 export interface SettingsPermissions {
   view: boolean;                  // فتح نافذة الإعدادات
   editNetworkProfile: boolean;    // تعديل بيانات وشعار وأرقام الشبكة
@@ -517,10 +532,12 @@ export interface UserPermissions {
   mikrotik: MikrotikPermissions;
   usersAndPermissions: UsersAndPermissionsModulePermissions;
   settings: SettingsPermissions;
+  systemTenants?: SystemTenantsPermissions;
 }
 
 export interface AppUser {
   id: string;
+  networkId?: string;             // معرف الشبكة (للتمييز بين الشبكات في وضع SaaS)
   name: string;                   // الاسم الكامل للمستخدم
   username: string;               // اسم الدخول (e.g. admin, accountant, sales1)
   password?: string;              // كلمة المرور

@@ -31,3 +31,5 @@ export { POSPortalView } from './POSPortalView';
 export { OrdersManagementView } from './OrdersManagementView';
 export { ChangePasswordModal } from './ChangePasswordModal';
 
+export { SystemTenantsView } from './SystemTenantsView';
+export { SystemTenantModal } from './SystemTenantModal';

@@ -1419,7 +1419,35 @@ export const initialInvoices: InvoiceRecord[] = [
   },
 ];
 
+export const initialTenants: NetworkTenant[] = [
+  {
+    id: "net-alfadaa",
+    name: "شبكة الفضاء اللاسلكية",
+    adminUsername: "admin",
+    status: "active",
+    createdAt: "2026-01-01",
+    settings: initialNetworkSettings,
+  }
+];
+
+export const mockTenants = initialTenants;
+
 export const initialUsers: AppUser[] = [
+  {
+    id: "user-system-owner",
+    networkId: "system",
+    name: "م. ماجد الورد (مالك النظام)",
+    username: "master",
+    password: "masterpassword",
+    pinCode: "0000",
+    role: "system_owner",
+    customRoleName: "المالك لـ SaaS",
+    avatar: "🏢",
+    avatarBgColor: "bg-indigo-600",
+    status: "active",
+    permissions: getRoleDefaultPermissions("system_owner"),
+    createdAt: "2025-12-01",
+  },
   {
     id: "user-admin",
     name: "م. ماجد الورد",

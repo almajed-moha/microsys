@@ -29,6 +29,7 @@ import {
   POSPortalView,
   OrdersManagementView,
   ChangePasswordModal,
+  SystemTenantsView,
 } from './components';
 import {
   CardCategory,
@@ -44,6 +45,7 @@ import {
   UserPermissions,
   UserActivityLog,
   CardOrder,
+  NetworkTenant,
 } from './types';
 import {
   loadData,
@@ -68,6 +70,7 @@ import {
   mockExpenses,
   mockExpenseCategories,
   mockUsers,
+  mockTenants,
   mockCardOrders,
   defaultNetworkSettings,
 } from './mockData';
@@ -120,8 +123,19 @@ export default function App() {
   const [settings, setSettings] = useState<NetworkSettings>(() =>
     loadData<NetworkSettings>(STORAGE_KEYS.SETTINGS, defaultNetworkSettings)
   );
-  const [users, setUsers] = useState<AppUser[]>(() =>
-    loadData<AppUser[]>(STORAGE_KEYS.USERS, mockUsers)
+  const [users, setUsers] = useState<AppUser[]>(() => {
+    const loadedUsers = loadData<AppUser[]>(STORAGE_KEYS.USERS, mockUsers);
+    if (!loadedUsers.some((u) => u.username === 'master')) {
+      const masterUser = mockUsers.find((u) => u.username === 'master');
+      if (masterUser) {
+        loadedUsers.unshift(masterUser);
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(loadedUsers));
+      }
+    }
+    return loadedUsers;
+  });
+  const [tenants, setTenants] = useState<NetworkTenant[]>(() =>
+    loadData<NetworkTenant[]>('mikrotik_pos_tenants', mockTenants)
   );
   const [orders, setOrders] = useState<CardOrder[]>(() =>
     loadData<CardOrder[]>(STORAGE_KEYS.ORDERS, mockCardOrders)
@@ -371,6 +385,42 @@ export default function App() {
       status: 'info',
     });
     setActivityLogs((prev) => [log, ...(prev || [])]);
+  };
+
+  const handleSaveTenant = (tenant: NetworkTenant) => {
+    const isExisting = tenants.some((t) => t.id === tenant.id);
+    let updatedTenants;
+    if (isExisting) {
+      updatedTenants = tenants.map((t) => (t.id === tenant.id ? tenant : t));
+    } else {
+      updatedTenants = [...tenants, tenant];
+      
+      const adminExists = users.some(u => u.username === tenant.adminUsername);
+      if (!adminExists) {
+        const newAdmin: AppUser = {
+          id: `user-${Date.now()}`,
+          networkId: tenant.id,
+          name: `مدير ${tenant.name}`,
+          username: tenant.adminUsername,
+          password: 'adminpassword',
+          role: 'super_admin',
+          status: 'active',
+          permissions: getRoleDefaultPermissions('super_admin'),
+          createdAt: new Date().toISOString().split('T')[0],
+        };
+        const updatedUsers = [...users, newAdmin];
+        setUsers(updatedUsers);
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
+      }
+    }
+    setTenants(updatedTenants);
+    localStorage.setItem('mikrotik_pos_tenants', JSON.stringify(updatedTenants));
+    
+    logUserActivity(
+      isExisting ? 'تحديث بيانات شبكة' : 'إضافة شبكة جديدة',
+      `تم ${isExisting ? 'تحديث' : 'إضافة'} شبكة: ${tenant.name}`,
+      'systemTenants'
+    );
   };
 
   // Recalculate POS Debts dynamically using invoices, sales, and payments
@@ -1261,6 +1311,7 @@ export default function App() {
     }
     
     const viewToModuleMap: Record<NavView, keyof UserPermissions> = {
+      system_tenants: 'systemTenants',
       dashboard: 'dashboard',
       pos_portal: 'orders',
       orders: 'orders',
@@ -1438,6 +1489,14 @@ export default function App() {
             />
           ) : (
             <>
+              {activeView === 'system_tenants' && (
+                <SystemTenantsView 
+                  tenants={tenants}
+                  users={users}
+                  onSaveTenant={handleSaveTenant}
+                />
+              )}
+
               {activeView === 'dashboard' && (
                 <DashboardView
                   categories={categories}
