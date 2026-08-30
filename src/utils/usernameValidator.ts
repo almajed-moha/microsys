@@ -72,7 +72,8 @@ export function checkUsernameAvailability(
     (u) =>
       u.username?.toLowerCase() === username &&
       u.id !== options?.excludeUserId &&
-      !(options?.excludePosId && u.posPointId === options.excludePosId)
+      !(options?.excludePosId && u.posPointId === options.excludePosId) &&
+      !(options?.excludeTenantId && u.networkId === options.excludeTenantId && u.role === 'super_admin')
   );
 
   if (conflictingUser) {

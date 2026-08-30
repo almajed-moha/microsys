@@ -451,15 +451,15 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
             <button
               onClick={handleExportPdf}
               disabled={isExportingPdf || isSharingWhatsApp || isPrinting}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
-              title={`تحميل كشف الحساب كملف PDF بصيغة ${paperFormat === 'a4' ? 'A4' : 'كاشير 80mm'}`}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 disabled:opacity-50 text-white rounded-xl text-sm font-black transition-all shadow-lg shadow-rose-600/20 cursor-pointer border border-rose-500/50"
+              title={`تصدير كشف الحساب كملف PDF بصيغة ${paperFormat === 'a4' ? 'A4' : 'كاشير 80mm'}`}
             >
               {isExportingPdf ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <FileDown className="w-3.5 h-3.5" />
               )}
-              <span>تحميل PDF</span>
+              <span>تصدير PDF</span>
             </button>
 
             {/* WhatsApp Share */}
@@ -907,7 +907,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                           const stats = fullInventory.byCategory[cat.id] || { dispatched: 0, sold: 0, remaining: 0 };
                           if (stats.dispatched === 0 && stats.sold === 0) return null;
                           return (
-                            <tr key={cat.id} className="hover:bg-slate-50 transition">
+                            <tr key={cat.id} className="hover:bg-slate-50 transition break-inside-avoid">
                               <td className="py-2 px-3 font-bold text-slate-950 font-sans">{cat.name}</td>
                               <td className="py-2 px-3 text-slate-700">{cat.retailPrice} {settings.currencySymbol}</td>
                               <td className="py-2 px-3 text-slate-700">{cat.wholesalePrice} {settings.currencySymbol}</td>
@@ -951,7 +951,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                       <tbody className="divide-y divide-slate-200 bg-white">
                         {/* Opening Balance Row if dateFrom is filtered */}
                         {dateFrom && (
-                          <tr className="bg-slate-50 font-bold text-slate-800">
+                          <tr className="bg-slate-50 font-bold text-slate-800 break-inside-avoid">
                             <td className="py-2 px-2 text-center font-mono text-[11px]">-</td>
                             <td className="py-2 px-3 font-mono text-[11px]">{dateFrom}</td>
                             <td className="py-2 px-3 font-sans text-indigo-900" colSpan={3}>
@@ -967,7 +967,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
 
                         {/* Transactions Rows */}
                         {ledgerData.periodTxs.map((row, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50 transition">
+                          <tr key={idx} className="hover:bg-slate-50 transition break-inside-avoid">
                             <td className="py-2 px-2 text-center font-mono text-slate-500 text-[11px]">{idx + 1}</td>
                             <td className="py-2 px-3 font-mono text-slate-700 font-medium whitespace-nowrap">{row.date}</td>
                             <td className="py-2 px-3 text-slate-900 font-semibold">{row.description}</td>

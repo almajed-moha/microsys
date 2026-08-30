@@ -798,3 +798,83 @@ export function exportSalesToCSV(
   const csvContent = [headerRow, ...csvRows].join('\n');
   downloadFile(csvContent, filename || `تفاصيل_المبيعات_${todayStr}.csv`, 'text/csv');
 }
+
+
+export function exportPosDebtsToExcel(
+  posPoints: POSPoint[],
+  currency: string = 'ر.ي',
+  filename?: string
+): void {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const workbook = XLSX.utils.book_new();
+
+  const rows = posPoints.map((pos) => {
+    const remainingLimit = (pos.maxDebtLimit || 0) - (pos.currentDebt || 0);
+    return {
+      'اسم نقطة البيع': pos.name,
+      'المسؤول': pos.managerName,
+      'الهاتف': pos.phone,
+      'إجمالي الديون الحالية': `${(pos.currentDebt || 0)} ${currency}`,
+      'سقف الدين المسموح': pos.maxDebtLimit > 0 ? `${pos.maxDebtLimit} ${currency}` : 'غير محدود',
+      'المساحة المتبقية للدين': pos.maxDebtLimit > 0 ? `${remainingLimit} ${currency}` : '-',
+      'إجمالي المستلم': `${pos.totalCardsDelivered || 0} كارت`,
+      'إجمالي المباع': `${pos.totalCardsSold || 0} كارت`,
+      'إجمالي المسدد نقداً': `${pos.totalCashPaid || 0} ${currency}`,
+      'حالة النقطة': pos.status === 'active' ? 'نشط' : pos.status === 'inactive' ? 'خامل' : 'محظور',
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  
+  // RTL Support
+  if (!ws['!views']) ws['!views'] = [];
+  ws['!views'].push({ rightToLeft: true });
+
+  const colWidths = [
+    { wch: 25 }, { wch: 20 }, { wch: 15 }, { wch: 20 }, 
+    { wch: 20 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 15 }
+  ];
+  ws['!cols'] = colWidths;
+
+  XLSX.utils.book_append_sheet(workbook, ws, 'أرصدة وديون الموزعين');
+
+  const finalName = filename || `ارصدة_الديون_${todayStr}.xlsx`;
+  XLSX.writeFile(workbook, finalName);
+}
+
+export function exportPosDebtsToCSV(
+  posPoints: POSPoint[],
+  currency: string = 'ر.ي',
+  filename?: string
+): void {
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const data = posPoints.map((pos) => {
+    const remainingLimit = (pos.maxDebtLimit || 0) - (pos.currentDebt || 0);
+    return {
+      'اسم نقطة البيع': pos.name,
+      'المسؤول': pos.managerName,
+      'الهاتف': pos.phone,
+      'إجمالي الديون الحالية': pos.currentDebt || 0,
+      'سقف الدين المسموح': pos.maxDebtLimit > 0 ? pos.maxDebtLimit : 'غير محدود',
+      'المساحة المتبقية للدين': pos.maxDebtLimit > 0 ? remainingLimit : '-',
+      'إجمالي المستلم': pos.totalCardsDelivered || 0,
+      'إجمالي المباع': pos.totalCardsSold || 0,
+      'إجمالي المسدد نقداً': pos.totalCashPaid || 0,
+      'حالة النقطة': pos.status === 'active' ? 'نشط' : pos.status === 'inactive' ? 'خامل' : 'محظور',
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(data);
+  const csvStr = XLSX.utils.sheet_to_csv(ws);
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + csvStr], { type: 'text/csv;charset=utf-8;' });
+  const finalName = filename || `ارصدة_الديون_${todayStr}.csv`;
+  
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = finalName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}

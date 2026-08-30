@@ -12,6 +12,7 @@ import {
   RotateCcw,
   Receipt,
   FileText,
+  FileSpreadsheet,
   Calculator,
   PieChart as PieIcon,
   BarChart3
@@ -58,6 +59,7 @@ interface DashboardViewProps {
   onOpenAI: () => void;
   onPrintSaleReceipt: (sale: SalesRecord) => void;
   onOpenIncomeStatement?: () => void;
+  onOpenFinancialExport?: () => void;
   canViewIncomeStatement?: boolean;
 }
 
@@ -76,6 +78,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onSelectPOSForStatement,
   onOpenAI,
   onOpenIncomeStatement,
+  onOpenFinancialExport,
   canViewIncomeStatement = true,
 }) => {
   const currency = settings?.currencySymbol || 'ر.ي';
@@ -257,6 +260,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap w-full md:w-auto">
+          {onOpenFinancialExport && (
+            <button
+              onClick={onOpenFinancialExport}
+              className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-sm font-bold shadow-lg shadow-teal-600/25 transition cursor-pointer"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>تصدير التقارير (Excel)</span>
+            </button>
+          )}
           {canViewIncomeStatement && onOpenIncomeStatement && (
             <button
               onClick={onOpenIncomeStatement}

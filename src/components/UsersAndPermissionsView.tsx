@@ -153,9 +153,13 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
       effectiveAllUsers,
       posPoints,
       tenants,
-      { excludeUserId: editingUser?.id }
+      { 
+        excludeUserId: editingUser?.id,
+        excludeTenantId: editingUser?.networkId,
+        excludePosId: editingUser?.posPointId
+      }
     );
-  }, [formUsername, effectiveAllUsers, posPoints, tenants, editingUser?.id]);
+  }, [formUsername, effectiveAllUsers, posPoints, tenants, editingUser?.id, editingUser?.networkId, editingUser?.posPointId]);
 
   const handleAutoGenerateUserUsername = () => {
     const rolePrefix = formRole === 'super_admin' ? 'admin' : formRole.replace('_', '');

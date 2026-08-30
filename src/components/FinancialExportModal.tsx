@@ -37,6 +37,8 @@ import {
   exportExpensesToCSV,
   exportSalesToExcel,
   exportSalesToCSV,
+  exportPosDebtsToExcel,
+  exportPosDebtsToCSV,
 } from '../utils/exportAccounting';
 
 interface FinancialExportModalProps {
@@ -170,6 +172,16 @@ export const FinancialExportModal: React.FC<FinancialExportModalProps> = ({
     }
   };
 
+  const handleExportDebtsOnly = (format: 'xlsx' | 'csv') => {
+    if (format === 'xlsx') {
+      exportPosDebtsToExcel(posPoints, currency);
+    } else {
+      exportPosDebtsToCSV(posPoints, currency);
+    }
+    setSuccessMessage(`تم تنزيل سجل أرصدة وديون الموزعين بصيغة (${format.toUpperCase()}) بنجاح!`);
+    setTimeout(() => setSuccessMessage(null), 3000);
+  };
+
   const handleExportInvoicesOnly = (format: 'xlsx' | 'csv') => {
     const matchingInvoices = invoices.filter((inv) => {
       if (!inv || inv.status === 'cancelled') return false;
@@ -297,7 +309,7 @@ export const FinancialExportModal: React.FC<FinancialExportModalProps> = ({
             </div>
 
             {/* Custom Dates & POS Filter */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
               {period === 'custom' && (
                 <>
                   <div>
@@ -522,6 +534,33 @@ export const FinancialExportModal: React.FC<FinancialExportModalProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                                    {/* Debts */}
+                  <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
+                    <div className="flex items-center gap-2 text-slate-800 font-bold text-xs">
+                      <Store className="w-4 h-4 text-indigo-600" />
+                      <span>ديون وأرصدة الموزعين ({posPoints.length})</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      تفاصيل ديون وأرصدة ومسحوبات نقاط البيع والموزعين.
+                    </p>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => handleExportDebtsOnly('xlsx')}
+                        className="flex-1 py-1.5 px-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        Excel
+                      </button>
+                      <button
+                        onClick={() => handleExportDebtsOnly('csv')}
+                        className="flex-1 py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        CSV
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Invoices */}
                   <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
                     <div className="flex items-center gap-2 text-slate-800 font-bold text-xs">
@@ -579,7 +618,7 @@ export const FinancialExportModal: React.FC<FinancialExportModalProps> = ({
                   {/* Expenses */}
                   <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
                     <div className="flex items-center gap-2 text-slate-800 font-bold text-xs">
-                      <Receipt className="w-4 h-4 text-rose-600" />
+                      <Receipt className="w-4 h-4 text-indigo-600" />
                       <span>سجل المصروفات ({filteredExpensesCount})</span>
                     </div>
                     <p className="text-[11px] text-slate-500">
@@ -588,7 +627,7 @@ export const FinancialExportModal: React.FC<FinancialExportModalProps> = ({
                     <div className="flex gap-2 pt-1">
                       <button
                         onClick={() => handleExportExpensesOnly('xlsx')}
-                        className="flex-1 py-1.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition"
+                        className="flex-1 py-1.5 px-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition"
                       >
                         <FileSpreadsheet className="w-3.5 h-3.5" />
                         Excel
