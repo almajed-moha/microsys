@@ -36,6 +36,7 @@ import {
   AppUser,
   InvoiceRecord,
 } from '../types';
+import { RecordAuditInfo } from './RecordAuditInfo';
 
 interface OrdersManagementViewProps {
   orders: CardOrder[];
@@ -113,14 +114,20 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
   const filteredOrders = useMemo(() => {
     return orders
       .filter((order) => {
+        const targetPos = posPoints.find((p) => p.id === order.posPointId);
+        const posName = targetPos?.name || order.posPointName || '';
+        const posPhone = targetPos?.phone || order.posPhone || '';
+        const posManager = targetPos?.managerName || order.posManagerName || '';
+
         const matchStatus = statusFilter === 'all' || order.status === statusFilter;
         const matchPriority = priorityFilter === 'all' || order.priority === priorityFilter;
         const matchPos = selectedPosFilter === 'all' || order.posPointId === selectedPosFilter;
         const matchSearch =
           searchQuery === '' ||
           (order.orderNumber || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (order.posPointName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (order.posPhone || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          posName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          posPhone.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          posManager.toLowerCase().includes(searchQuery.toLowerCase()) ||
           (order.notes && order.notes.toLowerCase().includes(searchQuery.toLowerCase()));
 
         return matchStatus && matchPriority && matchPos && matchSearch;
@@ -131,25 +138,28 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
         if (b.priority === 'urgent' && a.priority !== 'urgent') return 1;
         return new Date(b.timestamp || '').getTime() - new Date(a.timestamp || '').getTime();
       });
-  }, [orders, statusFilter, priorityFilter, selectedPosFilter, searchQuery]);
+  }, [orders, posPoints, statusFilter, priorityFilter, selectedPosFilter, searchQuery]);
 
   // Handle WhatsApp Notification to POS Point
   const handleWhatsAppPOS = (order: CardOrder, customMsg?: string) => {
-    const rawNumber = (order.posPhone || '').replace(/[^0-9]/g, '');
+    const targetPos = posPoints.find((p) => p.id === order.posPointId);
+    const phone = targetPos?.phone || order.posPhone || '';
+    const posName = targetPos?.name || order.posPointName || 'الموزع';
+    const rawNumber = phone.replace(/[^0-9]/g, '');
     let fullNumber = rawNumber;
     if (!fullNumber.startsWith('967') && fullNumber.length === 9) {
       fullNumber = `967${fullNumber}`;
     }
 
-    let text = `مرحباً ${order.posPointName || ''}\nإدارة ${settings.networkName}:\n`;
+    let text = `مرحباً ${posName}\nإدارة ${settings.networkName}:\n`;
     if (customMsg) {
       text += customMsg;
     } else if (order.status === 'processing') {
-      text += `تم قبول وتجهيز طلب الكروت الخاص بكم رقم: ${order.orderNumber}\nالكمية: ${order.totalQuantity || 0} كارت بقيمة ${(order.totalWholesaleAmount || 0).toLocaleString()} ${settings.currencySymbol}\nسيتم التوصيل قريباً بإذن الله.`;
+      text += `تم قبول وتجهيز طلب الكروت الخاص بكم رقم: ${order.orderNumber}\nالكمية: ${order.totalQuantity || 0} كارت بقيمة ${(order.totalWholesaleAmount ?? 0).toLocaleString()} ${settings.currencySymbol}\nسيتم التوصيل قريباً بإذن الله.`;
     } else if (order.status === 'delivered') {
       text += `تم تسليم طلب الكروت رقم: ${order.orderNumber} بنجاح وإصدار الفاتورة.\nشكراً لتعاملكم معنا.`;
     } else {
-      text += `بخصوص طلب الكروت رقم: ${order.orderNumber}\nالكمية: ${order.totalQuantity || 0} كارت.`;
+      text += `بخصوص طلب الكروت رقم: ${order.orderNumber}\nالكمية: ${order.totalQuantity || 0} كارت بقيمة ${(order.totalWholesaleAmount ?? 0).toLocaleString()} ${settings.currencySymbol}\nالحالة: ${order.status === 'pending' ? 'قيد المراجعة والاعتماد' : order.status}`;
     }
 
     const encoded = encodeURIComponent(text);
@@ -398,9 +408,15 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
           {filteredOrders.map((order) => {
             const isExpanded = expandedOrderId === order.id;
             const targetPos = posPoints.find((p) => p.id === order.posPointId);
-            const currentDebt = targetPos?.currentDebt || order.currentDebtAtRequest || 0;
-            const maxDebt = targetPos?.maxDebtLimit || 0;
-            const isOverDebt = maxDebt > 0 && currentDebt + order.totalWholesaleAmount > maxDebt;
+            const posDisplayName = targetPos?.name || order.posPointName || 'نقطة بيع غير محددة';
+            const posDisplayManager = targetPos?.managerName || order.posManagerName || 'المسؤول';
+            const posDisplayPhone = targetPos?.phone || order.posPhone || '';
+            const posDisplayAddress = targetPos?.address || order.posAddress || '';
+            const currentDebt = targetPos?.currentDebt ?? order.currentDebtAtRequest ?? 0;
+            const maxDebt = targetPos?.maxDebtLimit ?? 0;
+            const totalQty = order.totalQuantity || order.items?.reduce((acc, it) => acc + (it.quantity || 0), 0) || 0;
+            const totalWholesale = order.totalWholesaleAmount ?? order.items?.reduce((acc, it) => acc + (it.totalWholesalePrice || ((it.quantity || 0) * (it.unitWholesalePrice || 0)) || 0), 0) ?? 0;
+            const isOverDebt = maxDebt > 0 && currentDebt + totalWholesale > maxDebt;
 
             return (
               <div
@@ -415,13 +431,16 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
                 <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                   {/* Left: POS Details & Order Number */}
                   <div className="flex items-start gap-3.5">
-                    <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-cyan-400 shrink-0">
+                    <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-cyan-400 shrink-0 shadow-inner">
                       <Store className="w-6 h-6" />
                     </div>
 
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-black text-white">{order.posPointName}</span>
+                        <span className="text-base font-black text-white">{posDisplayName}</span>
+                        <span className="text-xs text-indigo-300 font-medium px-2 py-0.5 rounded-md bg-indigo-950/60 border border-indigo-800/40">
+                          المسؤول: {posDisplayManager}
+                        </span>
                         <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-slate-300">
                           {order.orderNumber}
                         </span>
@@ -458,12 +477,14 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
                         )}
                       </div>
 
-                      {/* Sub details: Phone, Address, Date */}
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 mt-1.5">
-                        <span className="flex items-center gap-1">
-                          <Phone className="w-3.5 h-3.5 text-slate-500" />
-                          <span dir="ltr">{order.posPhone}</span>
-                        </span>
+                      {/* Sub details: Phone, Address, Date, Quantities, Debts */}
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 mt-2">
+                        {posDisplayPhone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="w-3.5 h-3.5 text-slate-500" />
+                            <span dir="ltr" className="text-slate-300">{posDisplayPhone}</span>
+                          </span>
+                        )}
                         <span>•</span>
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3.5 h-3.5 text-slate-500" />
@@ -471,19 +492,30 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
                         </span>
                         <span>•</span>
                         <span className="font-bold text-white">
-                          الكمية: {order.totalQuantity} كارت
+                          الكمية: {totalQty} كارت
                         </span>
                         <span>•</span>
                         <span className="font-bold text-cyan-400">
-                          القيمة: {(order.totalWholesaleAmount ?? 0).toLocaleString()} {settings.currencySymbol}
+                          القيمة: {(totalWholesale ?? 0).toLocaleString()} {settings.currencySymbol}
+                        </span>
+                        <span>•</span>
+                        <span className="flex items-center gap-1 font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                          المديونية الحالية: {(currentDebt ?? 0).toLocaleString()} {settings.currencySymbol}
                         </span>
 
                         {/* Debt warning indicator */}
                         {isOverDebt && (
-                          <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded-md bg-rose-500/15 text-rose-400 border border-rose-500/30 text-[10px] font-black">
                             ⚠️ سيتجاوز سقف الدين ({(currentDebt ?? 0).toLocaleString()} / {(maxDebt ?? 0).toLocaleString()})
                           </span>
                         )}
+
+                        <RecordAuditInfo
+                          audit={order}
+                          entityName={`طلب ${order.orderNumber}`}
+                          compact={true}
+                          showHistoryButton={true}
+                        />
                       </div>
                     </div>
                   </div>

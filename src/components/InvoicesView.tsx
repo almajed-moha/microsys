@@ -35,6 +35,7 @@ import { exportToCSV, downloadFile, generateNextInvoiceNumber } from '../utils/s
 import { InvoiceReceiptModal } from './InvoiceReceiptModal';
 import { AdvancedSearchBar, AdvancedFilterState } from './AdvancedSearchBar';
 import { exportInvoicesToExcel, exportInvoicesToCSV } from '../utils/exportAccounting';
+import { RecordAuditInfo } from './RecordAuditInfo';
 import {
   printElementDocument,
   exportElementToPdf
@@ -399,15 +400,13 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     showFeedback(`تم حذف الفاتورة رقم ${invNum} والتراجع عن أثرها المالي والمخزني ✅`);
   };
 
-  // Filter Invoices with Advanced Multi-criteria
-  const filteredInvoices = useMemo(() => {
+  // Base filtered invoices matching global criteria (date, POS, payment, search, amount)
+  const baseInvoices = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
     const now = new Date();
 
-    return invoices.filter((inv) => {
-      // Subtab filter & Transaction Type Filter
-      if (activeTab === 'sales' && inv.type !== 'sale') return false;
-      if (activeTab === 'returns' && inv.type !== 'return') return false;
+    return (invoices || []).filter((inv) => {
+      // Transaction Type Filter (if explicitly set in advanced filters)
       if (advancedFilters.transactionType !== 'all' && inv.type !== advancedFilters.transactionType) return false;
 
       // POS Filter
@@ -416,7 +415,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
       // Payment Type Filter
       if (advancedFilters.paymentType !== 'all' && inv.paymentType !== advancedFilters.paymentType) return false;
 
-      // Search Query across multiple fields (Invoice Number, POS Name, Notes, DelieveredBy, ReceivedBy, Items)
+      // Search Query across multiple fields (Invoice Number, POS Name, Notes, DeliveredBy, ReceivedBy, Items)
       if (advancedFilters.search.trim()) {
         const term = advancedFilters.search.toLowerCase();
         const matchesNumber = inv.invoiceNumber?.toLowerCase().includes(term);
@@ -470,20 +469,29 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
       }
 
       // Min and Max Wholesale Amount Filter
-      if (advancedFilters.minAmount && inv.totalWholesaleAmount < Number(advancedFilters.minAmount)) {
+      const amount = Number(inv.totalWholesaleAmount || 0);
+      if (advancedFilters.minAmount && amount < Number(advancedFilters.minAmount)) {
         return false;
       }
-      if (advancedFilters.maxAmount && inv.totalWholesaleAmount > Number(advancedFilters.maxAmount)) {
+      if (advancedFilters.maxAmount && amount > Number(advancedFilters.maxAmount)) {
         return false;
       }
 
       return true;
-    }).sort((a, b) => (b.timestamp || b.date).localeCompare(a.timestamp || a.date));
-  }, [invoices, activeTab, advancedFilters]);
+    });
+  }, [invoices, advancedFilters]);
 
-  // Aggregate Stats
+  // Tab-specific filtered invoices
+  const filteredInvoices = useMemo(() => {
+    return baseInvoices.filter((inv) => {
+      if (activeTab === 'sales' && inv.type !== 'sale') return false;
+      if (activeTab === 'returns' && inv.type !== 'return') return false;
+      return true;
+    }).sort((a, b) => (b.timestamp || b.date || '').localeCompare(a.timestamp || a.date || ''));
+  }, [baseInvoices, activeTab]);
+
+  // Aggregate Stats across base matching invoices (ensures Gross Sales, Returns, and Net Sales are always accurately calculated)
   const stats = useMemo(() => {
-    const totalCount = filteredInvoices.length;
     let salesCount = 0;
     let salesWholesaleTotal = 0;
     let salesCardsTotal = 0;
@@ -491,15 +499,17 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     let returnsWholesaleTotal = 0;
     let returnsCardsTotal = 0;
 
-    filteredInvoices.forEach((inv) => {
+    baseInvoices.forEach((inv) => {
+      const wholesale = Number(inv.totalWholesaleAmount || 0);
+      const qty = Number(inv.totalQuantity || 0);
       if (inv.type === 'sale') {
         salesCount++;
-        salesWholesaleTotal += inv.totalWholesaleAmount;
-        salesCardsTotal += inv.totalQuantity;
+        salesWholesaleTotal += wholesale;
+        salesCardsTotal += qty;
       } else {
         returnsCount++;
-        returnsWholesaleTotal += inv.totalWholesaleAmount;
-        returnsCardsTotal += inv.totalQuantity;
+        returnsWholesaleTotal += wholesale;
+        returnsCardsTotal += qty;
       }
     });
 
@@ -507,7 +517,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     const netCardsQuantity = salesCardsTotal - returnsCardsTotal;
 
     return {
-      totalCount,
+      totalCount: baseInvoices.length,
       salesCount,
       salesWholesaleTotal,
       salesCardsTotal,
@@ -517,7 +527,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
       netWholesaleAmount,
       netCardsQuantity,
     };
-  }, [filteredInvoices]);
+  }, [baseInvoices]);
 
   // Export CSV
   const handleExportCSV = () => {
@@ -709,11 +719,11 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
             </div>
           </div>
           <div className="text-2xl font-black font-mono text-emerald-400">
-            {stats.salesWholesaleTotal.toLocaleString()}{' '}
+            {(stats.salesWholesaleTotal ?? 0).toLocaleString()}{' '}
             <span className="text-xs text-slate-400 font-sans">{currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
-            {stats.salesCardsTotal.toLocaleString()} كارت مبيعات ({stats.salesCount} فاتورة)
+            {(stats.salesCardsTotal ?? 0).toLocaleString()} كارت مبيعات ({stats.salesCount || 0} فاتورة)
           </div>
         </div>
 
@@ -726,11 +736,11 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
             </div>
           </div>
           <div className="text-2xl font-black font-mono text-rose-400">
-            {stats.returnsWholesaleTotal.toLocaleString()}{' '}
+            {(stats.returnsWholesaleTotal ?? 0).toLocaleString()}{' '}
             <span className="text-xs text-slate-400 font-sans">{currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
-            {stats.returnsCardsTotal.toLocaleString()} كارت مرتجع ({stats.returnsCount} سند)
+            {(stats.returnsCardsTotal ?? 0).toLocaleString()} كارت مرتجع ({stats.returnsCount || 0} سند)
           </div>
         </div>
 
@@ -743,11 +753,11 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
             </div>
           </div>
           <div className="text-2xl font-black font-mono text-white">
-            {stats.netWholesaleAmount.toLocaleString()}{' '}
+            {(stats.netWholesaleAmount ?? 0).toLocaleString()}{' '}
             <span className="text-xs text-indigo-400 font-sans">{currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
-            صافي الكمية: {stats.netCardsQuantity.toLocaleString()} كارت
+            صافي الكمية: {(stats.netCardsQuantity ?? 0).toLocaleString()} كارت
           </div>
         </div>
 
@@ -797,7 +807,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
             </span>
           </div>
           <span className="text-xs text-slate-400">
-            صافي المبلغ: <strong className="text-indigo-400 font-mono">{stats.netWholesaleAmount.toLocaleString()} {currency}</strong>
+            صافي المبلغ: <strong className="text-indigo-400 font-mono">{(stats.netWholesaleAmount ?? 0).toLocaleString()} {currency}</strong>
           </span>
         </div>
 
@@ -830,8 +840,18 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                   const isReturn = inv.type === 'return';
                   return (
                     <tr key={inv.id} className="hover:bg-slate-800/40 transition">
-                      <td className="py-3 px-4 font-mono font-bold text-indigo-400">
-                        {inv.invoiceNumber}
+                      <td className="py-3 px-4">
+                        <div className="font-mono font-bold text-indigo-400">
+                          {inv.invoiceNumber}
+                        </div>
+                        <div className="mt-1">
+                          <RecordAuditInfo
+                            audit={inv}
+                            entityName={`فاتورة ${inv.invoiceNumber}`}
+                            compact={true}
+                            showHistoryButton={true}
+                          />
+                        </div>
                       </td>
                       <td className="py-3 px-4">
                         <span className={`inline-block px-2.5 py-1 rounded-lg text-[10px] font-bold ${
@@ -859,7 +879,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                             <div key={idx} className="flex items-center justify-between text-[11px] bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800">
                               <span className="font-bold text-slate-300 truncate max-w-[160px]">{item.categoryName}</span>
                               <span className="font-mono text-slate-400 text-[10px]">
-                                {item.quantity} كارت × {item.unitWholesalePrice.toLocaleString()} {currency}
+                                {item.quantity} كارت × {(item.unitWholesalePrice ?? 0).toLocaleString()} {currency}
                               </span>
                             </div>
                           ))}
@@ -870,7 +890,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                       </td>
                       <td className="py-3 px-4 text-center font-bold font-mono text-sm">
                         <span className={isReturn ? 'text-rose-400' : 'text-indigo-300'}>
-                          {isReturn ? '-' : ''}{inv.totalWholesaleAmount.toLocaleString()}{' '}
+                          {isReturn ? '-' : ''}{(inv.totalWholesaleAmount ?? 0).toLocaleString()}{' '}
                         </span>
                         <span className="text-[10px] text-slate-500 font-sans">{currency}</span>
                       </td>
@@ -1185,7 +1205,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                             </td>
                             {/* Calculated Total */}
                             <td className="py-2.5 px-3 text-center font-mono font-bold text-indigo-300">
-                              {rowTotal.toLocaleString()}
+                              {(rowTotal ?? 0).toLocaleString()}
                             </td>
                             {/* Serials */}
                             <td className="py-2.5 px-3">
@@ -1237,7 +1257,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                   <div>
                     <span className="text-slate-500 text-[11px] block">إجمالي قيمة الفاتورة (الجملة)</span>
                     <span className={`text-xl font-black font-mono ${createInvoiceType === 'return' ? 'text-rose-400' : 'text-indigo-400'}`}>
-                      {modalCalculations.totalWholesale.toLocaleString()} {currency}
+                      {(modalCalculations.totalWholesale ?? 0).toLocaleString()} {currency}
                     </span>
                   </div>
                 </div>
@@ -1396,7 +1416,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                           {inv.paymentType === 'cash' ? 'نقداً' : 'آجل'}
                         </td>
                         <td className="p-2 text-center font-mono font-bold text-slate-900">
-                          {inv.type === 'return' ? '-' : ''}{inv.totalWholesaleAmount.toLocaleString()}
+                          {inv.type === 'return' ? '-' : ''}{(inv.totalWholesaleAmount ?? 0).toLocaleString()}
                         </td>
                       </tr>
                     ))}
@@ -1411,7 +1431,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                       </td>
                       <td className="p-2.5 text-center"></td>
                       <td className="p-2.5 text-center font-mono font-black text-base text-indigo-800">
-                        {stats.netWholesaleAmount.toLocaleString()} {currency}
+                        {(stats.netWholesaleAmount ?? 0).toLocaleString()} {currency}
                       </td>
                     </tr>
                   </tfoot>

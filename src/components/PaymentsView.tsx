@@ -25,6 +25,7 @@ import {
 import { PaymentRecord, POSPoint, NetworkSettings } from '../types';
 import { exportToCSV, downloadFile } from '../utils/storage';
 import { exportElementToPdf } from '../utils/pdfExport';
+import { RecordAuditInfo } from './RecordAuditInfo';
 
 interface PaymentsViewProps {
   payments: PaymentRecord[];
@@ -416,8 +417,18 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   const pos = posPoints.find((point) => point.id === p.posPointId);
                   return (
                     <tr key={p.id} className="hover:bg-slate-800/40 transition">
-                      <td className="py-3 px-4 font-mono font-bold text-indigo-300">
-                        {p.referenceNumber || p.id}
+                      <td className="py-3 px-4">
+                        <div className="font-mono font-bold text-indigo-300">
+                          {p.referenceNumber || p.id}
+                        </div>
+                        <div className="mt-1">
+                          <RecordAuditInfo
+                            audit={p}
+                            entityName={`سند قبض ${p.referenceNumber || p.id}`}
+                            compact={true}
+                            showHistoryButton={true}
+                          />
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-slate-300 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">

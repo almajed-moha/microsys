@@ -190,6 +190,252 @@ app.post("/api/mikrotik/create-users", async (req, res) => {
   }
 });
 
+// 8. Fetch All Configured Hotspot Users
+app.post("/api/mikrotik/configured-users", async (req, res) => {
+  try {
+    const options = req.body;
+    if (!options?.host) {
+      return res.status(400).json({ success: false, error: "عنوان IP غير محدد" });
+    }
+
+    const users = await MikroTikService.getConfiguredHotspotUsers(options);
+    res.json({ success: true, count: users.length, data: users });
+  } catch (error: any) {
+    console.warn(`[MikroTik] Configured Users notice: ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر جلب قائمة المستخدمين المسجلين في المايكروتك",
+      isPrivateIp: isPrivateIp(req.body?.host),
+    });
+  }
+});
+
+// 9. Fetch Hotspot User Profiles
+app.post("/api/mikrotik/user-profiles", async (req, res) => {
+  try {
+    const options = req.body;
+    if (!options?.host) {
+      return res.status(400).json({ success: false, error: "عنوان IP غير محدد" });
+    }
+
+    const profiles = await MikroTikService.getHotspotUserProfiles(options);
+    res.json({ success: true, count: profiles.length, data: profiles });
+  } catch (error: any) {
+    console.warn(`[MikroTik] Profiles notice: ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر جلب بروفايلات المستخدمين من المايكروتك",
+      isPrivateIp: isPrivateIp(req.body?.host),
+    });
+  }
+});
+
+// 10. Delete Configured Hotspot User
+app.post("/api/mikrotik/delete-user", async (req, res) => {
+  try {
+    const { options, userId } = req.body;
+    if (!options?.host || !userId) {
+      return res.status(400).json({ success: false, error: "بيانات الراوتر ومعرف الكارت مطلوبة" });
+    }
+
+    const ok = await MikroTikService.deleteHotspotUser(options, userId);
+    res.json({ success: ok, message: "تم حذف الكارت من المايكروتك بنجاح" });
+  } catch (error: any) {
+    console.warn(`[MikroTik] Delete User notice: ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر حذف الكارت من الراوتر",
+      isPrivateIp: isPrivateIp(req.body?.options?.host),
+    });
+  }
+});
+
+// 11. Save / Update Hotspot User Profile
+app.post("/api/mikrotik/save-profile", async (req, res) => {
+  try {
+    const { options, profile } = req.body;
+    if (!options?.host || !profile?.name) {
+      return res.status(400).json({ success: false, error: "بيانات الراوتر واسم البروفايل مطلوبة" });
+    }
+
+    const result = await MikroTikService.saveHotspotUserProfile(options, profile);
+    res.json(result);
+  } catch (error: any) {
+    console.warn(`[MikroTik] Save Profile notice: ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر حفظ بروفايل السرعة في الراوتر",
+      isPrivateIp: isPrivateIp(req.body?.options?.host),
+    });
+  }
+});
+
+// 12. Remote System Control (Reboot, Shutdown, Ping)
+app.post("/api/mikrotik/system-command", async (req, res) => {
+  try {
+    const { options, command, extraParams } = req.body;
+    if (!options?.host || !command) {
+      return res.status(400).json({ success: false, error: "بيانات الراوتر والأمر مطلوبة" });
+    }
+
+    const result = await MikroTikService.executeSystemCommand(options, command, extraParams);
+    res.json(result);
+  } catch (error: any) {
+    console.warn(`[MikroTik] System Command notice: ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر تنفيذ الأمر على الراوتر",
+      isPrivateIp: isPrivateIp(req.body?.options?.host),
+    });
+  }
+});
+
+// ==========================================
+// USER MANAGER (اليوزر مانجر) API ENDPOINTS
+// ==========================================
+
+// 13. Get UM Users
+app.post("/api/mikrotik/um/users", async (req, res) => {
+  try {
+    const { options } = req.body;
+    if (!options?.host) {
+      return res.status(400).json({ success: false, error: "بيانات الاتصال بالراوتر مطلوبة" });
+    }
+    const users = await MikroTikService.getUserManagerUsers(options);
+    res.json({ success: true, data: users });
+  } catch (error: any) {
+    console.warn(`[MikroTik] UM Users notice: ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر جلب مستخدمي User Manager",
+      isPrivateIp: isPrivateIp(req.body?.options?.host),
+    });
+  }
+});
+
+// 14. Get UM Profiles
+app.post("/api/mikrotik/um/profiles", async (req, res) => {
+  try {
+    const { options } = req.body;
+    if (!options?.host) {
+      return res.status(400).json({ success: false, error: "بيانات الاتصال بالراوتر مطلوبة" });
+    }
+    const profiles = await MikroTikService.getUserManagerProfiles(options);
+    res.json({ success: true, data: profiles });
+  } catch (error: any) {
+    console.warn(`[MikroTik] UM Profiles notice: ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر جلب بروفايلات User Manager",
+      isPrivateIp: isPrivateIp(req.body?.options?.host),
+    });
+  }
+});
+
+// 15. Get UM Limitations
+app.post("/api/mikrotik/um/limitations", async (req, res) => {
+  try {
+    const { options } = req.body;
+    if (!options?.host) {
+      return res.status(400).json({ success: false, error: "بيانات الاتصال بالراوتر مطلوبة" });
+    }
+    const lims = await MikroTikService.getUserManagerLimitations(options);
+    res.json({ success: true, data: lims });
+  } catch (error: any) {
+    console.warn(`[MikroTik] UM Limitations notice: ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر جلب قيود User Manager",
+      isPrivateIp: isPrivateIp(req.body?.options?.host),
+    });
+  }
+});
+
+// 16. Get UM Routers
+app.post("/api/mikrotik/um/routers", async (req, res) => {
+  try {
+    const { options } = req.body;
+    if (!options?.host) {
+      return res.status(400).json({ success: false, error: "بيانات الاتصال بالراوتر مطلوبة" });
+    }
+    const routers = await MikroTikService.getUserManagerRouters(options);
+    res.json({ success: true, data: routers });
+  } catch (error: any) {
+    console.warn(`[MikroTik] UM Routers notice: ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر جلب أجهزة راوتر User Manager",
+      isPrivateIp: isPrivateIp(req.body?.options?.host),
+    });
+  }
+});
+
+// 17. Batch Create Cards into User Manager
+app.post("/api/mikrotik/um/batch-create", async (req, res) => {
+  try {
+    const { options, cards } = req.body;
+    if (!options?.host || !Array.isArray(cards) || cards.length === 0) {
+      return res.status(400).json({ success: false, error: "بيانات الكروت والاتصال مطلوبة" });
+    }
+    const result = await MikroTikService.createUserManagerUsersBatch(options, cards);
+    res.json(result);
+  } catch (error: any) {
+    console.warn(`[MikroTik] UM Batch Create notice: ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر إنشاء كروت User Manager",
+      isPrivateIp: isPrivateIp(req.body?.options?.host),
+    });
+  }
+});
+
+// 18. Save UM Profile & Limitation
+app.post("/api/mikrotik/um/save-profile", async (req, res) => {
+  try {
+    const { options, profileData } = req.body;
+    if (!options?.host || !profileData?.profileName) {
+      return res.status(400).json({ success: false, error: "اسم البروفايل وبيانات الراوتر مطلوبة" });
+    }
+    const result = await MikroTikService.saveUserManagerProfile(options, profileData);
+    res.json(result);
+  } catch (error: any) {
+    console.warn(`[MikroTik] UM Save Profile notice: ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر حفظ بروفايل User Manager في الراوتر",
+      isPrivateIp: isPrivateIp(req.body?.options?.host),
+    });
+  }
+});
+
+// 19. Delete UM User
+app.post("/api/mikrotik/um/delete-user", async (req, res) => {
+  try {
+    const { options, userId } = req.body;
+    if (!options?.host || !userId) {
+      return res.status(400).json({ success: false, error: "معرّف الكارت والاتصال مطلوبان" });
+    }
+    const ok = await MikroTikService.deleteUserManagerUser(options, userId);
+    res.json({ success: ok });
+  } catch (error: any) {
+    res.json({ success: false, error: error.message || "تعذر حذف الكارت من User Manager" });
+  }
+});
+
+// 20. Reset UM User Counters
+app.post("/api/mikrotik/um/reset-user", async (req, res) => {
+  try {
+    const { options, userId } = req.body;
+    if (!options?.host || !userId) {
+      return res.status(400).json({ success: false, error: "معرّف الكارت والاتصال مطلوبان" });
+    }
+    const ok = await MikroTikService.resetUserManagerUserCounters(options, userId);
+    res.json({ success: ok });
+  } catch (error: any) {
+    res.json({ success: false, error: error.message || "تعذر تصفير عدادات الكارت" });
+  }
+});
+
 // AI Sales & POS Analytics endpoint
 app.post("/api/ai/analyze-sales", async (req, res) => {
   try {

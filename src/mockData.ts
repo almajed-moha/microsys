@@ -40,6 +40,9 @@ export const initialNetworkSettings: NetworkSettings = {
     routerModel: "MikroTik RouterBOARD",
   },
   themeMode: "dark",
+  invoiceFooterText: "تم استخراج هذا السند إلكترونياً عبر المنظومة السحابية لإدارة الشبكات ومبيعات الكروت • يرجى مراجعة الحسابات والاحتفاظ بالأصل",
+  cashierFooterText: "شكراً لتعاملكم معنا • خدمة العملاء والدعم الفني: 773703240",
+  statementFooterText: "كشف حساب رسمي معتمد صادر من النظام • يرجى مطابقة الأرصدة وإبداء أي ملاحظات خلال 3 أيام من تاريخه",
 };
 
 // Zeroed-out data collections across all networks

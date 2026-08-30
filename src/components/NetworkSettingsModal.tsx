@@ -13,7 +13,13 @@ import {
   Sun,
   Monitor,
   Palette,
-  Server
+  Server,
+  FileText,
+  Receipt,
+  FileSpreadsheet,
+  AlignLeft,
+  FileSignature,
+  Sparkles
 } from 'lucide-react';
 import { NetworkSettings } from '../types';
 import { exportToJSON, downloadFile } from '../utils/storage';
@@ -263,6 +269,105 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
                 onChange={(e) => setFormData({ ...formData, hotspotDns: e.target.value })}
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-indigo-500"
               />
+            </div>
+          </div>
+
+          {/* Custom Invoices, Receipts & Statements Footer Texts Section */}
+          <div className="pt-4 border-t border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="block text-slate-200 font-bold text-xs flex items-center gap-1.5">
+                <FileSignature className="w-4 h-4 text-indigo-400" />
+                <span>تذييل الفواتير والسندات وإيصالات الكاشير والتقارير:</span>
+              </label>
+              <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                طباعة رسمية وحرارية
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              قم بتخصيص النصوص والعبارات الترحيبية والتعليمات المحاسبية التي تظهر في أسفل الفواتير وسندات القبض وإيصالات الكاشير (80mm) وكشوفات الحسابات المطبوعة:
+            </p>
+
+            <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 space-y-3.5">
+              {/* 1. Official A4 Invoices & Receipts Footer */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-300 font-semibold text-xs flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>تذييل فواتير وسندات القبض والصرف والتسليم الرسمية (A4):</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({
+                      ...formData,
+                      invoiceFooterText: `تم استخراج هذا السند إلكترونياً عبر نظام ${formData.networkName || 'الشبكة'} • يرجى مراجعة الحسابات والاحتفاظ بالأصل`
+                    })}
+                    className="text-[10px] text-indigo-400 hover:text-indigo-300 font-medium transition"
+                  >
+                    استعادة الافتراضي
+                  </button>
+                </div>
+                <textarea
+                  rows={2}
+                  value={formData.invoiceFooterText || ''}
+                  onChange={(e) => setFormData({ ...formData, invoiceFooterText: e.target.value })}
+                  placeholder="مثال: تم استخراج هذا السند إلكترونياً عبر المنظومة السحابية لإدارة الشبكات • يرجى مراجعة الحسابات والاحتفاظ بالأصل"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white text-xs focus:outline-none focus:border-indigo-500 transition resize-none leading-relaxed placeholder:text-slate-600"
+                />
+              </div>
+
+              {/* 2. Thermal 80mm Cashier Receipt Footer */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-300 font-semibold text-xs flex items-center gap-1.5">
+                    <Receipt className="w-3.5 h-3.5 text-amber-400" />
+                    <span>تذييل إيصالات الكاشير الحرارية (طابعات 80mm POS):</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({
+                      ...formData,
+                      cashierFooterText: `شكراً لتعاملكم معنا 🌹 • خدمة العملاء والدعم: ${formData.supportPhone || ''}`
+                    })}
+                    className="text-[10px] text-amber-400 hover:text-amber-300 font-medium transition"
+                  >
+                    استعادة الافتراضي
+                  </button>
+                </div>
+                <textarea
+                  rows={2}
+                  value={formData.cashierFooterText || ''}
+                  onChange={(e) => setFormData({ ...formData, cashierFooterText: e.target.value })}
+                  placeholder="مثال: شكراً لتعاملكم معنا 🌹 • خدمة العملاء والدعم الفني: 773703240"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white text-xs focus:outline-none focus:border-amber-500 transition resize-none leading-relaxed placeholder:text-slate-600"
+                />
+              </div>
+
+              {/* 3. Account Statements & Financial Reports Footer */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-300 font-semibold text-xs flex items-center gap-1.5">
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>تذييل كشوفات الحسابات والتقارير المالية وقوائم الدخل:</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({
+                      ...formData,
+                      statementFooterText: 'كشف حساب رسمي معتمد صادر من النظام • يرجى مطابقة الأرصدة وإبداء أي ملاحظات خلال 3 أيام من تاريخه'
+                    })}
+                    className="text-[10px] text-emerald-400 hover:text-emerald-300 font-medium transition"
+                  >
+                    استعادة الافتراضي
+                  </button>
+                </div>
+                <textarea
+                  rows={2}
+                  value={formData.statementFooterText || ''}
+                  onChange={(e) => setFormData({ ...formData, statementFooterText: e.target.value })}
+                  placeholder="مثال: كشف حساب رسمي معتمد صادر من النظام • يرجى مطابقة الأرصدة وإبداء أي ملاحظات خلال 3 أيام من تاريخه"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white text-xs focus:outline-none focus:border-emerald-500 transition resize-none leading-relaxed placeholder:text-slate-600"
+                />
+              </div>
             </div>
           </div>
 

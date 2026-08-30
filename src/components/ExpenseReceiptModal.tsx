@@ -121,7 +121,7 @@ export const ExpenseReceiptModal: React.FC<ExpenseReceiptModalProps> = ({
       `نوع المصروف: *${expense.categoryName}*\n` +
       `البيان: *${expense.title}*\n` +
       `المدفوع له: *${expense.paidTo || '—'}*\n` +
-      `المبلغ: *${expense.amount.toLocaleString()} ${currency}*\n` +
+      `المبلغ: *${(expense.amount ?? 0).toLocaleString()} ${currency}*\n` +
       `طريقة الدفع: ${expense.paymentMethod === 'cash' ? 'نقداً من الصندوق' : expense.paymentMethod === 'bank_transfer' ? 'حوالة بنكية' : 'شيك'}\n` +
       `📝 ${tafqeetArabic(expense.amount, settings?.currency || 'ريال يمني')}\n` +
       (expense.notes ? `ملاحظات: ${expense.notes}\n` : '');
@@ -338,7 +338,7 @@ export const ExpenseReceiptModal: React.FC<ExpenseReceiptModalProps> = ({
                 <div>
                   <span className="text-xs text-amber-800 font-bold block">المبلغ المصروف:</span>
                   <span className="text-2xl font-black font-mono text-amber-900">
-                    {expense.amount.toLocaleString()} {currency}
+                    {(expense.amount ?? 0).toLocaleString()} {currency}
                   </span>
                 </div>
                 <div className="text-left bg-white px-3 py-1.5 rounded-lg border border-amber-200 text-xs font-bold text-slate-700">
@@ -409,8 +409,13 @@ export const ExpenseReceiptModal: React.FC<ExpenseReceiptModalProps> = ({
                 </div>
               </div>
 
-              <div className="text-center text-[10px] text-slate-400 mt-8 pt-4 border-t border-slate-200">
-                نظام إدارة شبكات المايكروتك والمبيعات • {settings.networkName} • {new Date().toLocaleString('ar-YE')}
+              <div className="text-center text-[10px] text-slate-500 mt-8 pt-4 border-t border-slate-200 space-y-1">
+                <div className="font-semibold text-slate-700">
+                  {settings.invoiceFooterText || `نظام إدارة شبكات المايكروتك والمبيعات • ${settings.networkName}`}
+                </div>
+                <div className="text-[9px] text-slate-400">
+                  سند صرف معتمد • تاريخ الطباعة: {new Date().toLocaleString('ar-YE')}
+                </div>
               </div>
             </div>
           ) : (
@@ -458,7 +463,7 @@ export const ExpenseReceiptModal: React.FC<ExpenseReceiptModalProps> = ({
 
               <div className="py-2 border-b border-dashed border-black flex justify-between items-center text-sm font-black">
                 <span>المبلغ المصروف:</span>
-                <span>{expense.amount.toLocaleString()} {currency}</span>
+                <span>{(expense.amount ?? 0).toLocaleString()} {currency}</span>
               </div>
 
               <div className="py-2 text-[9px] text-center border-b border-dashed border-black leading-tight">
@@ -481,8 +486,8 @@ export const ExpenseReceiptModal: React.FC<ExpenseReceiptModalProps> = ({
                     <div className="mt-4 border-b border-black w-16"></div>
                   </div>
                 </div>
-                <div className="text-[9px] text-slate-500 pt-2">
-                  {settings.supportPhone}
+                <div className="text-[10px] font-bold text-slate-800 pt-2 leading-relaxed border-t border-dotted border-black">
+                  {settings.cashierFooterText || `شكراً لتعاملكم معنا • هاتف: ${settings.supportPhone}`}
                 </div>
               </div>
             </div>

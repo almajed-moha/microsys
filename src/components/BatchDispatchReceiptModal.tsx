@@ -193,8 +193,8 @@ export const BatchDispatchReceiptModal: React.FC<BatchDispatchReceiptModalProps>
 🗓️ *التاريخ:* ${dispatch.date}
 🏷️ *الفئة المسلمة:* ${cat?.name || 'فئة كروت'}
 📦 *الكمية:* ${dispatch.quantity} كارت
-💵 *سعر الجملة للكارت:* ${unitWholesale.toLocaleString()} ${settings.currencySymbol}
-💰 *إجمالي العهدة المحتسبة:* ${totalWholesale.toLocaleString()} ${settings.currencySymbol}
+💵 *سعر الجملة للكارت:* ${(unitWholesale || 0).toLocaleString()} ${settings.currencySymbol}
+💰 *إجمالي العهدة المحتسبة:* ${(totalWholesale || 0).toLocaleString()} ${settings.currencySymbol}
 ${dispatch.serialStart ? `🔢 *النطاق التسلسلي:* من ${dispatch.serialStart} إلى ${dispatch.serialEnd || ''}\n` : ''}----------------------------------------
 يرجى تأكيد الاستلام ومراجعة الكروت. شكراً لتعاملكم! 🌹
 للدعم والاستفسار: ${settings.supportPhone}`;
@@ -555,13 +555,13 @@ ${dispatch.serialStart ? `🔢 *النطاق التسلسلي:* من ${dispatch.
                         {dispatch.quantity} كارت
                       </td>
                       <td className="p-3 text-center font-mono font-bold text-slate-800">
-                        {unitWholesale.toLocaleString()} {settings.currencySymbol}
+                        {(unitWholesale || 0).toLocaleString()} {settings.currencySymbol}
                       </td>
                       <td className="p-3 text-center font-mono text-slate-600">
-                        {unitRetail.toLocaleString()} {settings.currencySymbol}
+                        {(unitRetail || 0).toLocaleString()} {settings.currencySymbol}
                       </td>
                       <td className="p-3 text-left font-mono font-black text-slate-950 text-sm">
-                        {totalWholesale.toLocaleString()} {settings.currencySymbol}
+                        {(totalWholesale || 0).toLocaleString()} {settings.currencySymbol}
                       </td>
                     </tr>
                   </tbody>
@@ -593,12 +593,12 @@ ${dispatch.serialStart ? `🔢 *النطاق التسلسلي:* من ${dispatch.
                   <div>
                     <span className="text-xs text-slate-400 block font-medium">إجمالي المبلغ المحتسب على العهدة:</span>
                     <span className="text-[11px] text-indigo-300 font-semibold">
-                      (الكمية المسلمة {dispatch.quantity} × سعر الجملة {unitWholesale.toLocaleString()})
+                      (الكمية المسلمة {dispatch.quantity} × سعر الجملة {(unitWholesale || 0).toLocaleString()})
                     </span>
                   </div>
                   <div className="text-left">
                     <span className="text-2xl font-black font-mono text-emerald-400">
-                      {totalWholesale.toLocaleString()}
+                      {(totalWholesale || 0).toLocaleString()}
                     </span>
                     <span className="text-xs text-slate-300 mr-1.5 font-bold">{settings.currencySymbol}</span>
                   </div>
@@ -608,7 +608,7 @@ ${dispatch.serialStart ? `🔢 *النطاق التسلسلي:* من ${dispatch.
                   <span>فقط: <strong>{numberToArabicWords(totalWholesale, settings.currencySymbol)}</strong></span>
                   {expectedPOSProfit > 0 && (
                     <span className="text-amber-300 text-[10px]">
-                      (ربح الموزع المتوقع: +{expectedPOSProfit.toLocaleString()} {settings.currencySymbol})
+                      (ربح الموزع المتوقع: +{(expectedPOSProfit || 0).toLocaleString()} {settings.currencySymbol})
                     </span>
                   )}
                 </div>
@@ -632,10 +632,15 @@ ${dispatch.serialStart ? `🔢 *النطاق التسلسلي:* من ${dispatch.
               </div>
 
               {/* Bottom Disclaimer */}
-              <div className="text-center pt-2 border-t border-slate-100 text-[10px] text-slate-400 font-mono flex items-center justify-between">
-                <span>نظام إدارة شبكات مايكروتك MikroTik Management Suite</span>
-                <span>تاريخ الطباعة: {new Date().toLocaleDateString('ar-EG')}</span>
-                <span>سند تسليم رسمي معتمد</span>
+              <div className="text-center pt-3 border-t border-slate-200 space-y-1">
+                <p className="text-xs font-semibold text-slate-700">
+                  {settings.invoiceFooterText || 'نظام إدارة شبكات مايكروتك MikroTik Management Suite • يرجى الاحتفاظ بهذا السند'}
+                </p>
+                <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between">
+                  <span>نظام إدارة شبكات مايكروتك • {settings.networkName}</span>
+                  <span>تاريخ الطباعة: {new Date().toLocaleDateString('ar-EG')}</span>
+                  <span>سند تسليم رسمي معتمد</span>
+                </div>
               </div>
             </div>
           )}
@@ -704,11 +709,11 @@ ${dispatch.serialStart ? `🔢 *النطاق التسلسلي:* من ${dispatch.
                 </div>
                 <div className="flex justify-between">
                   <span>سعر الجملة للكارت:</span>
-                  <span>{unitWholesale.toLocaleString()} {settings.currencySymbol}</span>
+                  <span>{(unitWholesale || 0).toLocaleString()} {settings.currencySymbol}</span>
                 </div>
                 <div className="flex justify-between text-slate-700 text-[10px]">
                   <span>سعر بيع الجمهور:</span>
-                  <span>{unitRetail.toLocaleString()} {settings.currencySymbol}</span>
+                  <span>{(unitRetail || 0).toLocaleString()} {settings.currencySymbol}</span>
                 </div>
                 {dispatch.serialStart && (
                   <div className="text-[10px] bg-slate-100 p-1 rounded border border-slate-300">
@@ -721,7 +726,7 @@ ${dispatch.serialStart ? `🔢 *النطاق التسلسلي:* من ${dispatch.
               <div className="space-y-1.5 py-1.5 border-b-2 border-dashed border-black">
                 <div className="flex justify-between items-center text-sm font-black">
                   <span>إجمالي العهدة المحتسبة:</span>
-                  <span className="text-base">{totalWholesale.toLocaleString()} {settings.currencySymbol}</span>
+                  <span className="text-base">{(totalWholesale || 0).toLocaleString()} {settings.currencySymbol}</span>
                 </div>
                 <div className="text-[10px] font-bold text-center bg-slate-100 p-1 rounded border border-slate-300">
                   فقط: {numberToArabicWords(totalWholesale, settings.currencySymbol)}
@@ -751,8 +756,8 @@ ${dispatch.serialStart ? `🔢 *النطاق التسلسلي:* من ${dispatch.
                   </div>
                 </div>
 
-                <div className="text-center text-[9px] text-slate-600 pt-1">
-                  يرجى الاحتفاظ بهذا السند لمطابقة الحساب والمبيعات
+                <div className="text-center text-[10px] font-bold text-slate-800 pt-2 leading-relaxed border-t border-dotted border-black">
+                  {settings.cashierFooterText || 'يرجى الاحتفاظ بهذا السند لمطابقة الحساب والمبيعات'}
                 </div>
               </div>
             </div>

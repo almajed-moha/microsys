@@ -35,3 +35,5 @@ export { SystemTenantsView } from './SystemTenantsView';
 export { SystemTenantModal } from './SystemTenantModal';
 export { AboutProgramModal } from './AboutProgramModal';
 export { DatabaseBackupModal } from './DatabaseBackupModal';
+export { RecordAuditInfo } from './RecordAuditInfo';
+export { EntityAuditHistoryModal } from './EntityAuditHistoryModal';

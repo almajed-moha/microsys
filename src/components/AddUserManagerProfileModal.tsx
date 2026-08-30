@@ -12,10 +12,14 @@ import {
   DollarSign,
   Users,
   ShieldCheck,
-  Code
+  Code,
+  RefreshCw,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { CardCategory, NetworkSettings } from '../types';
 import { downloadFile } from '../utils/storage';
+import { saveUserManagerProfileAndLimitation } from '../utils/mikrotikApi';
 
 interface AddUserManagerProfileModalProps {
   isOpen: boolean;
@@ -45,6 +49,9 @@ export const AddUserManagerProfileModal: React.FC<AddUserManagerProfileModalProp
   const [startsAt, setStartsAt] = useState<'logon' | 'first-login' | 'now'>('logon');
   const [routerOsVersion, setRouterOsVersion] = useState<'v6' | 'v7'>('v7');
   const [colorTheme, setColorTheme] = useState('emerald');
+  const [syncToRouterLive, setSyncToRouterLive] = useState(true);
+  const [isSavingLive, setIsSavingLive] = useState(false);
+  const [liveFeedback, setLiveFeedback] = useState<{ success: boolean; message: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'form' | 'script'>('form');
 
@@ -153,9 +160,50 @@ add profile="${profileName}" limitation="${limitationName}"`;
     downloadFile(scriptText, `um-profile-${profileName}-${Date.now()}.rsc`, 'text/plain');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profileName.trim() || !nameForUsers.trim()) return;
+
+    if (syncToRouterLive && settings.mikrotikIp) {
+      setIsSavingLive(true);
+      setLiveFeedback(null);
+
+      const cfg = settings.mikrotikConfig || {
+        host: settings.mikrotikIp || '192.168.88.1',
+        port: 80,
+        protocol: 'auto' as const,
+        username: settings.mikrotikUser || 'admin',
+        password: settings.mikrotikPassword || '',
+        autoRefreshInterval: 5,
+        timeoutMs: 8000,
+      };
+
+      try {
+        const res = await saveUserManagerProfileAndLimitation(cfg, {
+          profileName,
+          limitationName,
+          nameForUsers,
+          price: Number(retailPrice) || 0,
+          validityDays: Number(validityDays) || 1,
+          uptimeLimit,
+          quotaLimit,
+          rateLimit,
+          startsAt,
+          routerOsVersion,
+        });
+
+        if (!res.success) {
+          setLiveFeedback({
+            success: false,
+            message: `ملاحظة: تم حفظ الفئة محلياً، ولكن تعذر تطبيقها في الراوتر: ${res.message || 'خطأ في الاتصال بالمايكروتك'}`,
+          });
+        }
+      } catch (err: any) {
+        console.error('Error applying to router:', err);
+      } finally {
+        setIsSavingLive(false);
+      }
+    }
 
     onAddCategory({
       name: nameForUsers,
@@ -176,7 +224,13 @@ add profile="${profileName}" limitation="${limitationName}"`;
       notes: `بروفايل يوزر مانجر: ${profileName} (${routerOsVersion})`,
     });
 
-    onClose();
+    if (!syncToRouterLive || !settings.mikrotikIp) {
+      onClose();
+    } else {
+      setTimeout(() => {
+        onClose();
+      }, 1000);
+    }
   };
 
   return (

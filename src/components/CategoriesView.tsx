@@ -24,6 +24,7 @@ import {
 import { CardCategory, NetworkSettings } from '../types';
 import { generateUserManagerProfilesSetup, downloadFile } from '../utils/storage';
 import { standardUserManagerPresets } from '../mockData';
+import { RecordAuditInfo } from './RecordAuditInfo';
 
 interface CategoriesViewProps {
   categories: CardCategory[];
@@ -487,22 +488,36 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                 </div>
               </div>
 
-              {/* Bottom Actions */}
-              <div className="p-3 bg-slate-950/40 border-t border-slate-800/80 flex items-center justify-end gap-2">
-                <button
-                  onClick={() => handleOpenEdit(cat)}
-                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg text-xs flex items-center gap-1 transition"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  <span>تعديل</span>
-                </button>
-                <button
-                  onClick={() => setDeletingCategory(cat)}
-                  className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg text-xs flex items-center gap-1 transition"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>حذف</span>
-                </button>
+              {/* Bottom Actions and Trigger Audit Info */}
+              <div className="p-3 bg-slate-950/50 border-t border-slate-800/80 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <RecordAuditInfo
+                      audit={cat}
+                      entityName={`فئة ${cat.name}`}
+                      compact={true}
+                      showHistoryButton={true}
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => handleOpenEdit(cat)}
+                      className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg text-xs flex items-center gap-1 transition"
+                      title="تعديل الفئة"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>تعديل</span>
+                    </button>
+                    <button
+                      onClick={() => setDeletingCategory(cat)}
+                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg text-xs flex items-center gap-1 transition"
+                      title="حذف الفئة"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>حذف</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           );

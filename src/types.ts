@@ -1,6 +1,33 @@
 export type Currency = 'YER' | 'SAR' | 'USD' | 'IQD' | 'EGP' | 'LYD' | 'OMR' | 'KWD' | 'AED';
 
-export interface CardCategory {
+export interface AuditHistoryEntry {
+  id?: string;
+  action: string;
+  actionType: 'create' | 'update' | 'delete' | 'financial' | 'security' | 'system';
+  userId: string;
+  userName: string;
+  userRole?: string;
+  userUsername?: string;
+  timestamp: string; // ISO string
+  details?: string;
+  changesSummary?: string;
+}
+
+export interface EntityAuditMetadata {
+  createdAt?: string; // ISO string or YYYY-MM-DD
+  createdBy?: string; // User ID
+  createdByName?: string; // Full Name
+  createdByRole?: string; // Role Title (e.g. "المدير العام", "المحاسب المالي")
+  createdByUsername?: string; // Username e.g. "@admin"
+  updatedAt?: string; // ISO string
+  updatedBy?: string; // User ID
+  updatedByName?: string; // Full Name
+  updatedByRole?: string; // Role Title
+  updatedByUsername?: string; // Username
+  auditHistory?: AuditHistoryEntry[];
+}
+
+export interface CardCategory extends EntityAuditMetadata {
   id: string;
   networkId?: string;
   name: string; // e.g. "كارت 100 ريال", "كارت 200 ريال", "كارت 500 ريال", "كارت 1000 ريال"
@@ -21,7 +48,7 @@ export interface CardCategory {
   notes?: string;
 }
 
-export interface POSPoint {
+export interface POSPoint extends EntityAuditMetadata {
   id: string;
   networkId?: string;
   name: string; // e.g. "سوبرماركت البركة"
@@ -55,12 +82,13 @@ export interface CardOrderItem {
 export type CardOrderStatus = 'pending' | 'approved' | 'processing' | 'delivered' | 'rejected' | 'cancelled';
 export type CardOrderPriority = 'normal' | 'urgent' | 'low';
 
-export interface CardOrder {
+export interface CardOrder extends EntityAuditMetadata {
   id: string;
   networkId?: string;
   orderNumber: string; // e.g. "ORD-2026-001"
   posPointId: string;
   posPointName: string;
+  posManagerName?: string;
   posPhone?: string;
   posAddress?: string;
   items: CardOrderItem[];
@@ -76,11 +104,12 @@ export interface CardOrder {
   adminNotes?: string; // رد الإدارة أو سبب الرفض/التعديل
   processedAt?: string;
   processedBy?: string;
+  processedByName?: string;
   convertedInvoiceId?: string; // رقم الفاتورة في حال تم تحويل الطلب
   convertedDispatchId?: string; // رقم الإرسالية
 }
 
-export interface CardBatchDispatch {
+export interface CardBatchDispatch extends EntityAuditMetadata {
   id: string;
   networkId?: string;
   date: string;
@@ -114,7 +143,7 @@ export interface InvoiceItem {
   notes?: string;
 }
 
-export interface InvoiceRecord {
+export interface InvoiceRecord extends EntityAuditMetadata {
   id: string;
   networkId?: string;
   invoiceNumber: string; // e.g. "INV-2026-001" or "RET-2026-001"
@@ -137,7 +166,7 @@ export interface InvoiceRecord {
   reasonForReturn?: string; // سبب الإرجاع في حال كانت فاتورة مرتجع
 }
 
-export interface ExpenseCategory {
+export interface ExpenseCategory extends EntityAuditMetadata {
   id: string;
   networkId?: string;
   name: string; // e.g. "سعات وباقات الإنترنت الرئيسية (المزود)", "إيجارات الأبراج والمواقع", "الكهرباء والطاقة والمحروقات"
@@ -147,7 +176,7 @@ export interface ExpenseCategory {
   isDefault?: boolean;
 }
 
-export interface ExpenseRecord {
+export interface ExpenseRecord extends EntityAuditMetadata {
   id: string;
   networkId?: string;
   voucherNumber: string; // e.g. "EXP-2026-001"
@@ -162,7 +191,6 @@ export interface ExpenseRecord {
   referenceNumber?: string; // رقم الحوالة / السند اليدوي
   notes?: string;
   receiptAttachment?: string;
-  createdByName?: string;
 }
 
 export interface FinancialSummary {
@@ -175,7 +203,7 @@ export interface FinancialSummary {
   totalPOSDebt: number; // إجمالي مديونيات نقاط البيع
 }
 
-export interface SalesRecord {
+export interface SalesRecord extends EntityAuditMetadata {
   id: string;
   networkId?: string;
   date: string; // YYYY-MM-DD
@@ -193,7 +221,7 @@ export interface SalesRecord {
   notes?: string;
 }
 
-export interface PaymentRecord {
+export interface PaymentRecord extends EntityAuditMetadata {
   id: string;
   networkId?: string;
   date: string;
@@ -206,7 +234,7 @@ export interface PaymentRecord {
   notes?: string;
 }
 
-export interface CardTemplate {
+export interface CardTemplate extends EntityAuditMetadata {
   id: string;
   networkId?: string;
   name: string; // e.g. "قالب كروت فئة 500 ريال الذهبي", "قالب باقة VIP 1000", "قالب A4 - 18 كارت"
@@ -319,6 +347,111 @@ export interface RouterSystemInfo {
   temperature?: number;
 }
 
+export interface HotspotUserProfile {
+  id: string;
+  name: string;
+  rateLimit?: string;
+  sharedUsers?: number | string;
+  sessionTimeout?: string;
+  idleTimeout?: string;
+  keepaliveTimeout?: string;
+  statusAutorefresh?: string;
+  transparentProxy?: boolean;
+  addressPool?: string;
+  onLogin?: string;
+  onLogout?: string;
+}
+
+export interface HotspotConfiguredUser {
+  id: string;
+  name: string;
+  password?: string;
+  profile: string;
+  limitUptime?: string;
+  limitBytesTotal?: number;
+  bytesIn?: number;
+  bytesOut?: number;
+  uptime?: string;
+  disabled?: boolean;
+  comment?: string;
+  email?: string;
+}
+
+export interface UserManagerUser {
+  id: string;
+  name: string;
+  password?: string;
+  customer?: string;
+  actualProfile?: string;
+  group?: string;
+  sharedUsers?: number;
+  limitUptime?: string;
+  limitBytesTotal?: number;
+  uptimeUsed?: string;
+  downloadUsed?: number;
+  uploadUsed?: number;
+  totalBytes?: number;
+  disabled?: boolean;
+  comment?: string;
+  callerId?: string;
+  email?: string;
+  phone?: string;
+  otpSecret?: string;
+  lastSeen?: string;
+}
+
+export interface UserManagerProfile {
+  id: string;
+  name: string;
+  nameForUsers?: string;
+  price?: number;
+  validity?: string;
+  startsAt?: string;
+  overrideSharedUsers?: string | number;
+  owner?: string;
+  limitations?: string[];
+}
+
+export interface UserManagerLimitation {
+  id: string;
+  name: string;
+  downloadLimit?: number | string;
+  uploadLimit?: number | string;
+  totalLimit?: number | string;
+  uptimeLimit?: string;
+  rateLimitRx?: string | number;
+  rateLimitTx?: string | number;
+  rateLimitMinRx?: string | number;
+  rateLimitMinTx?: string | number;
+  resetCountersAt?: string;
+  owner?: string;
+}
+
+export interface UserManagerRouter {
+  id: string;
+  name: string;
+  ipAddress: string;
+  sharedSecret: string;
+  log?: string;
+  disabled?: boolean;
+}
+
+export interface UserManagerSession {
+  id: string;
+  user: string;
+  nasIp?: string;
+  nasPort?: string;
+  userIp?: string;
+  userMac?: string;
+  fromTime?: string;
+  tillTime?: string;
+  uptime?: string;
+  download?: number;
+  upload?: number;
+  active?: boolean;
+  terminateCause?: string;
+}
+
 export interface HotspotActiveUser {
   id: string;
   user: string;
@@ -407,6 +540,9 @@ export interface NetworkSettings {
   mikrotikIp?: string;
   mikrotikConfig?: MikroTikConfig;
   themeMode?: 'dark' | 'light' | 'system'; // الوضع الليلي أو النهاري
+  invoiceFooterText?: string; // نص تذييل الفواتير وسندات القبض والصرف والتسليم الرسمية (ورق A4)
+  cashierFooterText?: string; // نص تذييل إيصالات الكاشير الحرارية (80mm)
+  statementFooterText?: string; // نص تذييل كشوفات الحسابات والتقارير المالية
 }
 
 export interface POSCardInventory {

@@ -166,7 +166,98 @@ export async function createMikroTikHotspotUsers(
   }
 }
 
-// 8. Generate MikroTik RouterOS Script (.rsc) for Hotspot Users
+// 8. Fetch Configured Hotspot Users
+export async function fetchConfiguredHotspotUsers(config: Partial<MikroTikConfig>): Promise<any[]> {
+  try {
+    const res = await fetch('/api/mikrotik/configured-users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    const data = await res.json();
+    return data.success ? data.data : [];
+  } catch (error) {
+    console.warn('fetchConfiguredHotspotUsers notice:', error);
+    return [];
+  }
+}
+
+// 9. Fetch Hotspot User Profiles
+export async function fetchHotspotUserProfiles(config: Partial<MikroTikConfig>): Promise<any[]> {
+  try {
+    const res = await fetch('/api/mikrotik/user-profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    const data = await res.json();
+    return data.success ? data.data : [];
+  } catch (error) {
+    console.warn('fetchHotspotUserProfiles notice:', error);
+    return [];
+  }
+}
+
+// 10. Delete Configured Hotspot User
+export async function deleteConfiguredHotspotUser(config: Partial<MikroTikConfig>, userId: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/mikrotik/delete-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, userId }),
+    });
+    const data = await res.json();
+    return Boolean(data.success);
+  } catch (error) {
+    console.warn('deleteConfiguredHotspotUser notice:', error);
+    return false;
+  }
+}
+
+// 11. Save or Update Hotspot User Profile
+export async function saveHotspotUserProfile(
+  config: Partial<MikroTikConfig>,
+  profile: {
+    id?: string;
+    name: string;
+    rateLimit?: string;
+    sharedUsers?: number | string;
+    statusAutorefresh?: string;
+    idleTimeout?: string;
+    sessionTimeout?: string;
+  }
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    const res = await fetch('/api/mikrotik/save-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, profile }),
+    });
+    return await res.json();
+  } catch (error: any) {
+    return { success: false, message: error.message || 'تعذر الاتصال' };
+  }
+}
+
+// 12. Execute Remote System Command (Reboot, Shutdown, Ping)
+export async function executeMikrotikSystemCommand(
+  config: Partial<MikroTikConfig>,
+  command: 'reboot' | 'shutdown' | 'ping' | 'script',
+  extraParams?: Record<string, any>
+): Promise<{ success: boolean; message: string; output?: any }> {
+  try {
+    const res = await fetch('/api/mikrotik/system-command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, command, extraParams }),
+    });
+    return await res.json();
+  } catch (error: any) {
+    return { success: false, message: error.message || 'فشل تنفيذ الأمر' };
+  }
+}
+
+// 13. Generate MikroTik RouterOS Script (.rsc) for Hotspot Users
 export function generateHotspotCardsRscScript(
   categoryName: string,
   profile: string,
@@ -200,3 +291,185 @@ export function generateHotspotCardsRscScript(
 
   return script;
 }
+
+// ==========================================
+// USER MANAGER (اليوزر مانجر) FRONTEND API
+// ==========================================
+
+// 14. Fetch User Manager Users
+export async function fetchUserManagerUsers(config: Partial<MikroTikConfig>): Promise<any[]> {
+  try {
+    const res = await fetch('/api/mikrotik/um/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config }),
+    });
+    const data = await res.json();
+    return data.success ? data.data : [];
+  } catch (error) {
+    console.warn('fetchUserManagerUsers notice:', error);
+    return [];
+  }
+}
+
+// 15. Fetch User Manager Profiles
+export async function fetchUserManagerProfiles(config: Partial<MikroTikConfig>): Promise<any[]> {
+  try {
+    const res = await fetch('/api/mikrotik/um/profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config }),
+    });
+    const data = await res.json();
+    return data.success ? data.data : [];
+  } catch (error) {
+    console.warn('fetchUserManagerProfiles notice:', error);
+    return [];
+  }
+}
+
+// 16. Fetch User Manager Limitations
+export async function fetchUserManagerLimitations(config: Partial<MikroTikConfig>): Promise<any[]> {
+  try {
+    const res = await fetch('/api/mikrotik/um/limitations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config }),
+    });
+    const data = await res.json();
+    return data.success ? data.data : [];
+  } catch (error) {
+    console.warn('fetchUserManagerLimitations notice:', error);
+    return [];
+  }
+}
+
+// 17. Fetch User Manager Routers
+export async function fetchUserManagerRouters(config: Partial<MikroTikConfig>): Promise<any[]> {
+  try {
+    const res = await fetch('/api/mikrotik/um/routers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config }),
+    });
+    const data = await res.json();
+    return data.success ? data.data : [];
+  } catch (error) {
+    console.warn('fetchUserManagerRouters notice:', error);
+    return [];
+  }
+}
+
+// 18. Batch Create Users into User Manager
+export async function createUserManagerBatchCards(
+  config: Partial<MikroTikConfig>,
+  cards: Array<{
+    username: string;
+    password?: string;
+    profile: string;
+    customer?: string;
+    comment?: string;
+  }>
+): Promise<{ success: boolean; createdCount: number; errors?: string[] }> {
+  try {
+    const res = await fetch('/api/mikrotik/um/batch-create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, cards }),
+    });
+    return await res.json();
+  } catch (error: any) {
+    return { success: false, createdCount: 0, errors: [error.message || 'تعذر الاتصال'] };
+  }
+}
+
+// 19. Save Profile & Limitation in User Manager
+export async function saveUserManagerProfileAndLimitation(
+  config: Partial<MikroTikConfig>,
+  profileData: {
+    profileName: string;
+    limitationName?: string;
+    nameForUsers?: string;
+    price?: number;
+    validityDays?: number | string;
+    uptimeLimit?: string;
+    quotaLimit?: string;
+    rateLimit?: string;
+    startsAt?: string;
+    routerOsVersion?: 'v6' | 'v7';
+  }
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    const res = await fetch('/api/mikrotik/um/save-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, profileData }),
+    });
+    return await res.json();
+  } catch (error: any) {
+    return { success: false, message: error.message || 'تعذر الاتصال' };
+  }
+}
+
+// 20. Delete User from User Manager
+export async function deleteUserManagerUser(config: Partial<MikroTikConfig>, userId: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/mikrotik/um/delete-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, userId }),
+    });
+    const data = await res.json();
+    return Boolean(data.success);
+  } catch (error) {
+    console.warn('deleteUserManagerUser notice:', error);
+    return false;
+  }
+}
+
+// 21. Reset User Manager User Counters
+export async function resetUserManagerUserCounters(config: Partial<MikroTikConfig>, userId: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/mikrotik/um/reset-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, userId }),
+    });
+    const data = await res.json();
+    return Boolean(data.success);
+  } catch (error) {
+    console.warn('resetUserManagerUserCounters notice:', error);
+    return false;
+  }
+}
+
+// 22. Generate User Manager Batch Script (.rsc) for v6 & v7
+export function generateUserManagerBatchRscScript(
+  profileName: string,
+  cards: Array<{ username: string; pin?: string }>,
+  version: 'v6' | 'v7' = 'v7',
+  customer: string = 'admin'
+): string {
+  const timestamp = new Date().toISOString();
+  let script = `# ========================================================\n`;
+  script += `# MikroTik User Manager (${version.toUpperCase()}) Batch Cards Script\n`;
+  script += `# Profile: ${profileName}\n`;
+  script += `# Customer/Owner: ${customer}\n`;
+  script += `# Cards Count: ${cards.length}\n`;
+  script += `# Generated: ${timestamp}\n`;
+  script += `# ========================================================\n\n`;
+
+  if (version === 'v7') {
+    cards.forEach((c) => {
+      script += `/user-manager user add name="${c.username}" password="${c.pin || c.username}" profile="${profileName}" comment="POS UM Batch"\n`;
+    });
+  } else {
+    cards.forEach((c) => {
+      script += `/tool user-manager user add customer="${customer}" username="${c.username}" password="${c.pin || c.username}" comment="POS UM Batch"\n`;
+      script += `/tool user-manager user create-and-activate-profile numbers="${c.username}" profile="${profileName}" customer="${customer}"\n`;
+    });
+  }
+
+  return script;
+}
+

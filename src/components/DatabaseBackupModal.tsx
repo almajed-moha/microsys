@@ -571,7 +571,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
                     <span>محتويات ملف النسخة الاحتياطية:</span>
                   </span>
                   <span className="text-xs font-mono font-bold text-indigo-300 px-2.5 py-0.5 bg-indigo-500/10 rounded-full border border-indigo-500/20">
-                    {totalExportRecords.toLocaleString()} سجل إجمالي
+                    {(totalExportRecords ?? 0).toLocaleString()} سجل إجمالي
                   </span>
                 </div>
 

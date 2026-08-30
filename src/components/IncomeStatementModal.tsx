@@ -884,7 +884,7 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                             {(posItem.grossSales ?? 0).toLocaleString()}
                           </td>
                           <td className="py-3 px-4 text-left text-xs text-rose-400">
-                            {posItem.returnsAmount > 0 ? `(${posItem.returnsAmount.toLocaleString()})` : '-'}
+                            {(posItem.returnsAmount ?? 0) > 0 ? `(${(posItem.returnsAmount ?? 0).toLocaleString()})` : '-'}
                           </td>
                           <td className="py-3 px-4 text-left font-bold text-white">
                             {(posItem.netSales ?? 0).toLocaleString()} {currency}
@@ -1067,6 +1067,16 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
                   <p className="font-bold text-slate-700 mb-8">اعتماد الإدارة / الختم</p>
                   <p className="text-slate-400">........................</p>
                 </div>
+              </div>
+
+              {/* Financial Verification & System Disclaimer */}
+              <div className="mt-8 pt-4 border-t border-slate-300 text-center space-y-1 text-slate-500 text-[10px]">
+                <p className="font-semibold text-slate-700 text-xs">
+                  {settings.statementFooterText || 'قائمة دخل وتقرير مالي رسمي معتمد • نظام إدارة شبكات مايكروتك ومبيعات الكروت'}
+                </p>
+                <p className="font-mono text-slate-400 text-[9px]">
+                  نظام إدارة شبكات مايكروتك • {settings.networkName} • تاريخ الإصدار: {new Date().toLocaleDateString('ar-YE')}
+                </p>
               </div>
             </div>
           </div>

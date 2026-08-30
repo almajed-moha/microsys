@@ -559,10 +559,15 @@ export const SalesReportModal: React.FC<SalesReportModalProps> = ({
               </div>
 
               {/* 6. System Verification Footer */}
-              <div className="text-center pt-3 border-t border-slate-200 text-[10px] text-slate-500 font-mono flex items-center justify-between">
-                <span>نظام إدارة شبكات مايكروتك MikroTik Management Suite</span>
-                <span>تاريخ الطباعة: {reportDate} {reportTime}</span>
-                <span>تقرير رسمي معتمد</span>
+              <div className="text-center pt-3 border-t border-slate-200 space-y-1">
+                <p className="text-xs font-semibold text-slate-700">
+                  {settings.statementFooterText || 'تقرير مبيعات رسمي معتمد • نظام إدارة شبكات مايكروتك'}
+                </p>
+                <div className="text-[10px] text-slate-500 font-mono flex items-center justify-between">
+                  <span>نظام إدارة شبكات مايكروتك • {settings.networkName}</span>
+                  <span>تاريخ الطباعة: {reportDate} {reportTime}</span>
+                  <span>تقرير رسمي معتمد</span>
+                </div>
               </div>
             </div>
           )}
@@ -664,11 +669,8 @@ export const SalesReportModal: React.FC<SalesReportModalProps> = ({
                   <Barcode value={reportCode} width={1.5} height={36} fontSize={10} margin={2} />
                 </div>
 
-                <div className="text-[10px] pt-1 text-center font-bold">
-                  <div>نظام إدارة شبكات مايكروتك</div>
-                  <div className="text-[9px] text-slate-600">
-                    تقرير محاسبي معتمد • {settings.supportPhone}
-                  </div>
+                <div className="text-[10px] pt-2 text-center font-bold border-t border-dotted border-black leading-relaxed">
+                  {settings.cashierFooterText || settings.statementFooterText || `تقرير محاسبي معتمد • ${settings.supportPhone}`}
                 </div>
               </div>
             </div>

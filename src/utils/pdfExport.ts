@@ -1,5 +1,4 @@
 import jsPDF from 'jspdf';
-import html2pdf from 'html2pdf.js';
 import { toCanvas } from 'html-to-image';
 
 export interface PdfExportOptions {
@@ -269,36 +268,13 @@ export async function exportElementToPdf(
         ? { filename: optionsOrFilename }
         : optionsOrFilename;
 
-    const el = typeof elementIdOrElement === 'string'
-      ? document.getElementById(elementIdOrElement)
-      : elementIdOrElement;
-
-    if (!el) return false;
-
-    const format = options.format || options.paperFormat || 'a4';
-    const isThermal = format === 'pos-80mm';
-    const orientation = options.orientation || 'portrait';
-    const filename = options.filename || 'document.pdf';
-
-    const opt = {
-      margin: isThermal ? 2 : 10,
-      filename: filename.endsWith('.pdf') ? filename : `${filename}.pdf`,
-      image: { type: 'jpeg' as const, quality: 1 },
-      html2canvas: { scale: options.scale || 2, useCORS: true, logging: false },
-      jsPDF: { unit: 'mm', format: isThermal ? ([80, 297] as [number, number]) : format, orientation: orientation },
-      pagebreak: { mode: ['css', 'legacy'] }
-    };
+    const result = await generatePdfInstance(elementIdOrElement, options);
+    if (!result) return false;
 
     if (options.autoPrint) {
-       const result = await generatePdfInstance(elementIdOrElement, options);
-       if (result) {
-         result.pdf.autoPrint();
-         result.pdf.save(result.filename);
-       }
-       return !!result;
+      result.pdf.autoPrint();
     }
-
-    await html2pdf().set(opt).from(el).save();
+    result.pdf.save(result.filename);
     return true;
   } catch (error) {
     console.error('PDF Export Error:', error);

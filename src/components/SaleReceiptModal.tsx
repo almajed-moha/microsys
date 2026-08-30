@@ -550,10 +550,15 @@ ${pos ? `📊 رصيد المديونية المتبقي: ${(pos.currentDebt ?? 
               </div>
 
               {/* 7. Footer Note */}
-              <div className="text-center pt-3 border-t border-slate-200 text-[10px] text-slate-500 font-mono flex items-center justify-between">
-                <span>نظام إدارة شبكات مايكروتك • {settings.networkName}</span>
-                <span>تاريخ الطباعة: {new Date().toLocaleDateString('ar-YE')}</span>
-                <span>فاتورة معتمدة إلكترونياً</span>
+              <div className="text-center pt-4 border-t border-slate-200 space-y-1">
+                <p className="text-xs font-semibold text-slate-700">
+                  {settings.invoiceFooterText || `نظام إدارة شبكات مايكروتك • ${settings.networkName}`}
+                </p>
+                <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between">
+                  <span>نظام إدارة شبكات مايكروتك • {settings.networkName}</span>
+                  <span>تاريخ الطباعة: {new Date().toLocaleDateString('ar-YE')}</span>
+                  <span>فاتورة معتمدة إلكترونياً</span>
+                </div>
               </div>
             </div>
           )}
@@ -665,11 +670,8 @@ ${pos ? `📊 رصيد المديونية المتبقي: ${(pos.currentDebt ?? 
                   <span>توقيع المستلم: .....................</span>
                 </div>
 
-                <div className="text-[10px] font-bold pt-1 text-center">
-                  <div>شكراً لتعاملكم معنا 🌹</div>
-                  <div className="text-[9px] text-slate-600 mt-0.5">
-                    نظام إدارة الشبكات • {settings.supportPhone}
-                  </div>
+                <div className="text-[10px] font-bold pt-2 text-center leading-relaxed border-t border-dotted border-black">
+                  {settings.cashierFooterText || `شكراً لتعاملكم معنا 🌹 • ${settings.supportPhone}`}
                 </div>
               </div>
             </div>

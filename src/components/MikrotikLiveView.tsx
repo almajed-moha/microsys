@@ -36,7 +36,25 @@ import {
   Loader2,
   Sparkles,
   Printer,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Power,
+  RotateCcw,
+  Trash2,
+  Edit,
+  SlidersHorizontal,
+  Gauge,
+  Network,
+  Share2,
+  Layers,
+  Bot,
+  Send,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  Filter,
+  CheckSquare,
+  Square,
+  Bookmark
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -55,7 +73,9 @@ import {
   HotspotHost,
   RouterInterface,
   DhcpLease,
-  CardCategory
+  CardCategory,
+  HotspotUserProfile,
+  HotspotConfiguredUser
 } from '../types';
 import {
   testMikroTikConnection,
@@ -63,6 +83,11 @@ import {
   fetchActiveHotspotUsers,
   fetchConnectedHosts,
   fetchRouterInterfaces,
+  fetchConfiguredHotspotUsers,
+  fetchHotspotUserProfiles,
+  deleteConfiguredHotspotUser,
+  saveHotspotUserProfile,
+  executeMikrotikSystemCommand,
   kickHotspotUser,
   createMikroTikHotspotUsers,
   generateHotspotCardsRscScript,
@@ -71,6 +96,7 @@ import {
   ConnectionTestResult,
 } from '../utils/mikrotikApi';
 import { exportElementToPdf } from '../utils/pdfExport';
+import { UserManagerView } from './UserManagerView';
 
 interface MikrotikLiveViewProps {
   settings: NetworkSettings;
@@ -108,16 +134,49 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   // Live Data State
   const [systemInfo, setSystemInfo] = useState<RouterSystemInfo | null>(null);
   const [activeUsers, setActiveUsers] = useState<HotspotActiveUser[]>([]);
+  const [configuredUsers, setConfiguredUsers] = useState<HotspotConfiguredUser[]>([]);
+  const [userProfiles, setUserProfiles] = useState<HotspotUserProfile[]>([]);
   const [hosts, setHosts] = useState<HotspotHost[]>([]);
   const [dhcpLeases, setDhcpLeases] = useState<DhcpLease[]>([]);
   const [interfaces, setInterfaces] = useState<RouterInterface[]>([]);
   const [trafficHistory, setTrafficHistory] = useState<{ time: string; rxMbps: number; txMbps: number }[]>([]);
 
   // Sub-tabs
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'interfaces' | 'hosts' | 'cards' | 'diagnostics' | 'settings'>('users');
-  const [userSearch, setUserSearch] = useState('');
+  const [activeSubTab, setActiveSubTab] = useState<
+    'active_users' | 'all_users' | 'profiles' | 'user_manager' | 'interfaces' | 'remote_control' | 'hosts' | 'cards' | 'diagnostics' | 'ai_assistant' | 'settings'
+  >('active_users');
+
+  // Search & Filter States
+  const [activeUserSearch, setActiveUserSearch] = useState('');
+  const [allUserSearch, setAllUserSearch] = useState('');
+  const [userProfileFilter, setUserProfileFilter] = useState('all');
   const [kickTargetId, setKickTargetId] = useState<string | null>(null);
   const [isKicking, setIsKicking] = useState(false);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+
+  // Remote Power / System Command Modal & Loading
+  const [isExecutingCommand, setIsExecutingCommand] = useState(false);
+  const [commandFeedback, setCommandFeedback] = useState<{ success: boolean; message: string } | null>(null);
+  const [showRebootConfirm, setShowRebootConfirm] = useState(false);
+  const [showShutdownConfirm, setShowShutdownConfirm] = useState(false);
+
+  // Ping Diagnostic tool
+  const [pingTarget, setPingTarget] = useState('8.8.8.8');
+  const [isPinging, setIsPinging] = useState(false);
+  const [pingResults, setPingResults] = useState<any[] | null>(null);
+
+  // Profile Edit / Add Modal
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [editingProfile, setEditingProfile] = useState<Partial<HotspotUserProfile>>({
+    name: '',
+    rateLimit: '5M/2M',
+    sharedUsers: 1,
+    statusAutorefresh: '1m',
+    idleTimeout: '5m',
+    sessionTimeout: '',
+  });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Direct Card Generator & MikroTik Sync State
   const [selectedCatId, setSelectedCatId] = useState<string>(categories[0]?.id || 'custom');
@@ -132,6 +191,16 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   const [syncOutcome, setSyncOutcome] = useState<{ success: boolean; message: string } | null>(null);
   const [isExportingCardsPdf, setIsExportingCardsPdf] = useState(false);
 
+  // AI Assistant in MikroTik Tab
+  const [aiQuery, setAiQuery] = useState('');
+  const [isAiConsulting, setIsAiConsulting] = useState(false);
+  const [aiChatHistory, setAiChatHistory] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([
+    {
+      role: 'assistant',
+      text: 'مرحباً بك! أنا مستشارك الذكي لإدارة شبكات المايكروتك و WinBox. يمكنك سؤالي عن ضبط سرعات البروفايلات، حل مشاكل الهوتسبوت، مشاركة الكروت، حماية الراوتر، أو توليد سكربتات RouterOS مخصصة.',
+    },
+  ]);
+
   // Auto-refresh timer
   const refreshTimerRef = useRef<any>(null);
 
@@ -145,12 +214,14 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
     });
   };
 
-  // Perform a full live data fetch
+  // Perform a full live data fetch (Active users, Configured users, Profiles, Interfaces, Hosts, System Info)
   const fetchAllLiveData = useCallback(async (currentCfg: MikroTikConfig) => {
     try {
-      const [sys, users, hostsData, ifaces] = await Promise.all([
+      const [sys, actUsers, confUsers, profs, hostsData, ifaces] = await Promise.all([
         fetchRouterSystemInfo(currentCfg),
         fetchActiveHotspotUsers(currentCfg),
+        fetchConfiguredHotspotUsers(currentCfg),
+        fetchHotspotUserProfiles(currentCfg),
         fetchConnectedHosts(currentCfg),
         fetchRouterInterfaces(currentCfg),
       ]);
@@ -159,7 +230,9 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
         setSystemInfo(sys);
         setIsConnected(true);
       }
-      if (users) setActiveUsers(users);
+      if (actUsers) setActiveUsers(actUsers);
+      if (confUsers) setConfiguredUsers(confUsers);
+      if (profs) setUserProfiles(profs);
       if (hostsData) {
         setHosts(hostsData.hosts || []);
         setDhcpLeases(hostsData.leases || []);
@@ -215,7 +288,6 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
 
   // Setup auto-refresh polling
   useEffect(() => {
-    // Initial fetch if already connected or demo
     if (config.host) {
       fetchAllLiveData(config);
     }
@@ -233,7 +305,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
     };
   }, [config.autoRefreshInterval, config.host, config.port, config.protocol, config.username, config.password, fetchAllLiveData]);
 
-  // Handle User Disconnect / Kick
+  // Handle User Disconnect / Kick from Active Sessions
   const handleKickUser = async (userId: string, userName: string) => {
     if (!confirm(`هل أنت متأكد من فصل جلسة المشترك (${userName}) من الراوتر فوراً؟`)) {
       return;
@@ -247,9 +319,141 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
 
     if (ok) {
       setActiveUsers((prev) => prev.filter((u) => u.id !== userId && u.user !== userId));
-      alert(`تم فصل المستخدم (${userName}) بنجاح.`);
+      setCommandFeedback({ success: true, message: `تم فصل جلسة المستخدم (${userName}) من الراوتر بنجاح.` });
+      setTimeout(() => setCommandFeedback(null), 4000);
     } else {
-      alert('تعذر فصل المستخدم من الراوتر. تأكد من صلاحيات حساب المشرف.');
+      setCommandFeedback({ success: false, message: 'تعذر فصل المستخدم من الراوتر. تأكد من صحة الصلاحيات.' });
+    }
+  };
+
+  // Handle Delete Configured User from Router
+  const handleDeleteConfiguredUser = async (userId: string, userName: string) => {
+    if (!confirm(`هل أنت متأكد من حذف الكارت/المستخدم (${userName}) نهائياً من قاعدة بيانات الراوتر؟`)) {
+      return;
+    }
+    setIsDeletingUser(true);
+    setDeleteTargetId(userId);
+
+    const ok = await deleteConfiguredHotspotUser(config, userId);
+    setIsDeletingUser(false);
+    setDeleteTargetId(null);
+
+    if (ok) {
+      setConfiguredUsers((prev) => prev.filter((u) => u.id !== userId && u.name !== userId));
+      setCommandFeedback({ success: true, message: `تم حذف الكارت (${userName}) نهائياً من المايكروتك.` });
+      setTimeout(() => setCommandFeedback(null), 4000);
+    } else {
+      setCommandFeedback({ success: false, message: 'تعذر حذف الكارت من الراوتر.' });
+    }
+  };
+
+  // Handle Remote System Commands (Reboot / Shutdown)
+  const handleExecuteSystemCommand = async (command: 'reboot' | 'shutdown') => {
+    setShowRebootConfirm(false);
+    setShowShutdownConfirm(false);
+    setIsExecutingCommand(true);
+    setCommandFeedback(null);
+
+    const res = await executeMikrotikSystemCommand(config, command);
+    setIsExecutingCommand(false);
+    setCommandFeedback(res);
+
+    if (res.success && command === 'reboot') {
+      setIsConnected(false);
+      // Wait for router reboot and test again after 15 seconds
+      setTimeout(() => {
+        handleTestConnection();
+      }, 15000);
+    }
+  };
+
+  // Handle Remote Ping test
+  const handleRunPing = async () => {
+    if (!pingTarget.trim()) return;
+    setIsPinging(true);
+    setPingResults(null);
+
+    const res = await executeMikrotikSystemCommand(config, 'ping', { address: pingTarget.trim(), count: 4 });
+    setIsPinging(false);
+    if (res.success && res.output) {
+      setPingResults(Array.isArray(res.output) ? res.output : [res.output]);
+    } else {
+      setCommandFeedback({ success: false, message: res.message || 'فشل اختبار Ping' });
+    }
+  };
+
+  // Handle Save / Add Hotspot User Profile
+  const handleSaveProfileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProfile.name?.trim()) {
+      alert('يرجى كتابة اسم البروفايل');
+      return;
+    }
+
+    setIsSavingProfile(true);
+    const res = await saveHotspotUserProfile(config, {
+      id: editingProfile.id,
+      name: editingProfile.name.trim(),
+      rateLimit: editingProfile.rateLimit || '5M/2M',
+      sharedUsers: editingProfile.sharedUsers || 1,
+      statusAutorefresh: editingProfile.statusAutorefresh || '1m',
+      idleTimeout: editingProfile.idleTimeout || '5m',
+      sessionTimeout: editingProfile.sessionTimeout,
+    });
+    setIsSavingProfile(false);
+
+    if (res.success) {
+      setShowProfileModal(false);
+      setCommandFeedback({ success: true, message: res.message || `تم حفظ البروفايل ${editingProfile.name} بنجاح.` });
+      setTimeout(() => setCommandFeedback(null), 4000);
+      fetchAllLiveData(config);
+    } else {
+      alert(`خطأ: ${res.message}`);
+    }
+  };
+
+  // Handle AI Consultation
+  const handleSendAiConsultation = async () => {
+    if (!aiQuery.trim() || isAiConsulting) return;
+
+    const userText = aiQuery.trim();
+    setAiQuery('');
+    setAiChatHistory((prev) => [...prev, { role: 'user', text: userText }]);
+    setIsAiConsulting(true);
+
+    try {
+      const res = await fetch('/api/ai/mikrotik-assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: userText,
+          networkContext: {
+            networkName: settings.networkName,
+            routerModel: systemInfo?.model || config.routerModel,
+            version: systemInfo?.version || config.routerOsVersion,
+            activeUsersCount: activeUsers.length,
+            configuredUsersCount: configuredUsers.length,
+            profiles: userProfiles.map((p) => ({ name: p.name, rateLimit: p.rateLimit })),
+          },
+        }),
+      });
+      const data = await res.json();
+      setIsAiConsulting(false);
+
+      if (data.success && (data.reply || data.response)) {
+        setAiChatHistory((prev) => [...prev, { role: 'assistant', text: data.reply || data.response }]);
+      } else {
+        setAiChatHistory((prev) => [
+          ...prev,
+          { role: 'assistant', text: 'عذراً، حدث خطأ أثناء معالجة الطلب عبر الذكاء الاصطناعي. يرجى المحاولة مرة أخرى.' },
+        ]);
+      }
+    } catch (err: any) {
+      setIsAiConsulting(false);
+      setAiChatHistory((prev) => [
+        ...prev,
+        { role: 'assistant', text: `تعذر الاتصال بخدمة الذكاء الاصطناعي: ${err.message}` },
+      ]);
     }
   };
 
@@ -336,6 +540,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
         });
         // Auto-increment serial start for next batch
         setCardSerialStart((prev) => prev + cardCount);
+        fetchAllLiveData(config);
       } else {
         setSyncOutcome({
           success: false,
@@ -428,14 +633,25 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   };
 
   // Filtered active users
-  const filteredUsers = activeUsers.filter((u) => {
-    const q = userSearch.toLowerCase();
+  const filteredActiveUsers = activeUsers.filter((u) => {
+    const q = activeUserSearch.toLowerCase();
     return (
       u.user.toLowerCase().includes(q) ||
       u.address.toLowerCase().includes(q) ||
       u.macAddress.toLowerCase().includes(q) ||
       (u.comment && u.comment.toLowerCase().includes(q))
     );
+  });
+
+  // Filtered configured users
+  const filteredConfiguredUsers = configuredUsers.filter((u) => {
+    const q = allUserSearch.toLowerCase();
+    const matchesSearch =
+      u.name.toLowerCase().includes(q) ||
+      (u.comment && u.comment.toLowerCase().includes(q)) ||
+      (u.profile && u.profile.toLowerCase().includes(q));
+    const matchesProfile = userProfileFilter === 'all' || u.profile === userProfileFilter;
+    return matchesSearch && matchesProfile;
   });
 
   // Calculate live aggregate bandwidth
@@ -445,38 +661,63 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   return (
     <div className="space-y-6 pb-12">
       {/* Top Banner & Connection Controls */}
-      <div className="bg-slate-900/90 p-4 sm:p-6 rounded-2xl border border-slate-800 shadow-xl">
-        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+      <div className="bg-slate-900/95 p-4 sm:p-6 rounded-3xl border border-slate-800 shadow-2xl relative overflow-hidden">
+        {/* Background glow accent */}
+        <div className="absolute top-0 left-1/4 w-96 h-24 bg-indigo-500/10 blur-3xl pointer-events-none rounded-full" />
+
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 relative z-10">
           <div>
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
-                <Server className="w-5 h-5" />
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-800 border border-indigo-500/40 flex items-center justify-center text-white shadow-lg shadow-indigo-600/30">
+                <Server className="w-6 h-6" />
               </div>
               <div>
-                <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
-                  <span>مركز المايكروتك المباشر والمراقبة الحية</span>
+                <h2 className="text-xl sm:text-2xl font-black text-white flex flex-wrap items-center gap-2.5">
+                  <span>مركز المايكروتك المباشر والتحكم عن بُعد (WinBox Web Control)</span>
                   {isConnected ? (
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                      متصل ومستقر
+                    <span className="px-3 py-0.5 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 flex items-center gap-1.5 shadow-sm">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                      متصل بالراوتر: {systemInfo?.identity || config.routerIdentity || 'MikroTik'}
                     </span>
                   ) : (
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                      غير متصل (يتطلب اختبار الاتصال)
+                    <span className="px-3 py-0.5 rounded-full text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                      غير متصل (يتطلب فحص الاتصال)
                     </span>
                   )}
                 </h2>
-                <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-                  قراءة فورية لموارد الراوتر، المشتركين النشطين، وسرعات سحب الإنترنت مع دعم RouterOS v6 و v7 بنسبة 100%.
+                <p className="text-xs sm:text-sm text-slate-400 mt-1">
+                  إدارة شاملة لراوتر مايكروتك: جلب المشتركين، إدارة البروفايلات، مراقبة الجلسات الحية، والتحكم بالتشغيل والإيقاف عن بُعد بنسبة 100%.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Quick Action Bar */}
+          {/* Quick Action Bar & Remote Power Buttons */}
           <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+            {/* Quick Remote Reboot Button */}
+            <button
+              onClick={() => setShowRebootConfirm(true)}
+              disabled={isExecutingCommand || !isConnected}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition disabled:opacity-40"
+              title="إعادة تشغيل راوتر مايكروتك عن بُعد"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>إعادة التشغيل</span>
+            </button>
+
+            {/* Quick Remote Shutdown Button */}
+            <button
+              onClick={() => setShowShutdownConfirm(true)}
+              disabled={isExecutingCommand || !isConnected}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold transition disabled:opacity-40"
+              title="إيقاف تشغيل الراوتر عن بُعد"
+            >
+              <Power className="w-3.5 h-3.5" />
+              <span>إيقاف التشغيل</span>
+            </button>
+
             {/* Auto-Refresh dropdown */}
-            <div className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-700 text-xs text-slate-300">
+            <div className="flex items-center gap-1.5 bg-slate-800/90 px-2.5 py-1.5 rounded-xl border border-slate-700 text-xs text-slate-300">
               <Clock className="w-3.5 h-3.5 text-indigo-400" />
               <span className="hidden sm:inline">التحديث:</span>
               <select
@@ -515,12 +756,30 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
               ) : (
                 <>
                   <Activity className="w-4 h-4" />
-                  <span>فحص الاتصال والتوافق</span>
+                  <span>فحص الاتصال</span>
                 </>
               )}
             </button>
           </div>
         </div>
+
+        {/* Action Feedback Banner */}
+        {commandFeedback && (
+          <div
+            className={`mt-4 p-3 rounded-xl border text-xs flex items-center gap-2.5 transition animate-in fade-in ${
+              commandFeedback.success
+                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                : 'bg-rose-950/60 border-rose-500/40 text-rose-300'
+            }`}
+          >
+            {commandFeedback.success ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <span className="font-semibold">{commandFeedback.message}</span>
+          </div>
+        )}
 
         {/* Diagnostic Bar / Test Result Banner */}
         {testResult && (
@@ -571,7 +830,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
       {/* Live System Telemetry Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* CPU Load */}
-        <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-md">
+        <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-md hover:border-slate-700 transition">
           <div className="flex items-center justify-between">
             <span className="text-slate-400 text-xs font-medium">استهلاك المعالج (CPU)</span>
             <Cpu className="w-4 h-4 text-amber-400" />
@@ -584,7 +843,6 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
               {systemInfo?.cpuCount ? `${systemInfo.cpuCount} Cores` : '1 Core'}
             </span>
           </div>
-          {/* Progress bar */}
           <div className="mt-2 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
             <div
               className={`h-full transition-all duration-500 ${
@@ -600,7 +858,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
         </div>
 
         {/* RAM Memory */}
-        <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-md">
+        <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-md hover:border-slate-700 transition">
           <div className="flex items-center justify-between">
             <span className="text-slate-400 text-xs font-medium">الذاكرة العشوائية (RAM)</span>
             <HardDrive className="w-4 h-4 text-cyan-400" />
@@ -638,25 +896,25 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
           </div>
         </div>
 
-        {/* Active Hotspot Users */}
-        <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-md">
+        {/* Active Hotspot Users & Total Registered */}
+        <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-md hover:border-slate-700 transition">
           <div className="flex items-center justify-between">
-            <span className="text-slate-400 text-xs font-medium">المشتركين النشطين (Online)</span>
+            <span className="text-slate-400 text-xs font-medium">المستخدمين (Active / Total)</span>
             <Users className="w-4 h-4 text-indigo-400" />
           </div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl font-black font-mono text-indigo-400">
               {activeUsers.length}
             </span>
-            <span className="text-[11px] text-slate-400">مستخدم متصل حالياً</span>
+            <span className="text-[11px] text-slate-400">متصل الآن / {configuredUsers.length} كارت مسجل</span>
           </div>
           <p className="text-[11px] text-slate-500 mt-1 font-mono">
-            إجمالي الأجهزة بالشبكة: {hosts.length} جهاز
+            عدد بروفايلات السرعة: {userProfiles.length} بروفايل
           </p>
         </div>
 
         {/* Router Uptime & Model */}
-        <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-md">
+        <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-md hover:border-slate-700 transition">
           <div className="flex items-center justify-between">
             <span className="text-slate-400 text-xs font-medium">موديل الراوتر ووقت التشغيل</span>
             <Zap className="w-4 h-4 text-emerald-400" />
@@ -711,12 +969,12 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
         </div>
       </div>
 
-      {/* Sub-Navigation Tabs */}
+      {/* Sub-Navigation Tabs (WinBox Suite Features) */}
       <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
         <button
-          onClick={() => setActiveSubTab('users')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
-            activeSubTab === 'users'
+          onClick={() => setActiveSubTab('active_users')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+            activeSubTab === 'active_users'
               ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
               : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
           }`}
@@ -726,88 +984,148 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
         </button>
 
         <button
+          onClick={() => setActiveSubTab('all_users')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+            activeSubTab === 'all_users'
+              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <CreditCard className="w-4 h-4" />
+          <span>جميع الكروت بالراوتر ({configuredUsers.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('profiles')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+            activeSubTab === 'profiles'
+              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>بروفايلات السرعة ({userProfiles.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('user_manager')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition border ${
+            activeSubTab === 'user_manager'
+              ? 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-600/30'
+              : 'bg-slate-900 text-purple-400 border-purple-500/20 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <Server className="w-4 h-4 text-purple-400" />
+          <span>اليوزر مانجر (User Manager)</span>
+          <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('remote_control')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+            activeSubTab === 'remote_control'
+              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <Power className="w-4 h-4 text-amber-400" />
+          <span>التحكم عن بُعد والأوامر</span>
+        </button>
+
+        <button
           onClick={() => setActiveSubTab('interfaces')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
             activeSubTab === 'interfaces'
               ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
               : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
           }`}
         >
           <Activity className="w-4 h-4" />
-          <span>حركة واجهات الشبكة والسرعات ({interfaces.length})</span>
+          <span>واجهات الشبكة والسرعات ({interfaces.length})</span>
         </button>
 
         <button
           onClick={() => setActiveSubTab('hosts')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
             activeSubTab === 'hosts'
               ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
               : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
           }`}
         >
           <Laptop className="w-4 h-4" />
-          <span>الأجهزة المتصلة و DHCP ({hosts.length})</span>
+          <span>الأجهزة و DHCP ({hosts.length})</span>
         </button>
 
         <button
           onClick={() => setActiveSubTab('cards')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
             activeSubTab === 'cards'
               ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
               : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
           }`}
         >
-          <CreditCard className="w-4 h-4" />
-          <span>توليد ومزامنة الكروت بالراوتر</span>
+          <Zap className="w-4 h-4 text-amber-400" />
+          <span>توليد ومزامنة الكروت</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('ai_assistant')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+            activeSubTab === 'ai_assistant'
+              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
+              : 'bg-slate-900 text-purple-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <Bot className="w-4 h-4" />
+          <span>المساعد الذكي للمايكروتك</span>
         </button>
 
         <button
           onClick={() => setActiveSubTab('diagnostics')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
             activeSubTab === 'diagnostics'
               ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
               : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
           }`}
         >
           <Terminal className="w-4 h-4" />
-          <span>فحص التوافق وسكربتات التهيئة</span>
+          <span>سكربتات WinBox</span>
         </button>
 
         <button
           onClick={() => setActiveSubTab('settings')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition mr-auto ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition mr-auto ${
             activeSubTab === 'settings'
               ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
               : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
           }`}
         >
           <Sliders className="w-4 h-4" />
-          <span>إعدادات الاتصال والمنفذ</span>
+          <span>إعدادات الاتصال</span>
         </button>
       </div>
 
-      {/* SUB-VIEW 1: Active Users */}
-      {activeSubTab === 'users' && (
+      {/* SUB-VIEW 1: Active Users (Hotspot Active) */}
+      {activeSubTab === 'active_users' && (
         <div className="space-y-4 animate-in fade-in duration-200">
-          {/* Filter / Search bar */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
-            <div className="relative w-full sm:w-72">
+            <div className="relative w-full sm:w-80">
               <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
               <input
                 type="text"
                 placeholder="بحث بالمستخدم، IP، أو الماك..."
-                value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
+                value={activeUserSearch}
+                onChange={(e) => setActiveUserSearch(e.target.value)}
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg pr-9 pl-3 py-1.5 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-indigo-500"
               />
             </div>
 
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span>آخر تحديث: <strong className="font-mono text-slate-200">{lastUpdated || 'الآن'}</strong></span>
+            <div className="flex items-center gap-3 text-xs text-slate-400">
+              <span>المتصلين الآن: <strong className="text-emerald-400 font-mono font-bold">{filteredActiveUsers.length}</strong></span>
+              <span>• آخر تحديث: <strong className="font-mono text-slate-200">{lastUpdated || 'الآن'}</strong></span>
             </div>
           </div>
 
-          {/* Active Users Table */}
           <div className="bg-slate-900/90 rounded-2xl border border-slate-800 shadow-md overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-right text-xs">
@@ -825,14 +1143,14 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800 text-slate-200">
-                  {filteredUsers.length === 0 ? (
+                  {filteredActiveUsers.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="p-8 text-center text-slate-500">
                         لا يوجد مستخدمين متصلين حالياً أو لا توجد نتائج مطابقة للبحث.
                       </td>
                     </tr>
                   ) : (
-                    filteredUsers.map((user) => (
+                    filteredActiveUsers.map((user) => (
                       <tr key={user.id} className="hover:bg-slate-800/40 transition">
                         <td className="p-3.5">
                           <div className="flex items-center gap-2">
@@ -877,7 +1195,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
                             onClick={() => handleKickUser(user.id, user.user)}
                             disabled={isKicking && kickTargetId === user.id}
                             className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition text-xs flex items-center justify-center gap-1 mx-auto"
-                            title="فصل الجلسة"
+                            title="فصل الجلسة فوراً"
                           >
                             <LogOut className="w-3.5 h-3.5" />
                             <span>فصل</span>
@@ -893,117 +1211,214 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
         </div>
       )}
 
-      {/* SUB-VIEW 2: Network Interfaces & Live Traffic Chart */}
-      {activeSubTab === 'interfaces' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Real-time Traffic Graph */}
-          <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-indigo-400" />
-                  <span>الرسم البياني لحركة البيانات والسرعات اللحظية (Traffic Monitor)</span>
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  عرض مباشر لمعدل سحب التحميل (Rx) والرفع (Tx) بالميجابت في الثانية (Mbps).
-                </p>
+      {/* SUB-VIEW 2: All Configured Users (/ip/hotspot/user) */}
+      {activeSubTab === 'all_users' && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="بحث في اسم الكارت أو الملاحظات..."
+                  value={allUserSearch}
+                  onChange={(e) => setAllUserSearch(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg pr-9 pl-3 py-1.5 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              {/* Profile Filter Dropdown */}
+              <div className="flex items-center gap-1.5 text-xs text-slate-300">
+                <span>تصفية بالبروفايل:</span>
+                <select
+                  value={userProfileFilter}
+                  onChange={(e) => setUserProfileFilter(e.target.value)}
+                  className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none"
+                >
+                  <option value="all">كافة البروفايلات</option>
+                  {userProfiles.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trafficHistory.length > 0 ? trafficHistory : [{ time: '00:00', rxMbps: 0, txMbps: 0 }]}>
-                  <defs>
-                    <linearGradient id="rxGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#10B981" stopOpacity={0.0} />
-                    </linearGradient>
-                    <linearGradient id="txGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#06B6D4" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#06B6D4" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
-                  <XAxis dataKey="time" stroke="#64748B" tick={{ fontSize: 10 }} />
-                  <YAxis stroke="#64748B" tick={{ fontSize: 10 }} unit=" Mbps" />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '0.75rem', fontSize: '12px' }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="rxMbps"
-                    name="التحميل (Download)"
-                    stroke="#10B981"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#rxGradient)"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="txMbps"
-                    name="الرفع (Upload)"
-                    stroke="#06B6D4"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#txGradient)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">
+                إجمالي الكروت المسجلة: <strong className="text-indigo-400 font-mono font-bold">{filteredConfiguredUsers.length}</strong>
+              </span>
+              <button
+                onClick={() => setActiveSubTab('cards')}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>إضافة كروت جديدة</span>
+              </button>
             </div>
           </div>
 
-          {/* Interface Cards */}
+          <div className="bg-slate-900/90 rounded-2xl border border-slate-800 shadow-md overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead className="bg-slate-800/80 text-slate-300 font-semibold border-b border-slate-700/80">
+                  <tr>
+                    <th className="p-3.5">اسم الكارت / المستخدم</th>
+                    <th className="p-3.5">البروفايل المخصص</th>
+                    <th className="p-3.5">الوقت المحدد (Limit Uptime)</th>
+                    <th className="p-3.5">حجم البيانات (Quota)</th>
+                    <th className="p-3.5">إجمالي الاستهلاك</th>
+                    <th className="p-3.5">الوقت المستهلك</th>
+                    <th className="p-3.5">الملاحظات</th>
+                    <th className="p-3.5 text-center">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-200">
+                  {filteredConfiguredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-slate-500">
+                        لا توجد كروت مسجلة في الراوتر أو لا توجد نتائج مطابقة للبحث.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredConfiguredUsers.map((user) => (
+                      <tr key={user.id} className="hover:bg-slate-800/40 transition">
+                        <td className="p-3.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold font-mono">
+                              <Key className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="font-bold text-white font-mono">{user.name}</span>
+                          </div>
+                        </td>
+
+                        <td className="p-3.5">
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
+                            {user.profile}
+                          </span>
+                        </td>
+
+                        <td className="p-3.5 font-mono text-slate-300">{user.limitUptime || 'غير محدد'}</td>
+
+                        <td className="p-3.5 font-mono text-emerald-400">
+                          {user.limitBytesTotal ? formatBytesToHuman(user.limitBytesTotal) : 'غير محدود'}
+                        </td>
+
+                        <td className="p-3.5 font-mono text-cyan-400">
+                          {formatBytesToHuman((user.bytesIn || 0) + (user.bytesOut || 0))}
+                        </td>
+
+                        <td className="p-3.5 font-mono text-amber-300">{user.uptime || '0s'}</td>
+
+                        <td className="p-3.5 text-slate-400 text-[11px]">{user.comment || '-'}</td>
+
+                        <td className="p-3.5 text-center">
+                          <button
+                            onClick={() => handleDeleteConfiguredUser(user.id, user.name)}
+                            disabled={isDeletingUser && deleteTargetId === user.id}
+                            className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition text-xs flex items-center justify-center gap-1 mx-auto"
+                            title="حذف الكارت نهائياً من الراوتر"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>حذف</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-VIEW 3: User Profiles (/ip/hotspot/user/profile) */}
+      {activeSubTab === 'profiles' && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Layers className="w-4 h-4 text-indigo-400" />
+                <span>بروفايلات سرعات المشتركين (Hotspot User Profiles)</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                تحديد معدل السرعة (Rate Limit e.g. 5M/2M)، عدد الأجهزة المشتركة (Shared Users)، وأوقات انتهاء الجلسات.
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                setEditingProfile({
+                  name: '',
+                  rateLimit: '5M/2M',
+                  sharedUsers: 1,
+                  statusAutorefresh: '1m',
+                  idleTimeout: '5m',
+                  sessionTimeout: '',
+                });
+                setShowProfileModal(true);
+              }}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-indigo-600/30"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إضافة بروفايل سرعة جديد</span>
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {interfaces.map((iface) => (
+            {userProfiles.map((prof) => (
               <div
-                key={iface.id}
-                className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-md space-y-3"
+                key={prof.id}
+                className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md space-y-3 relative overflow-hidden"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                   <div className="flex items-center gap-2">
-                    <Radio className="w-4 h-4 text-indigo-400" />
-                    <span className="font-bold text-white font-mono text-sm">{iface.name}</span>
+                    <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold">
+                      <Gauge className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white text-sm">{prof.name}</h4>
+                      <span className="text-[10px] text-slate-400 font-mono">ID: {prof.id}</span>
+                    </div>
                   </div>
-                  <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      iface.running
-                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                        : 'bg-slate-800 text-slate-400'
-                    }`}
+
+                  <button
+                    onClick={() => {
+                      setEditingProfile(prof);
+                      setShowProfileModal(true);
+                    }}
+                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                    title="تعديل البروفايل"
                   >
-                    {iface.running ? 'نشط (Running)' : 'متوقف'}
-                  </span>
+                    <Edit className="w-3.5 h-3.5" />
+                  </button>
                 </div>
 
-                {iface.comment && (
-                  <p className="text-[11px] text-slate-400 bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
-                    {iface.comment}
-                  </p>
-                )}
-
-                <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                  <div className="bg-slate-800/50 p-2 rounded-xl border border-slate-700/40">
-                    <span className="text-[10px] text-slate-400 block font-sans">سرعة التحميل اللحظية:</span>
-                    <span className="font-bold text-emerald-400">
-                      {formatBitsToSpeed(iface.rxRateBps)}
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">تحديد السرعة (Rate Limit):</span>
+                    <span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      {prof.rateLimit || 'غير محدد (مفتوح)'}
                     </span>
                   </div>
-                  <div className="bg-slate-800/50 p-2 rounded-xl border border-slate-700/40">
-                    <span className="text-[10px] text-slate-400 block font-sans">سرعة الرفع اللحظية:</span>
-                    <span className="font-bold text-cyan-400">
-                      {formatBitsToSpeed(iface.txRateBps)}
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">مشاركة الأجهزة (Shared Users):</span>
+                    <span className="font-mono text-white bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                      {prof.sharedUsers || 1} جهاز
                     </span>
                   </div>
-                </div>
 
-                <div className="text-[11px] text-slate-400 space-y-1 pt-1 border-t border-slate-800 font-mono">
-                  <div className="flex justify-between">
-                    <span>إجمالي Rx:</span>
-                    <span>{formatBytesToHuman(iface.rxByte)}</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">مهلة الخمول (Idle Timeout):</span>
+                    <span className="font-mono text-slate-300">{prof.idleTimeout || '5m'}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>إجمالي Tx:</span>
-                    <span>{formatBytesToHuman(iface.txByte)}</span>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">تحديث صفحة الحالة:</span>
+                    <span className="font-mono text-slate-300">{prof.statusAutorefresh || '1m'}</span>
                   </div>
                 </div>
               </div>
@@ -1012,139 +1427,328 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
         </div>
       )}
 
-      {/* SUB-VIEW 3: Connected Physical Hosts & DHCP Leases */}
-      {activeSubTab === 'hosts' && (
+      {/* SUB-VIEW: User Manager (RADIUS & Vouchers Suite) */}
+      {activeSubTab === 'user_manager' && (
+        <UserManagerView
+          settings={settings}
+          config={config}
+          categories={categories}
+          onRefreshParent={() => fetchAllLiveData(config)}
+        />
+      )}
+
+      {/* SUB-VIEW 4: Remote System Control & Remote Diagnostics */}
+      {activeSubTab === 'remote_control' && (
+        <div className="space-y-6 animate-in fade-in duration-200 text-xs">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Remote Power & Reboot Control Box */}
+            <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md space-y-4">
+              <div className="border-b border-slate-800 pb-3">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Power className="w-5 h-5 text-amber-400" />
+                  <span>التحكم في تشغيل وطاقة الراوتر عن بُعد (Remote Power & Reboot)</span>
+                </h3>
+                <p className="text-slate-400 mt-1">
+                  تنفيذ أوامر النظام الحساسة مباشرة عبر اتصال الـ API دون الحاجة للدخول إلى WinBox أو التواجد في موقع الراوتر.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <div className="p-4 rounded-xl bg-slate-950/80 border border-amber-500/30 flex flex-col justify-between space-y-3">
+                  <div>
+                    <span className="font-bold text-amber-300 text-sm block">إعادة التشغيل (Reboot)</span>
+                    <p className="text-slate-400 text-[11px] mt-1">
+                      إعادة تشغيل نظام RouterOS وتفريغ الذاكرة المؤقتة. يعود الراوتر للعمل خلال 30-60 ثانية.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowRebootConfirm(true)}
+                    disabled={isExecutingCommand || !isConnected}
+                    className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold transition flex items-center justify-center gap-2 shadow-md shadow-amber-600/20 disabled:opacity-40"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span>إرسال أمر Reboot</span>
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-950/80 border border-rose-500/30 flex flex-col justify-between space-y-3">
+                  <div>
+                    <span className="font-bold text-rose-300 text-sm block">إيقاف التشغيل (Shutdown)</span>
+                    <p className="text-slate-400 text-[11px] mt-1">
+                      إيقاف تشغيل الراوتر بشكل آمن تمهيداً لفصل الكهرباء أو الصيانة المادية للراوتر.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowShutdownConfirm(true)}
+                    disabled={isExecutingCommand || !isConnected}
+                    className="w-full py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold transition flex items-center justify-center gap-2 shadow-md shadow-rose-600/20 disabled:opacity-40"
+                  >
+                    <Power className="w-4 h-4" />
+                    <span>إرسال أمر Shutdown</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Remote Ping Diagnostic Tool */}
+            <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md space-y-4">
+              <div className="border-b border-slate-800 pb-3">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-indigo-400" />
+                  <span>فحص الاتصال وسرعة الاستجابة من الراوتر (Router Ping Tool)</span>
+                </h3>
+                <p className="text-slate-400 mt-1">
+                  إرسال حزم Ping من داخل راوتر مايكروتك لفحص جودة اتصال خط الإنترنت أو فحص سيرفر محدد.
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={pingTarget}
+                  onChange={(e) => setPingTarget(e.target.value)}
+                  placeholder="عنوان IP أو النطاق (مثال: 8.8.8.8 أو 1.1.1.1)"
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  onClick={handleRunPing}
+                  disabled={isPinging || !isConnected}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isPinging ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  <span>فحص Ping</span>
+                </button>
+              </div>
+
+              {/* Ping Results Box */}
+              {pingResults && (
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 font-mono text-[11px] space-y-1.5">
+                  <span className="text-slate-400 block border-b border-slate-800 pb-1">
+                    نتائج فحص Ping لـ ({pingTarget}):
+                  </span>
+                  {pingResults.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between text-emerald-400">
+                      <span>حزمة {i + 1}: الرد من {r.host || pingTarget}</span>
+                      <span>الحجم: {r.size || 56}B • الوقت: {r.time || '20ms'} • TTL: {r.ttl || 56}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-VIEW 5: Network Interfaces & Live Traffic Chart */}
+      {activeSubTab === 'interfaces' && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="bg-slate-900/90 rounded-2xl border border-slate-800 shadow-md overflow-hidden">
+          <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-xl">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-800 pb-4 mb-4">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-indigo-400" />
+                  <span>الرسم البياني الحي لسرعات الإنترنت (Live Traffic & Throughput)</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  عرض لحظي لمعدل سحب التحميل (Rx Mbps) والرفع (Tx Mbps) الإجمالي على واجهات المايكروتك.
+                </p>
+              </div>
+            </div>
+
+            <div className="h-64 w-full" dir="ltr">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trafficHistory} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="rxColor" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+                    </linearGradient>
+                    <linearGradient id="txColor" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
+                  <XAxis dataKey="time" stroke="#94a3b8" fontSize={10} tickLine={false} />
+                  <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} unit=" Mb" />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#0f172a',
+                      borderColor: '#334155',
+                      borderRadius: '0.75rem',
+                      fontSize: '12px',
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="rxMbps"
+                    name="تحميل (Download)"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#rxColor)"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="txMbps"
+                    name="رفع (Upload)"
+                    stroke="#06b6d4"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#txColor)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Interfaces Table */}
+          <div className="bg-slate-900/90 rounded-2xl border border-slate-800 shadow-md overflow-hidden text-xs">
             <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                <Laptop className="w-4 h-4 text-cyan-400" />
-                <span>الأجهزة المتصلة بشبكة الهوتسبوت (/ip hotspot host)</span>
-              </h3>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-                {hosts.length} جهاز
-              </span>
+              <h4 className="font-bold text-white flex items-center gap-2">
+                <Network className="w-4 h-4 text-indigo-400" />
+                <span>واجهات الشبكة والمنافذ (Interfaces List)</span>
+              </h4>
+              <span className="text-slate-400">{interfaces.length} منفذ نشط</span>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-right text-xs">
-                <thead className="bg-slate-800/60 text-slate-300 font-semibold border-b border-slate-700/80">
+              <table className="w-full text-right">
+                <thead className="bg-slate-800/80 text-slate-300 font-semibold border-b border-slate-700/80">
                   <tr>
-                    <th className="p-3">عنوان IP</th>
-                    <th className="p-3">عنوان MAC</th>
-                    <th className="p-3">الحالة التوثيقية</th>
-                    <th className="p-3">مدة الاتصال</th>
-                    <th className="p-3">سحب التحميل</th>
-                    <th className="p-3">سحب الرفع</th>
-                    <th className="p-3">المنفذ / البورت</th>
+                    <th className="p-3.5">اسم المنفذ / الواجهة</th>
+                    <th className="p-3.5">النوع</th>
+                    <th className="p-3.5">الحالة</th>
+                    <th className="p-3.5">السرعة اللحظية للتحميل</th>
+                    <th className="p-3.5">السرعة اللحظية للرفع</th>
+                    <th className="p-3.5">إجمالي البايتات المستلمة (Rx)</th>
+                    <th className="p-3.5">إجمالي البايتات المرسلة (Tx)</th>
+                    <th className="p-3.5">الوصف والملاحظات</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800 text-slate-200">
-                  {hosts.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-6 text-center text-slate-500">
-                        لا توجد أجهزة متصلة مسجلة في جدول الهوست.
+                  {interfaces.map((iface) => (
+                    <tr key={iface.id} className="hover:bg-slate-800/40 transition">
+                      <td className="p-3.5">
+                        <span className="font-bold text-white font-mono block">{iface.name}</span>
                       </td>
+
+                      <td className="p-3.5">
+                        <span className="px-2 py-0.5 rounded bg-slate-800 font-mono text-[11px] text-slate-300 border border-slate-700">
+                          {iface.type}
+                        </span>
+                      </td>
+
+                      <td className="p-3.5">
+                        {iface.running ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                            متصل (Running)
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                            مفصول (Link Down)
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="p-3.5 font-mono font-bold text-emerald-400">
+                        {formatBitsToSpeed(iface.rxRateBps)}
+                      </td>
+
+                      <td className="p-3.5 font-mono font-bold text-cyan-400">
+                        {formatBitsToSpeed(iface.txRateBps)}
+                      </td>
+
+                      <td className="p-3.5 font-mono text-slate-300">
+                        {formatBytesToHuman(iface.rxByte)}
+                      </td>
+
+                      <td className="p-3.5 font-mono text-slate-300">
+                        {formatBytesToHuman(iface.txByte)}
+                      </td>
+
+                      <td className="p-3.5 text-slate-400 text-[11px]">{iface.comment || '-'}</td>
                     </tr>
-                  ) : (
-                    hosts.map((h) => (
-                      <tr key={h.id} className="hover:bg-slate-800/30">
-                        <td className="p-3 font-mono font-bold text-white">{h.address}</td>
-                        <td className="p-3 font-mono text-slate-400 text-[11px]">{h.macAddress}</td>
-                        <td className="p-3">
-                          {h.authorized ? (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                              مسجل دخول (Authorized)
-                            </span>
-                          ) : h.bypassed ? (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                              مستثنى (Bypassed)
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400">
-                              بانتظار تسجيل الدخول
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-3 font-mono text-slate-300">{h.uptime}</td>
-                        <td className="p-3 font-mono text-emerald-400">{formatBytesToHuman(h.bytesOut)}</td>
-                        <td className="p-3 font-mono text-cyan-400">{formatBytesToHuman(h.bytesIn)}</td>
-                        <td className="p-3 font-mono text-slate-400">{h.bridgePort || '-'}</td>
-                      </tr>
-                    ))
-                  )}
+                  ))}
                 </tbody>
               </table>
             </div>
           </div>
-
-          {/* DHCP Leases */}
-          {dhcpLeases.length > 0 && (
-            <div className="bg-slate-900/90 rounded-2xl border border-slate-800 shadow-md overflow-hidden">
-              <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-                <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                  <Smartphone className="w-4 h-4 text-emerald-400" />
-                  <span>عناوين DHCP الموزعة وأسماء الأجهزة (DHCP Leases)</span>
-                </h3>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                  {dhcpLeases.length} عنوان
-                </span>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-right text-xs">
-                  <thead className="bg-slate-800/60 text-slate-300 font-semibold border-b border-slate-700/80">
-                    <tr>
-                      <th className="p-3">اسم الجهاز (Host Name)</th>
-                      <th className="p-3">عنوان IP</th>
-                      <th className="p-3">عنوان MAC</th>
-                      <th className="p-3">سيرفر DHCP</th>
-                      <th className="p-3">الحالة</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800 text-slate-200">
-                    {dhcpLeases.map((l) => (
-                      <tr key={l.id} className="hover:bg-slate-800/30">
-                        <td className="p-3 font-bold text-white">{l.hostName || 'هاتف / جهاز غير معرف'}</td>
-                        <td className="p-3 font-mono text-slate-300">{l.address}</td>
-                        <td className="p-3 font-mono text-slate-400 text-[11px]">{l.macAddress}</td>
-                        <td className="p-3 font-mono text-slate-400">{l.server || 'dhcp1'}</td>
-                        <td className="p-3">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400">
-                            {l.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {/* SUB-VIEW 4: Direct Hotspot Card Generation & MikroTik Sync */}
+      {/* SUB-VIEW 6: Connected Hosts & DHCP Leases */}
+      {activeSubTab === 'hosts' && (
+        <div className="space-y-6 animate-in fade-in duration-200 text-xs">
+          <div className="bg-slate-900/90 rounded-2xl border border-slate-800 shadow-md overflow-hidden">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+              <h4 className="font-bold text-white flex items-center gap-2">
+                <Laptop className="w-4 h-4 text-cyan-400" />
+                <span>الأجهزة المتصلة بجدول الهوتسبوت الفيزيائي (Hotspot Hosts - {hosts.length})</span>
+              </h4>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-right">
+                <thead className="bg-slate-800/80 text-slate-300 font-semibold border-b border-slate-700/80">
+                  <tr>
+                    <th className="p-3.5">عنوان IP</th>
+                    <th className="p-3.5">عنوان MAC</th>
+                    <th className="p-3.5">حالة التوثيق (Authorized)</th>
+                    <th className="p-3.5">مدة الاتصال</th>
+                    <th className="p-3.5">سحب التحميل</th>
+                    <th className="p-3.5">سحب الرفع</th>
+                    <th className="p-3.5">المنفذ / Bridge Port</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-200">
+                  {hosts.map((h) => (
+                    <tr key={h.id} className="hover:bg-slate-800/40 transition">
+                      <td className="p-3.5 font-mono text-white">{h.address}</td>
+                      <td className="p-3.5 font-mono text-slate-400">{h.macAddress}</td>
+                      <td className="p-3.5">
+                        {h.authorized ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                            مسجل الدخول (Authorized)
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                            في صفحة الدخول (Unauth)
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3.5 font-mono text-slate-300">{h.uptime}</td>
+                      <td className="p-3.5 font-mono text-emerald-400">{formatBytesToHuman(h.bytesOut)}</td>
+                      <td className="p-3.5 font-mono text-cyan-400">{formatBytesToHuman(h.bytesIn)}</td>
+                      <td className="p-3.5 font-mono text-slate-400">{h.bridgePort || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-VIEW 7: Direct Card Generator & MikroTik Sync */}
       {activeSubTab === 'cards' && (
         <div className="space-y-6 animate-in fade-in duration-200 text-xs">
-          {/* Card Generator Header / Controls Card */}
           <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <CreditCard className="w-5 h-5 text-indigo-400" />
-                  <span>توليد الكروت ومزامنتها مباشرة مع راوتر مايكروتك</span>
+                  <Zap className="w-5 h-5 text-amber-400" />
+                  <span>توليد ومزامنة كروت الهوتسبوت مباشرة مع الراوتر</span>
                 </h3>
-                <p className="text-slate-400 mt-1">
-                  أنشئ دفعات كروت جديدة ثم اضغط زر "مزامنة بالراوتر" لتُحقن تلقائياً عبر الـ API في قائمة مستخدمي الهوتسبوت، أو صدّرها كملف .rsc أو PDF للطباعة.
+                <p className="text-slate-400 mt-0.5">
+                  إنشاء كروت برقم سري أو بدون، مع إمكانية المزامنة اللحظية في الراوتر وتصدير ملف سكربت (.rsc) أو طباعة الكروت PDF.
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={handleDownloadCardsRsc}
-                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 font-bold border border-indigo-500/30 flex items-center gap-1.5 transition text-xs"
-                  title="تحميل كود سكربت للمايكروتك"
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold border border-slate-700 flex items-center gap-1.5 transition text-xs"
                 >
                   <FileCode className="w-4 h-4 text-indigo-400" />
                   <span>سكربت (.rsc)</span>
@@ -1154,7 +1758,6 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
                   onClick={handleExportCardsPdf}
                   disabled={isExportingCardsPdf}
                   className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-300 font-bold border border-emerald-500/30 flex items-center gap-1.5 transition text-xs"
-                  title="تصدير كروت الطباعة إلى PDF"
                 >
                   {isExportingCardsPdf ? (
                     <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
@@ -1166,9 +1769,8 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
 
                 <button
                   onClick={handleSyncCardsWithRouter}
-                  disabled={isSyncingWithRouter}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition text-xs"
-                  title="إرسال وإنشاء الكروت في الراوتر فوراً عبر الـ API"
+                  disabled={isSyncingWithRouter || !isConnected}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition text-xs disabled:opacity-50"
                 >
                   {isSyncingWithRouter ? (
                     <>
@@ -1185,7 +1787,6 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
               </div>
             </div>
 
-            {/* Sync Outcome Banner */}
             {syncOutcome && (
               <div
                 className={`p-4 rounded-xl border flex items-start gap-3 ${
@@ -1208,7 +1809,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
               </div>
             )}
 
-            {/* Configuration Inputs for the Batch */}
+            {/* Inputs */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">فئة الكارت:</label>
@@ -1271,13 +1872,17 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
 
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">بروفايل الهوتسبوت:</label>
-                <input
-                  type="text"
+                <select
                   value={cardProfile}
                   onChange={(e) => setCardProfile(e.target.value)}
-                  placeholder="Profile-100"
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-indigo-500"
-                />
+                >
+                  {userProfiles.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -1295,7 +1900,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
             </div>
           </div>
 
-          {/* Cards Preview Grid / Print Sheet */}
+          {/* Cards Preview Grid */}
           <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-bold text-white flex items-center gap-2">
@@ -1310,7 +1915,6 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
               </span>
             </div>
 
-            {/* Printable Container */}
             <div id="mikrotik-cards-sheet-container" className="p-4 bg-slate-950 rounded-xl border border-slate-800">
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 {previewCards.map((card, idx) => (
@@ -1351,10 +1955,78 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
         </div>
       )}
 
-      {/* SUB-VIEW 5: Diagnostics & Comprehensive Compatibility Wizard */}
+      {/* SUB-VIEW 8: AI MikroTik Assistant */}
+      {activeSubTab === 'ai_assistant' && (
+        <div className="bg-slate-900/95 p-5 rounded-2xl border border-purple-500/30 shadow-xl space-y-4 animate-in fade-in duration-200 text-xs">
+          <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-400">
+                <Bot className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white">المساعد الفني الذكي لشبكات المايكروتك و WinBox</h3>
+                <p className="text-slate-400 text-[11px]">مستشارك المتخصص لحل مشاكل الهوتسبوت، توليد سكربتات RouterOS، وضبط الجودة والسرعات.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Chat Messages */}
+          <div className="space-y-3 max-h-96 overflow-y-auto p-3 bg-slate-950/80 rounded-xl border border-slate-800">
+            {aiChatHistory.map((msg, i) => (
+              <div
+                key={i}
+                className={`p-3 rounded-xl ${
+                  msg.role === 'user'
+                    ? 'bg-indigo-600/30 border border-indigo-500/30 text-indigo-200 mr-8'
+                    : 'bg-slate-900 border border-slate-800 text-slate-200 ml-8'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 mb-1 font-bold text-[11px]">
+                  {msg.role === 'user' ? (
+                    <span className="text-indigo-400">أنت:</span>
+                  ) : (
+                    <span className="text-purple-400 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" />
+                      مساعد المايكروتك الذكي:
+                    </span>
+                  )}
+                </div>
+                <div className="whitespace-pre-line leading-relaxed font-sans text-xs">{msg.text}</div>
+              </div>
+            ))}
+            {isAiConsulting && (
+              <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 flex items-center gap-2 text-xs">
+                <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
+                <span>جاري تحليل بيانات الشبكة وتوليد الاستجابة...</span>
+              </div>
+            )}
+          </div>
+
+          {/* Chat Input */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={aiQuery}
+              onChange={(e) => setAiQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSendAiConsultation()}
+              placeholder="اكتب استفسارك (مثال: كيف أمنع مشاركة كروت الهوتسبوت بالبلوتوث؟ أو اعطني سكربت حماية DNS)..."
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+            />
+            <button
+              onClick={handleSendAiConsultation}
+              disabled={isAiConsulting || !aiQuery.trim()}
+              className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold transition flex items-center gap-2 disabled:opacity-50"
+            >
+              <Send className="w-4 h-4" />
+              <span>إرسال</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-VIEW 9: Diagnostics & WinBox Scripts */}
       {activeSubTab === 'diagnostics' && (
         <div className="space-y-6 animate-in fade-in duration-200 text-xs">
-          {/* Complete One-Click Script Downloader */}
           <div className="bg-gradient-to-r from-indigo-950/70 via-slate-900 to-slate-900 p-5 rounded-2xl border border-indigo-500/30 shadow-xl space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
@@ -1390,50 +2062,10 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
               {completeSetupScript}
             </pre>
           </div>
-
-          {/* RouterOS v6 vs v7 Protocol Matrix */}
-          <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md space-y-4">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>جدول التوافق المدعوم مع أنظمة MikroTik RouterOS</span>
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-indigo-300">RouterOS Native API</span>
-                  <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded text-[10px] font-bold">منفذ 8728</span>
-                </div>
-                <p className="text-slate-400 text-[11px]">
-                  بروتوكول ثنائي فائق السرعة متوافق مع كافة أجهزة المايكروتك (RouterOS v6.x & v7.x).
-                </p>
-              </div>
-
-              <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-indigo-300">RouterOS API-SSL</span>
-                  <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 rounded text-[10px] font-bold">منفذ 8729</span>
-                </div>
-                <p className="text-slate-400 text-[11px]">
-                  اتصال آمن ومشفر عبر شهادة SSL/TLS لحماية بيانات تسجيل الدخول والكروت.
-                </p>
-              </div>
-
-              <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-indigo-300">RouterOS v7 REST API</span>
-                  <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded text-[10px] font-bold">منفذ 80 / 443</span>
-                </div>
-                <p className="text-slate-400 text-[11px]">
-                  واجهة برمجة تطبيقات RESTful الحديثة المدمجة في نظام RouterOS الإصدار 7 فما فوق.
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
-      {/* SUB-VIEW 6: Settings & Port Configuration */}
+      {/* SUB-VIEW 10: Settings & Connection Configuration */}
       {activeSubTab === 'settings' && (
         <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md space-y-5 animate-in fade-in duration-200 text-xs">
           <div className="border-b border-slate-800 pb-3">
@@ -1539,6 +2171,171 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
               <Activity className="w-4 h-4" />
               <span>اختبار وحفظ الإعدادات</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Edit / Add Modal */}
+      {showProfileModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 text-xs shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Layers className="w-5 h-5 text-indigo-400" />
+                <span>{editingProfile.id ? 'تعديل بروفايل السرعة' : 'إضافة بروفايل سرعة جديد'}</span>
+              </h3>
+              <button
+                onClick={() => setShowProfileModal(false)}
+                className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProfileSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">اسم البروفايل (Profile Name):</label>
+                <input
+                  type="text"
+                  required
+                  value={editingProfile.name || ''}
+                  onChange={(e) => setEditingProfile({ ...editingProfile, name: e.target.value })}
+                  placeholder="مثال: Profile-500 أو VIP-10M"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  تحديد السرعة (Rate Limit - Rx/Tx):
+                </label>
+                <input
+                  type="text"
+                  value={editingProfile.rateLimit || ''}
+                  onChange={(e) => setEditingProfile({ ...editingProfile, rateLimit: e.target.value })}
+                  placeholder="مثال: 5M/2M أو 8M/4M"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">تنسيق السرعة: (التحميل/الرفع) مثل 4M/2M</span>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">عدد الأجهزة المشتركة (Shared Users):</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={editingProfile.sharedUsers || 1}
+                  onChange={(e) => setEditingProfile({ ...editingProfile, sharedUsers: parseInt(e.target.value) || 1 })}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">مهلة الخمول (Idle Timeout):</label>
+                  <input
+                    type="text"
+                    value={editingProfile.idleTimeout || '5m'}
+                    onChange={(e) => setEditingProfile({ ...editingProfile, idleTimeout: e.target.value })}
+                    placeholder="5m"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">تحديث الحالة:</label>
+                  <input
+                    type="text"
+                    value={editingProfile.statusAutorefresh || '1m'}
+                    onChange={(e) => setEditingProfile({ ...editingProfile, statusAutorefresh: e.target.value })}
+                    placeholder="1m"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowProfileModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingProfile}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold flex items-center gap-2 shadow-lg shadow-indigo-600/30 disabled:opacity-50"
+                >
+                  {isSavingProfile && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <span>حفظ وإرسال للراوتر</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reboot Confirm Modal */}
+      {showRebootConfirm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-2xl w-full max-w-sm p-6 space-y-4 text-xs shadow-2xl animate-in zoom-in-95 text-center">
+            <div className="w-12 h-12 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 mx-auto">
+              <RotateCcw className="w-6 h-6 animate-spin" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">تأكيد إعادة تشغيل المايكروتك</h3>
+              <p className="text-slate-300 mt-1">
+                هل أنت متأكد من إرسال أمر إعادة التشغيل (Reboot) لراوتر مايكروتك ({config.host})؟
+                سيتم فصل جلسات المشتركين مؤقتاً حتى يكتمل إقلاع الراوتر.
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setShowRebootConfirm(false)}
+                className="flex-1 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold hover:bg-slate-700"
+              >
+                تراجع
+              </button>
+              <button
+                onClick={() => handleExecuteSystemCommand('reboot')}
+                className="flex-1 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-600/30"
+              >
+                تأكيد Reboot
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Shutdown Confirm Modal */}
+      {showShutdownConfirm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-rose-500/40 rounded-2xl w-full max-w-sm p-6 space-y-4 text-xs shadow-2xl animate-in zoom-in-95 text-center">
+            <div className="w-12 h-12 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mx-auto">
+              <Power className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">تأكيد إيقاف تشغيل الراوتر</h3>
+              <p className="text-slate-300 mt-1">
+                تحذير: سيتم إيقاف تشغيل الراوتر نهائياً (Shutdown). ولن تتمكن من الوصول إليه مجدداً إلا بالتشغيل اليدوي لمصدر الطاقة في الموقع.
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setShowShutdownConfirm(false)}
+                className="flex-1 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold hover:bg-slate-700"
+              >
+                تراجع
+              </button>
+              <button
+                onClick={() => handleExecuteSystemCommand('shutdown')}
+                className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold shadow-lg shadow-rose-600/30"
+              >
+                تأكيد Shutdown
+              </button>
+            </div>
           </div>
         </div>
       )}

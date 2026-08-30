@@ -760,7 +760,9 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
 
                 {/* Thermal Footer */}
                 <div className="text-center pt-2 border-t-2 border-dashed border-slate-400 space-y-1">
-                  <p className="text-[10px] font-bold text-slate-800">شكراً لتعاملكم وحسن ثقتكم</p>
+                  <p className="text-[10px] font-bold text-slate-800">
+                    {settings.cashierFooterText || settings.statementFooterText || 'شكراً لتعاملكم وحسن ثقتكم'}
+                  </p>
                   <p className="text-[9px] text-slate-500 font-mono">يرجى مراجعة الحساب وتوقيع الاستلام</p>
                   <div className="pt-4 grid grid-cols-2 gap-2 text-[9px] font-bold text-slate-800">
                     <div>
@@ -1047,6 +1049,16 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                     <p className="font-bold mb-8 text-slate-900">توقيع واستلام الموزع / نقطة البيع</p>
                     <div className="w-40 border-b-2 border-slate-400 mx-auto"></div>
                   </div>
+                </div>
+
+                {/* Statement Custom Verification & Disclaimer */}
+                <div className="mt-8 pt-4 border-t border-slate-200 text-center space-y-1 text-slate-500 text-[10px]">
+                  <p className="font-semibold text-slate-700 text-xs">
+                    {settings.statementFooterText || 'كشف حساب رسمي معتمد صادر من النظام • يرجى مطابقة الأرصدة وإبداء أي ملاحظات خلال 3 أيام من تاريخه'}
+                  </p>
+                  <p className="font-mono text-slate-400 text-[9px]">
+                    نظام إدارة شبكات مايكروتك • {settings.networkName} • تاريخ الطباعة: {new Date().toLocaleDateString('ar-YE')}
+                  </p>
                 </div>
               </>
             )}

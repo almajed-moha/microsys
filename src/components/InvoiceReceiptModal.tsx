@@ -23,6 +23,7 @@ import {
 import { InvoiceRecord, CardCategory, POSPoint, NetworkSettings } from '../types';
 import { Barcode } from './Barcode';
 import { generateMikroTikScript, downloadFile } from '../utils/storage';
+import { RecordAuditInfo } from './RecordAuditInfo';
 import {
   exportElementToPdf,
   sharePdfToWhatsApp,
@@ -285,9 +286,17 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
                   {invoice.invoiceNumber}
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
-                {invoice.posPointName || posPoint?.name} • {invoice.date}
-              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-xs text-slate-400">
+                  {invoice.posPointName || posPoint?.name} • {invoice.date}
+                </p>
+                <RecordAuditInfo
+                  audit={invoice}
+                  entityName={`فاتورة رقم ${invoice.invoiceNumber}`}
+                  compact={true}
+                  showHistoryButton={true}
+                />
+              </div>
             </div>
           </div>
 
@@ -534,8 +543,21 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
                 </div>
               </div>
 
-              <div className="text-center text-[10px] text-slate-400 mt-8 pt-4 border-t border-slate-200">
-                تم استخراج هذا السند تلقائياً عبر نظام {settings.networkName} • {new Date().toLocaleString('ar-YE')}
+              <div className="text-center text-[10px] text-slate-500 mt-8 pt-4 border-t border-slate-200">
+                <div className="font-semibold text-slate-700 mb-1">
+                  {settings.invoiceFooterText || `تم استخراج هذا السند تلقائياً عبر نظام ${settings.networkName} • يرجى مراجعة الحسابات والاحتفاظ بالأصل`}
+                </div>
+                <div className="text-[9px] text-slate-400">
+                  نظام إدارة شبكات مايكروتك • {settings.networkName} • {new Date().toLocaleString('ar-YE')}
+                </div>
+                {invoice.createdByName && (
+                  <div className="mt-1 text-[9px] text-slate-500">
+                    أُصدرت بواسطة: <span className="font-semibold text-slate-700">{invoice.createdByName}</span> ({invoice.createdByRole}) في {invoice.createdAtFormatted || invoice.createdAt}
+                    {invoice.updatedByName && (
+                      <span> • آخر تعديل: <span className="font-semibold text-slate-700">{invoice.updatedByName}</span> ({invoice.updatedAtFormatted || invoice.updatedAt})</span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -634,8 +656,8 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
                     <div className="mt-4 border-b border-black w-20"></div>
                   </div>
                 </div>
-                <div className="text-[9px] text-slate-500 pt-2">
-                  شكراً لتعاملكم معنا • {settings.supportPhone}
+                <div className="text-[10px] font-bold text-slate-800 pt-2 leading-relaxed border-t border-dotted border-black">
+                  {settings.cashierFooterText || `شكراً لتعاملكم معنا 🌹 • ${settings.supportPhone}`}
                 </div>
               </div>
             </div>

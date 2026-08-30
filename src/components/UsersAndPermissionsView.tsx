@@ -57,6 +57,7 @@ import {
 import { exportToCSV } from '../utils/storage';
 import { AuditLogView } from './AuditLogView';
 import { checkUsernameAvailability, generateAlternativeUsernames, checkPhoneAvailability } from '../utils/usernameValidator';
+import { RecordAuditInfo } from './RecordAuditInfo';
 
 interface UsersAndPermissionsViewProps {
   users: AppUser[];
@@ -882,40 +883,51 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="mt-5 pt-3.5 border-t border-slate-800 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => handleOpenEditModal(user)}
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
-                    title="تعديل البيانات وتخصيص الصلاحيات"
-                  >
-                    <Edit2 className="w-4 h-4 text-indigo-400" />
-                  </button>
-
-                  {user.id !== 'user-system-owner' && user.username !== 'master' && (
+              {/* Action Buttons and Audit Trigger Info */}
+              <div className="mt-5 pt-3.5 border-t border-slate-800 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => setUserToDelete(user)}
-                      className="p-2 rounded-xl bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-800 transition"
-                      title="حذف المستخدم"
+                      onClick={() => handleOpenEditModal(user)}
+                      className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
+                      title="تعديل البيانات وتخصيص الصلاحيات"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Edit2 className="w-4 h-4 text-indigo-400" />
                     </button>
-                  )}
+
+                    {user.id !== 'user-system-owner' && user.username !== 'master' && (
+                      <button
+                        onClick={() => setUserToDelete(user)}
+                        className="p-2 rounded-xl bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-800 transition"
+                        title="حذف المستخدم"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => handleExecuteSwitchUser(user)}
+                    disabled={isActive}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                      isActive
+                        ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-default'
+                        : 'bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 hover:scale-105 active:scale-95'
+                    }`}
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>{isActive ? 'أنت هنا حالياً' : 'تسجيل دخول وتجربة'}</span>
+                  </button>
                 </div>
 
-                <button
-                  onClick={() => handleExecuteSwitchUser(user)}
-                  disabled={isActive}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-                    isActive
-                      ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-default'
-                      : 'bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 hover:scale-105 active:scale-95'
-                  }`}
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span>{isActive ? 'أنت هنا حالياً' : 'تسجيل دخول وتجربة'}</span>
-                </button>
+                <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between">
+                  <RecordAuditInfo
+                    audit={user}
+                    entityName={`مستخدم ${user.name}`}
+                    compact={true}
+                    showHistoryButton={true}
+                  />
+                </div>
               </div>
             </div>
           );

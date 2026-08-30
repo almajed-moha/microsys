@@ -32,6 +32,7 @@ import { exportElementToPdf } from '../utils/pdfExport';
 import { SalesReportModal } from './SalesReportModal';
 import { AdvancedSearchBar, AdvancedFilterState } from './AdvancedSearchBar';
 import { exportSalesToExcel } from '../utils/exportAccounting';
+import { RecordAuditInfo } from './RecordAuditInfo';
 
 interface SalesViewProps {
   sales: SalesRecord[];
@@ -469,8 +470,18 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
                 return (
                   <tr key={sale.id} className="hover:bg-slate-800/40 transition">
-                    <td className="py-3 px-4 font-mono font-bold text-indigo-400">
-                      {sale.invoiceNumber}
+                    <td className="py-3 px-4">
+                      <div className="font-mono font-bold text-indigo-400">
+                        {sale.invoiceNumber}
+                      </div>
+                      <div className="mt-1">
+                        <RecordAuditInfo
+                          audit={sale}
+                          entityName={`مبيعات ${sale.invoiceNumber}`}
+                          compact={true}
+                          showHistoryButton={true}
+                        />
+                      </div>
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-300 whitespace-nowrap">
                       {sale.date}

@@ -43,6 +43,7 @@ import {
 import { calculatePOSInventory, calculatePOSBalance } from '../utils/storage';
 import { exportElementToPdf } from '../utils/pdfExport';
 import { checkUsernameAvailability, generateAlternativeUsernames, checkPhoneAvailability } from '../utils/usernameValidator';
+import { RecordAuditInfo } from './RecordAuditInfo';
 
 interface POSPointsViewProps {
   posPoints: POSPoint[];
@@ -568,62 +569,73 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
                 </div>
               </div>
 
-              {/* Action Buttons Bar */}
-              <div className="p-3 bg-slate-950/50 border-t border-slate-800/80 flex items-center justify-between gap-1.5 flex-wrap">
-                <button
-                  onClick={() => onOpenStatement(pos.id, 'a4')}
-                  className="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
-                  title="كشف حساب مالي ومخزني رسمي على ورق A4"
-                >
-                  <FileText className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>كشف حساب</span>
-                </button>
-
-                <button
-                  onClick={() => onOpenStatement(pos.id, 'pos-80mm')}
-                  className="py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/20 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
-                  title="طباعة إيصال كشف حساب كاشير حراري (80mm)"
-                >
-                  <Printer className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="hidden sm:inline">80mm</span>
-                </button>
-
-                <button
-                  onClick={() => onOpenPaymentModal(pos.id)}
-                  className="flex-1 py-1.5 px-2 bg-emerald-700/60 hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
-                  title="سند قبض / سداد دفعة"
-                >
-                  <DollarSign className="w-3.5 h-3.5 text-emerald-300" />
-                  <span>سداد</span>
-                </button>
-
-                <button
-                  onClick={() => onOpenDispatchModal(pos.id)}
-                  className="flex-1 py-1.5 px-2 bg-indigo-700/60 hover:bg-indigo-600 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
-                  title="تسليم كروت جديدة"
-                >
-                  <Truck className="w-3.5 h-3.5 text-indigo-300" />
-                  <span>تسليم</span>
-                </button>
-
-                <div className="flex items-center gap-1">
+              {/* Action Buttons Bar and Trigger Audit Info */}
+              <div className="p-3 bg-slate-950/50 border-t border-slate-800/80 space-y-2">
+                <div className="flex items-center justify-between gap-1.5 flex-wrap">
                   <button
-                    onClick={() => handleOpenEdit(pos)}
-                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer"
-                    title="تعديل"
+                    onClick={() => onOpenStatement(pos.id, 'a4')}
+                    className="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
+                    title="كشف حساب مالي ومخزني رسمي على ورق A4"
                   >
-                    <Edit2 className="w-3.5 h-3.5" />
+                    <FileText className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>كشف حساب</span>
                   </button>
+
                   <button
-                    onClick={() => {
-                      setDeletingPOS(pos);
-                      setDeleteCascadeOption(false);
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition cursor-pointer"
-                    title="حذف نقطة البيع"
+                    onClick={() => onOpenStatement(pos.id, 'pos-80mm')}
+                    className="py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/20 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
+                    title="طباعة إيصال كشف حساب كاشير حراري (80mm)"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Printer className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="hidden sm:inline">80mm</span>
                   </button>
+
+                  <button
+                    onClick={() => onOpenPaymentModal(pos.id)}
+                    className="flex-1 py-1.5 px-2 bg-emerald-700/60 hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
+                    title="سند قبض / سداد دفعة"
+                  >
+                    <DollarSign className="w-3.5 h-3.5 text-emerald-300" />
+                    <span>سداد</span>
+                  </button>
+
+                  <button
+                    onClick={() => onOpenDispatchModal(pos.id)}
+                    className="flex-1 py-1.5 px-2 bg-indigo-700/60 hover:bg-indigo-600 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
+                    title="تسليم كروت جديدة"
+                  >
+                    <Truck className="w-3.5 h-3.5 text-indigo-300" />
+                    <span>تسليم</span>
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleOpenEdit(pos)}
+                      className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                      title="تعديل"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setDeletingPOS(pos);
+                        setDeleteCascadeOption(false);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                      title="حذف نقطة البيع"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between">
+                  <RecordAuditInfo
+                    audit={pos}
+                    entityName={`نقطة بيع ${pos.name}`}
+                    compact={true}
+                    showHistoryButton={true}
+                  />
                 </div>
               </div>
             </div>

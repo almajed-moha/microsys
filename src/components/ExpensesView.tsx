@@ -28,11 +28,18 @@ import {
   FileDown,
   Loader2,
   FileText,
-  Calculator
+  Calculator,
+  RotateCcw,
+  Clock,
+  Layers,
+  CalendarRange,
+  ArrowUpDown,
+  Check
 } from 'lucide-react';
 import { ExpenseRecord, ExpenseCategory, NetworkSettings } from '../types';
 import { exportToCSV, downloadFile } from '../utils/storage';
 import { ExpenseReceiptModal } from './ExpenseReceiptModal';
+import { RecordAuditInfo } from './RecordAuditInfo';
 import {
   printElementDocument,
   exportElementToPdf
@@ -71,7 +78,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [selectedMethodFilter, setSelectedMethodFilter] = useState<string>('all');
-  const [dateRange, setDateRange] = useState<'today' | '7days' | 'month' | 'all' | 'custom'>('all');
+  const [dateRange, setDateRange] = useState<'all' | 'today' | 'yesterday' | '7days' | 'month' | 'last_month' | 'custom'>('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -125,6 +132,30 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [newCatDesc, setNewCatDesc] = useState('');
   const [newCatTheme, setNewCatTheme] = useState('blue');
 
+  // Helper to render category icon
+  const renderCategoryIcon = (categoryName?: string, iconName?: string) => {
+    const text = ((categoryName || '') + ' ' + (iconName || '')).toLowerCase();
+    if (text.includes('كهرب') || text.includes('طاق') || text.includes('ديزل') || text.includes('محروق') || text.includes('مولد') || iconName === 'Zap') {
+      return <Zap className="w-4 h-4 text-amber-400" />;
+    }
+    if (text.includes('صيان') || text.includes('معدات') || text.includes('قطع') || text.includes('تمديد') || text.includes('راوتر') || iconName === 'Wrench') {
+      return <Wrench className="w-4 h-4 text-emerald-400" />;
+    }
+    if (text.includes('إيجار') || text.includes('برج') || text.includes('موقع') || text.includes('عقار') || iconName === 'Radio' || iconName === 'Building') {
+      return <Radio className="w-4 h-4 text-purple-400" />;
+    }
+    if (text.includes('إنترنت') || text.includes('باق') || text.includes('سعات') || text.includes('مزود') || text.includes('فايبر') || iconName === 'Wifi') {
+      return <Wifi className="w-4 h-4 text-cyan-400" />;
+    }
+    if (text.includes('رواتب') || text.includes('أجور') || text.includes('مكاف') || text.includes('موظف') || text.includes('فني') || iconName === 'Users') {
+      return <Users className="w-4 h-4 text-indigo-400" />;
+    }
+    if (text.includes('طبا') || text.includes('تغليف') || text.includes('كروت') || iconName === 'Printer') {
+      return <Printer className="w-4 h-4 text-rose-400" />;
+    }
+    return <Tag className="w-4 h-4 text-slate-400" />;
+  };
+
   // Filtered Expenses
   const filteredExpenses = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
@@ -157,13 +188,23 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       // Date Range
       if (dateRange === 'today') {
         return e.date === todayStr;
+      } else if (dateRange === 'yesterday') {
+        const y = new Date();
+        y.setDate(y.getDate() - 1);
+        const yStr = y.toISOString().split('T')[0];
+        return e.date === yStr;
       } else if (dateRange === '7days') {
         const d = new Date(e.date);
         const diff = (now.getTime() - d.getTime()) / (1000 * 3600 * 24);
-        return diff <= 7;
+        return diff >= 0 && diff <= 7;
       } else if (dateRange === 'month') {
         const d = new Date(e.date);
         return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      } else if (dateRange === 'last_month') {
+        const d = new Date(e.date);
+        const prevMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+        const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+        return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
       } else if (dateRange === 'custom') {
         if (startDate && e.date < startDate) return false;
         if (endDate && e.date > endDate) return false;
@@ -172,6 +213,60 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       return true;
     }).sort((a, b) => (b.timestamp || b.date).localeCompare(a.timestamp || a.date));
   }, [expenses, searchTerm, selectedCategoryFilter, selectedMethodFilter, dateRange, startDate, endDate]);
+
+  // Dynamic Category Stats for the active period (to show counts and sums on category chips)
+  const categoryStatsInPeriod = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const now = new Date();
+
+    const periodExpenses = expenses.filter((e) => {
+      if (dateRange === 'today') return e.date === todayStr;
+      if (dateRange === 'yesterday') {
+        const y = new Date();
+        y.setDate(y.getDate() - 1);
+        return e.date === y.toISOString().split('T')[0];
+      }
+      if (dateRange === '7days') {
+        const d = new Date(e.date);
+        const diff = (now.getTime() - d.getTime()) / (1000 * 3600 * 24);
+        return diff >= 0 && diff <= 7;
+      }
+      if (dateRange === 'month') {
+        const d = new Date(e.date);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      }
+      if (dateRange === 'last_month') {
+        const d = new Date(e.date);
+        const prevMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+        const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+        return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
+      }
+      if (dateRange === 'custom') {
+        if (startDate && e.date < startDate) return false;
+        if (endDate && e.date > endDate) return false;
+      }
+      return true;
+    });
+
+    const map: Record<string, { count: number; total: number }> = {};
+    let totalAllInPeriod = 0;
+
+    periodExpenses.forEach((exp) => {
+      const catId = exp.categoryId || 'other';
+      if (!map[catId]) {
+        map[catId] = { count: 0, total: 0 };
+      }
+      map[catId].count += 1;
+      map[catId].total += exp.amount || 0;
+      totalAllInPeriod += exp.amount || 0;
+    });
+
+    return {
+      byCategory: map,
+      totalInPeriod: totalAllInPeriod,
+      countInPeriod: periodExpenses.length,
+    };
+  }, [expenses, dateRange, startDate, endDate]);
 
   // Financial Stats
   const stats = useMemo(() => {
@@ -205,15 +300,69 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       total: 0,
     };
 
+    const avgExpense = filteredExpenses.length > 0 ? Math.round(totalFiltered / filteredExpenses.length) : 0;
+    const maxExpense = filteredExpenses.length > 0 ? Math.max(...filteredExpenses.map((e) => e.amount || 0)) : 0;
+
     return {
       totalFiltered,
       totalAll,
       todayTotal,
       monthTotal,
       topCategory,
+      avgExpense,
+      maxExpense,
       count: filteredExpenses.length,
     };
   }, [expenses, filteredExpenses]);
+
+  const hasActiveFilters =
+    searchTerm.trim() !== '' ||
+    selectedCategoryFilter !== 'all' ||
+    selectedMethodFilter !== 'all' ||
+    dateRange !== 'all' ||
+    startDate !== '' ||
+    endDate !== '';
+
+  const handleResetFilters = () => {
+    setSearchTerm('');
+    setSelectedCategoryFilter('all');
+    setSelectedMethodFilter('all');
+    setDateRange('all');
+    setStartDate('');
+    setEndDate('');
+  };
+
+  const activePeriodLabel = useMemo(() => {
+    switch (dateRange) {
+      case 'today':
+        return 'اليوم (24 ساعة)';
+      case 'yesterday':
+        return 'أمس';
+      case '7days':
+        return 'هذا الأسبوع (آخر 7 أيام)';
+      case 'month':
+        return 'هذا الشهر (الحالي)';
+      case 'last_month':
+        return 'الشهر السابق';
+      case 'custom':
+        return startDate && endDate
+          ? `من ${startDate} إلى ${endDate}`
+          : startDate
+          ? `من ${startDate}`
+          : endDate
+          ? `حتى ${endDate}`
+          : 'فترة مخصصة';
+      case 'all':
+      default:
+        return 'كافة الفترات الزمنية';
+    }
+  }, [dateRange, startDate, endDate]);
+
+  const activeCategoryLabel = useMemo(() => {
+    if (selectedCategoryFilter === 'all') return 'كافة تصنيفات المصروفات';
+    const cat = categories.find((c) => c.id === selectedCategoryFilter);
+    return cat ? cat.name : 'تصنيف محدد';
+  }, [selectedCategoryFilter, categories]);
 
   // Open Create Modal
   const handleOpenCreate = () => {
@@ -560,9 +709,285 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
         </div>
       </div>
 
-      {/* Filters Bar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* ========================================================
+          ENHANCED DYNAMIC FILTER BAR (BAR & CHIPS BY CATEGORY & TIME PERIOD)
+          ======================================================== */}
+      <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-lg space-y-4">
+        {/* Top Header of Filter Bar: Controls & Quick Reset */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+              <Filter className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-white text-sm">شريط التصفية والتقارير المالية المتقدمة</span>
+                {hasActiveFilters && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    فلترة نشطة
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400">
+                عرض وفلترة المصروفات بدقة حسب التصنيف المالي، الفترة الزمنية، أو طريقة الدفع لتحسين دقة التقارير
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-white text-xs font-bold transition border border-slate-700 cursor-pointer shadow-xs"
+                title="إلغاء جميع الفلاتر والعودة للوضع الافتراضي"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>إعادة ضبط الفلاتر</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Section 1: Time Period Filter Tabs (شريط الفترات الزمنية) */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span className="flex items-center gap-1.5 font-bold text-slate-300">
+              <Calendar className="w-3.5 h-3.5 text-amber-400" />
+              <span>الفترة الزمنية للتقرير:</span>
+            </span>
+            <span className="text-[11px] text-slate-500 font-mono">
+              {activePeriodLabel}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setDateRange('all')}
+              className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer ${
+                dateRange === 'all'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <span>كافة الفترات</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDateRange('today')}
+              className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer ${
+                dateRange === 'today'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Clock className="w-3 h-3 text-amber-300" />
+              <span>اليوم (24 س)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDateRange('yesterday')}
+              className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer ${
+                dateRange === 'yesterday'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <span>أمس</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDateRange('7days')}
+              className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer ${
+                dateRange === '7days'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <CalendarRange className="w-3 h-3 text-amber-300" />
+              <span>أسبوع (7 أيام)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDateRange('month')}
+              className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer ${
+                dateRange === 'month'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Calendar className="w-3 h-3 text-amber-300" />
+              <span>هذا الشهر</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDateRange('last_month')}
+              className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer ${
+                dateRange === 'last_month'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <span>الشهر السابق</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDateRange('custom')}
+              className={`col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer ${
+                dateRange === 'custom'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <span>تاريخ مخصص</span>
+            </button>
+          </div>
+
+          {/* Custom Date Range Sub-Bar */}
+          {dateRange === 'custom' && (
+            <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center gap-3 text-xs animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400 font-bold">من تاريخ:</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400 font-bold">إلى تاريخ:</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] mr-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const now = new Date();
+                    const d30 = new Date();
+                    d30.setDate(d30.getDate() - 30);
+                    setStartDate(d30.toISOString().split('T')[0]);
+                    setEndDate(now.toISOString().split('T')[0]);
+                  }}
+                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
+                >
+                  آخر 30 يوم
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const now = new Date();
+                    const d90 = new Date();
+                    d90.setDate(d90.getDate() - 90);
+                    setStartDate(d90.toISOString().split('T')[0]);
+                    setEndDate(now.toISOString().split('T')[0]);
+                  }}
+                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
+                >
+                  آخر 90 يوم
+                </button>
+                {(startDate || endDate) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStartDate('');
+                      setEndDate('');
+                    }}
+                    className="px-2 py-1 rounded text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
+                  >
+                    مسح التاريخ
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Section 2: Category Filter Bar (شريط تصنيفات المصروفات السريع) */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span className="flex items-center gap-1.5 font-bold text-slate-300">
+              <Layers className="w-3.5 h-3.5 text-amber-400" />
+              <span>تصنيف ونوع المصروف (بند الصرف):</span>
+            </span>
+            <span className="text-[11px] text-slate-500">
+              {selectedCategoryFilter === 'all' ? 'جميع التصنيفات معروضة' : activeCategoryLabel}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto pb-1.5 no-scrollbar">
+            {/* All Categories Chip */}
+            <button
+              type="button"
+              onClick={() => setSelectedCategoryFilter('all')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap shrink-0 cursor-pointer border ${
+                selectedCategoryFilter === 'all'
+                  ? 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-600/20'
+                  : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+              }`}
+            >
+              <Tag className="w-3.5 h-3.5" />
+              <span>كافة التصنيفات</span>
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
+                selectedCategoryFilter === 'all' ? 'bg-amber-700 text-amber-100' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {categoryStatsInPeriod.countInPeriod}
+              </span>
+            </button>
+
+            {/* Category Dynamic Chips */}
+            {categories.map((c) => {
+              const catStat = categoryStatsInPeriod.byCategory[c.id] || { count: 0, total: 0 };
+              const isSelected = selectedCategoryFilter === c.id;
+
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setSelectedCategoryFilter(isSelected ? 'all' : c.id)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap shrink-0 cursor-pointer border ${
+                    isSelected
+                      ? 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-600/20'
+                      : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+                  }`}
+                  title={`${c.name} (${(catStat.total ?? 0).toLocaleString()} ${currency})`}
+                >
+                  {renderCategoryIcon(c.name, c.icon)}
+                  <span>{c.name}</span>
+                  {catStat.count > 0 && (
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                      isSelected ? 'bg-amber-700 text-amber-100' : 'bg-slate-800 text-slate-300'
+                    }`}>
+                      {catStat.count}
+                    </span>
+                  )}
+                  {catStat.total > 0 && (
+                    <span className={`text-[10px] font-mono opacity-80 ${
+                      isSelected ? 'text-amber-100' : 'text-amber-400/90'
+                    }`}>
+                      {(catStat.total ?? 0).toLocaleString()}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Section 3: Search, Secondary Filters & Method */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-800/80">
           {/* Search Box */}
           <div className="relative">
             <Search className="w-4 h-4 absolute right-3 top-3 text-slate-500" />
@@ -571,11 +996,20 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="بحث برقم السند، البيان، المستفيد..."
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl pr-9 pl-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl pr-9 pl-8 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute left-2.5 top-2.5 text-slate-400 hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
-          {/* Category Filter */}
+          {/* Category Dropdown (Compact mode) */}
           <div>
             <select
               value={selectedCategoryFilter}
@@ -606,60 +1040,102 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             </select>
           </div>
 
-          {/* Date Filter */}
-          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-700 text-xs">
-            <button
-              onClick={() => setDateRange('all')}
-              className={`flex-1 py-1 px-2 rounded-lg font-bold transition text-[11px] cursor-pointer ${
-                dateRange === 'all' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              الكل
-            </button>
-            <button
-              onClick={() => setDateRange('today')}
-              className={`flex-1 py-1 px-2 rounded-lg font-bold transition text-[11px] cursor-pointer ${
-                dateRange === 'today' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              اليوم
-            </button>
-            <button
-              onClick={() => setDateRange('month')}
-              className={`flex-1 py-1 px-2 rounded-lg font-bold transition text-[11px] cursor-pointer ${
-                dateRange === 'month' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              هذا الشهر
-            </button>
-            <button
-              onClick={() => setDateRange('custom')}
-              className={`flex-1 py-1 px-2 rounded-lg font-bold transition text-[11px] cursor-pointer ${
-                dateRange === 'custom' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              مخصص
-            </button>
+          {/* Quick Count & Sum Display */}
+          <div className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 flex items-center justify-between text-xs">
+            <span className="text-slate-400 font-bold">المطابق:</span>
+            <div className="text-left font-mono">
+              <span className="text-white font-bold">{filteredExpenses.length} سند</span>
+              <span className="text-slate-500 mx-1">|</span>
+              <span className="text-amber-400 font-bold">{(stats.totalFiltered ?? 0).toLocaleString()} {currency}</span>
+            </div>
           </div>
         </div>
 
-        {/* Custom Date Inputs if selected */}
-        {dateRange === 'custom' && (
-          <div className="pt-2 border-t border-slate-800 flex items-center gap-3 text-xs">
-            <span className="text-slate-400">من تاريخ:</span>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-white focus:outline-none focus:border-amber-500"
-            />
-            <span className="text-slate-400">إلى تاريخ:</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-white focus:outline-none focus:border-amber-500"
-            />
+        {/* Section 4: Active Filter Tags & Dynamic Financial Reporting Pill */}
+        {hasActiveFilters && (
+          <div className="bg-amber-950/20 border border-amber-500/20 rounded-xl p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-amber-300 flex items-center gap-1">
+                <Check className="w-3.5 h-3.5" />
+                <span>الفلاتر المطبقة:</span>
+              </span>
+
+              {selectedCategoryFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-200 border border-amber-500/30 text-[11px] font-bold">
+                  {renderCategoryIcon(activeCategoryLabel)}
+                  <span>التصنيف: {activeCategoryLabel}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategoryFilter('all')}
+                    className="hover:text-white cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {dateRange !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-200 border border-amber-500/30 text-[11px] font-bold">
+                  <Calendar className="w-3 h-3" />
+                  <span>الفترة: {activePeriodLabel}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDateRange('all');
+                      setStartDate('');
+                      setEndDate('');
+                    }}
+                    className="hover:text-white cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {selectedMethodFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-200 border border-amber-500/30 text-[11px] font-bold">
+                  <CreditCard className="w-3 h-3" />
+                  <span>
+                    الدفع:{' '}
+                    {selectedMethodFilter === 'cash'
+                      ? 'نقداً'
+                      : selectedMethodFilter === 'bank_transfer'
+                      ? 'تحويل بنكي'
+                      : 'شيك'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethodFilter('all')}
+                    className="hover:text-white cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {searchTerm.trim() !== '' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-200 border border-amber-500/30 text-[11px] font-bold">
+                  <Search className="w-3 h-3" />
+                  <span>بحث: "{searchTerm}"</span>
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="hover:text-white cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-4 text-[11px] font-mono text-slate-300 shrink-0">
+              <div>
+                متوسط السند: <strong className="text-white">{(stats.avgExpense ?? 0).toLocaleString()} {currency}</strong>
+              </div>
+              <div>
+                أعلى سند: <strong className="text-rose-400">{(stats.maxExpense ?? 0).toLocaleString()} {currency}</strong>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -704,8 +1180,18 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
               <tbody className="divide-y divide-slate-800/60">
                 {filteredExpenses.map((exp) => (
                   <tr key={exp.id} className="hover:bg-slate-800/40 transition">
-                    <td className="py-3 px-4 font-mono font-bold text-amber-400">
-                      {exp.voucherNumber}
+                    <td className="py-3 px-4">
+                      <div className="font-mono font-bold text-amber-400">
+                        {exp.voucherNumber}
+                      </div>
+                      <div className="mt-1">
+                        <RecordAuditInfo
+                          audit={exp}
+                          entityName={`سند صرف ${exp.voucherNumber}`}
+                          compact={true}
+                          showHistoryButton={true}
+                        />
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-slate-300 font-mono">
                       {exp.date}
@@ -1198,6 +1684,30 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                       <div>تاريخ الاستخراج: <strong>{new Date().toISOString().split('T')[0]}</strong></div>
                       <div>عدد السندات: <strong>{filteredExpenses.length}</strong></div>
                     </div>
+                  </div>
+                </div>
+
+                {/* Filter Scope Information */}
+                <div className="mb-4 bg-slate-50 border border-slate-200 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-slate-700">
+                  <div>
+                    <span className="text-slate-500">الفترة الزمنية: </span>
+                    <strong>{activePeriodLabel}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">التصنيف المحدد: </span>
+                    <strong>{activeCategoryLabel}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">طريقة الدفع: </span>
+                    <strong>
+                      {selectedMethodFilter === 'all'
+                        ? 'كافة الطرق'
+                        : selectedMethodFilter === 'cash'
+                        ? 'نقداً (الصندوق)'
+                        : selectedMethodFilter === 'bank_transfer'
+                        ? 'تحويل بنكي'
+                        : 'شيك'}
+                    </strong>
                   </div>
                 </div>
 

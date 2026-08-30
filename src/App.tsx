@@ -77,6 +77,7 @@ import {
   defaultNetworkSettings,
 } from './mockData';
 import { initialActivityLogs, buildActivityLog } from './utils/auditLogger';
+import { applyCreationAudit, applyUpdateAudit } from './utils/auditTrigger';
 import {
   getDefaultLandingViewForUser,
   hasPermission,
@@ -884,7 +885,7 @@ export default function App() {
     const finalPassword = newPosData.password?.trim() || '123456';
     const finalPin = newPosData.pinCode?.trim() || '1234';
 
-    const newPos: POSPoint = {
+    const rawPos: POSPoint = {
       ...newPosData,
       id: newPosId,
       networkId: newPosData.networkId || currentTenantId,
@@ -894,10 +895,15 @@ export default function App() {
       createdAt: new Date().toISOString().split('T')[0],
     };
 
+    const newPos = applyCreationAudit(rawPos, activeUser, {
+      actionTitle: 'إنشاء نقطة بيع وحساب بوابة',
+      details: `تمت إضافة نقطة البيع (${rawPos.name}) بواسطة ${activeUser?.name || 'المدير'}`,
+    });
+
     setPosPoints((prev) => [...prev, newPos]);
 
     // Create synchronized Portal user for the POS Point
-    const posUser: AppUser = {
+    const rawPosUser: AppUser = {
       id: `user-${newPos.id}`,
       networkId: newPos.networkId,
       name: newPos.name,
@@ -914,6 +920,9 @@ export default function App() {
       permissions: getRoleDefaultPermissions('pos_agent'),
       createdAt: newPos.createdAt,
     };
+    const posUser = applyCreationAudit(rawPosUser, activeUser, {
+      actionTitle: 'إنشاء حساب مستخدم لنقطة البيع',
+    });
     setUsers((prev) => [...prev.filter((u) => u.posPointId !== newPos.id && u.username !== finalUsername), posUser]);
 
     logUserActivity(
@@ -926,7 +935,13 @@ export default function App() {
     );
   };
 
-  const handleUpdatePOS = (updatedPOS: POSPoint) => {
+  const handleUpdatePOS = (updatedPOSData: POSPoint) => {
+    const existing = posPoints.find((p) => p.id === updatedPOSData.id) || updatedPOSData;
+    const updatedPOS = applyUpdateAudit(existing, updatedPOSData, activeUser, {
+      actionTitle: 'تعديل بيانات نقطة البيع',
+      details: `تم تحديث بيانات النقطة بواسطة ${activeUser?.name || 'المدير'}`,
+    });
+
     setPosPoints((prev) => prev.map((p) => (p.id === updatedPOS.id ? updatedPOS : p)));
 
     // Synchronize POS portal user account
@@ -950,7 +965,7 @@ export default function App() {
         });
       } else {
         // Create the missing user account if it doesn't exist yet
-        const posUser: AppUser = {
+        const rawPosUser: AppUser = {
           id: `user-${updatedPOS.id}`,
           name: updatedPOS.name,
           username: updatedPOS.username || `pos_${updatedPOS.id.slice(-4)}`,
@@ -966,7 +981,9 @@ export default function App() {
           permissions: getRoleDefaultPermissions('pos_agent'),
           createdAt: new Date().toISOString(),
         };
-        // Ensure no conflicting username
+        const posUser = applyCreationAudit(rawPosUser, activeUser, {
+          actionTitle: 'إنشاء حساب بوابة لموزع',
+        });
         return [...prev.filter(u => u.username !== posUser.username), posUser];
       }
     });
@@ -1016,13 +1033,19 @@ export default function App() {
     const autoNumber = generateNextInvoiceNumber(invoices, invoiceData.type, invoiceData.date);
     const finalInvoiceNumber = invoiceData.invoiceNumber?.trim() || autoNumber;
 
-    const newInvoice: InvoiceRecord = {
+    const rawInvoice: InvoiceRecord = {
       ...invoiceData,
       networkId: invoiceData.networkId || currentTenantId,
       invoiceNumber: finalInvoiceNumber,
       id: `inv-${Date.now()}`,
       timestamp: new Date().toISOString(),
     };
+
+    const newInvoice = applyCreationAudit(rawInvoice, activeUser, {
+      actionTitle: rawInvoice.type === 'sale' ? 'إصدار فاتورة مبيعات' : 'إصدار فاتورة مرتجع',
+      actionType: 'financial',
+      details: `إصدار فاتورة بقيمة ${(rawInvoice.totalWholesaleAmount ?? 0).toLocaleString()} ${settings.currencySymbol}`,
+    });
 
     const nextInvoices = [newInvoice, ...invoices];
     setInvoices(nextInvoices);
@@ -1067,7 +1090,14 @@ export default function App() {
     setSelectedInvoiceForReceipt(newInvoice);
   };
 
-  const handleUpdateInvoice = (updatedInvoice: InvoiceRecord) => {
+  const handleUpdateInvoice = (updatedInvoiceData: InvoiceRecord) => {
+    const existing = invoices.find((inv) => inv.id === updatedInvoiceData.id) || updatedInvoiceData;
+    const updatedInvoice = applyUpdateAudit(existing, updatedInvoiceData, activeUser, {
+      actionTitle: 'تعديل بيانات الفاتورة',
+      actionType: 'financial',
+      details: `تعديل الفاتورة رقم ${updatedInvoiceData.invoiceNumber} بواسطة ${activeUser?.name || 'المدير'}`,
+    });
+
     const nextInvoices = invoices.map((inv) => (inv.id === updatedInvoice.id ? updatedInvoice : inv));
     setInvoices(nextInvoices);
     setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
@@ -1153,8 +1183,23 @@ export default function App() {
   const handleCreateOrder = (orderData: Omit<CardOrder, 'id' | 'orderNumber' | 'timestamp' | 'status' | 'requestDate'> & { requestDate?: string; timestamp?: string }) => {
     const today = new Date().toISOString().split('T')[0];
     const nextOrderNumber = generateNextOrderNumber(orders, today);
-    const newOrder: CardOrder = {
+    const posPoint = posPoints.find((p) => p.id === orderData.posPointId);
+
+    const items = orderData.items || [];
+    const totalQuantity = orderData.totalQuantity ?? items.reduce((acc, it) => acc + (it.quantity || 0), 0);
+    const totalWholesaleAmount = orderData.totalWholesaleAmount ?? items.reduce((acc, it) => acc + (it.totalWholesalePrice || ((it.quantity || 0) * (it.unitWholesalePrice || 0)) || 0), 0);
+    const totalRetailAmount = orderData.totalRetailAmount ?? items.reduce((acc, it) => acc + (it.totalRetailPrice || ((it.quantity || 0) * (it.unitRetailPrice || 0)) || 0), 0);
+
+    const rawOrder: CardOrder = {
       ...orderData,
+      posPointName: orderData.posPointName || posPoint?.name || 'نقطة بيع غير محددة',
+      posPhone: orderData.posPhone || posPoint?.phone || '',
+      posAddress: orderData.posAddress || posPoint?.address || '',
+      posManagerName: orderData.posManagerName || posPoint?.managerName || '',
+      currentDebtAtRequest: orderData.currentDebtAtRequest ?? (posPoint?.currentDebt || 0),
+      totalQuantity,
+      totalWholesaleAmount,
+      totalRetailAmount,
       networkId: orderData.networkId || currentTenantId,
       id: `ord-${Date.now()}`,
       orderNumber: nextOrderNumber,
@@ -1162,34 +1207,49 @@ export default function App() {
       requestDate: orderData.requestDate || today,
       timestamp: orderData.timestamp || new Date().toISOString(),
     };
-    setOrders((prev) => [newOrder, ...prev]);
 
-    const posPoint = posPoints.find((p) => p.id === orderData.posPointId);
+    const newOrder = applyCreationAudit(rawOrder, activeUser, {
+      actionTitle: 'طلب كروت جديد',
+      details: `تقديم طلب كروت رقم ${rawOrder.orderNumber} لصالح (${rawOrder.posPointName})`,
+    });
+
+    setOrders((prev) => {
+      const next = [newOrder, ...prev];
+      saveData(STORAGE_KEYS.ORDERS, next);
+      return next;
+    });
+
     logUserActivity(
       'طلب كروت جديد',
       'orders',
       'طلبات الكروت وبوابة الموزعين',
       `طلب كروت جديد رقم ${newOrder.orderNumber}`,
-      `نقطة البيع: ${posPoint?.name || orderData.posPointName} - إجمالي المبلغ: ${(newOrder.totalWholesaleAmount ?? 0).toLocaleString()} ${settings.currencySymbol} - عدد الفئات: ${newOrder.items?.length || 0}`,
+      `نقطة البيع: ${newOrder.posPointName} (${newOrder.posManagerName || 'المسؤول'}) - إجمالي المبلغ: ${(newOrder.totalWholesaleAmount ?? 0).toLocaleString()} ${settings.currencySymbol} - عدد الكروت: ${newOrder.totalQuantity}`,
       'create'
     );
   };
 
   const handleCancelOrder = (orderId: string, reason?: string) => {
-    setOrders((prev) =>
-      prev.map((ord) => (ord.id === orderId ? { ...ord, status: 'cancelled', adminNotes: reason || ord.adminNotes } : ord))
-    );
     const target = orders.find((o) => o.id === orderId);
-    if (target) {
-      logUserActivity(
-        'إلغاء طلب كروت',
-        'orders',
-        'طلبات الكروت وبوابة الموزعين',
-        `إلغاء طلب الكروت رقم ${target.orderNumber}`,
-        `السبب: ${reason || 'تم الإلغاء'}`,
-        'update'
-      );
-    }
+    if (!target) return;
+
+    const updated = applyUpdateAudit(target, { status: 'cancelled', adminNotes: reason || target.adminNotes }, activeUser, {
+      actionTitle: 'إلغاء طلب كروت',
+      details: `سبب الإلغاء: ${reason || 'تم الإلغاء'} بواسطة ${activeUser?.name || 'المدير'}`,
+    });
+
+    setOrders((prev) =>
+      prev.map((ord) => (ord.id === orderId ? updated : ord))
+    );
+
+    logUserActivity(
+      'إلغاء طلب كروت',
+      'orders',
+      'طلبات الكروت وبوابة الموزعين',
+      `إلغاء طلب الكروت رقم ${target.orderNumber}`,
+      `السبب: ${reason || 'تم الإلغاء'}`,
+      'update'
+    );
   };
 
   const handleUpdateOrderStatus = (orderId: string, status: CardOrder['status'], adminNotes?: string) => {
@@ -1202,8 +1262,13 @@ export default function App() {
       return;
     }
 
+    const updated = applyUpdateAudit(target, { status, adminNotes: adminNotes ?? target.adminNotes }, activeUser, {
+      actionTitle: `تحديث حالة الطلب إلى ${status}`,
+      details: `تحديث الحالة بواسطة ${activeUser?.name || 'المدير'} - ملاحظات: ${adminNotes || 'بدون ملاحظات'}`,
+    });
+
     setOrders((prev) =>
-      prev.map((ord) => (ord.id === orderId ? { ...ord, status, adminNotes: adminNotes ?? ord.adminNotes } : ord))
+      prev.map((ord) => (ord.id === orderId ? updated : ord))
     );
     
     logUserActivity(
@@ -1223,7 +1288,7 @@ export default function App() {
     const today = new Date().toISOString().split('T')[0];
     const autoNumber = generateNextInvoiceNumber(invoices, 'sale', today);
 
-    const newInvoice: InvoiceRecord = {
+    const rawInvoice: InvoiceRecord = {
       id: `inv-${Date.now()}`,
       networkId: targetOrder.networkId || currentTenantId,
       invoiceNumber: autoNumber,
@@ -1259,6 +1324,12 @@ export default function App() {
       deliveredBy: activeUser.name,
     };
 
+    const newInvoice = applyCreationAudit(rawInvoice, activeUser, {
+      actionTitle: 'إصدار فاتورة مبيعات من طلب كروت معتمد',
+      actionType: 'financial',
+      details: `تحويل طلب الكروت رقم ${targetOrder.orderNumber} لفاتورة مبيعات رقم ${autoNumber}`,
+    });
+
     const nextInvoices = [newInvoice, ...invoices];
     setInvoices(nextInvoices);
 
@@ -1278,17 +1349,17 @@ export default function App() {
     setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
 
     // Update Order status to delivered
+    const updatedOrder = applyUpdateAudit(targetOrder, {
+      status: 'delivered',
+      convertedInvoiceId: newInvoice.id,
+      adminNotes: `تم تحويل الطلب بنجاح إلى فاتورة مبيعات رسمية رقم ${newInvoice.invoiceNumber}`,
+    }, activeUser, {
+      actionTitle: 'اعتماد وتسليم الطلب كفاتورة مبيعات',
+      details: `تم إنشاء الفاتورة رقم ${newInvoice.invoiceNumber}`,
+    });
+
     setOrders((prev) =>
-      prev.map((ord) =>
-        ord.id === orderId
-          ? {
-              ...ord,
-              status: 'delivered',
-              convertedInvoiceId: newInvoice.id,
-              adminNotes: `تم تحويل الطلب بنجاح إلى فاتورة مبيعات رسمية رقم ${newInvoice.invoiceNumber}`,
-            }
-          : ord
-      )
+      prev.map((ord) => (ord.id === orderId ? updatedOrder : ord))
     );
 
     // Log Activity
@@ -1310,13 +1381,20 @@ export default function App() {
     const autoVoucher = generateNextExpenseVoucherNumber(expenses, expenseData.date);
     const finalVoucherNumber = expenseData.voucherNumber?.trim() || autoVoucher;
 
-    const newExpense: ExpenseRecord = {
+    const rawExpense: ExpenseRecord = {
       ...expenseData,
       networkId: expenseData.networkId || currentTenantId,
       voucherNumber: finalVoucherNumber,
       id: `exp-${Date.now()}`,
       timestamp: new Date().toISOString(),
     };
+
+    const newExpense = applyCreationAudit(rawExpense, activeUser, {
+      actionTitle: 'إنشاء سند صرف جديد',
+      actionType: 'financial',
+      details: `سند صرف رقم ${finalVoucherNumber} بقيمة ${(rawExpense.amount ?? 0).toLocaleString()} ${settings.currencySymbol} لبند (${rawExpense.categoryName})`,
+    });
+
     setExpenses((prev) => [newExpense, ...prev]);
 
     logUserActivity(
@@ -1331,7 +1409,14 @@ export default function App() {
     setSelectedExpenseForReceipt(newExpense);
   };
 
-  const handleUpdateExpense = (updatedExpense: ExpenseRecord) => {
+  const handleUpdateExpense = (updatedExpenseData: ExpenseRecord) => {
+    const existing = expenses.find((e) => e.id === updatedExpenseData.id) || updatedExpenseData;
+    const updatedExpense = applyUpdateAudit(existing, updatedExpenseData, activeUser, {
+      actionTitle: 'تعديل سند الصرف',
+      actionType: 'financial',
+      details: `تعديل سند الصرف رقم ${updatedExpenseData.voucherNumber} بواسطة ${activeUser?.name || 'المدير'}`,
+    });
+
     setExpenses((prev) => prev.map((e) => (e.id === updatedExpense.id ? updatedExpense : e)));
     logUserActivity(
       'تعديل سند صرف',
@@ -1359,11 +1444,15 @@ export default function App() {
   };
 
   const handleAddExpenseCategory = (catData: Omit<ExpenseCategory, 'id'>) => {
-    const newCat: ExpenseCategory = {
+    const rawCat: ExpenseCategory = {
       ...catData,
       networkId: catData.networkId || currentTenantId,
       id: `expcat-${Date.now()}`,
     };
+    const newCat = applyCreationAudit(rawCat, activeUser, {
+      actionTitle: 'إنشاء بند مصروفات جديد',
+      details: `إضافة البند (${rawCat.name})`,
+    });
     setExpenseCategories((prev) => [...prev, newCat]);
     logUserActivity(
       'إضافة بند مصروفات',
@@ -1375,7 +1464,11 @@ export default function App() {
     );
   };
 
-  const handleUpdateExpenseCategory = (updatedCat: ExpenseCategory) => {
+  const handleUpdateExpenseCategory = (updatedCatData: ExpenseCategory) => {
+    const existing = expenseCategories.find((c) => c.id === updatedCatData.id) || updatedCatData;
+    const updatedCat = applyUpdateAudit(existing, updatedCatData, activeUser, {
+      actionTitle: 'تعديل بند المصروفات',
+    });
     setExpenseCategories((prev) => prev.map((c) => (c.id === updatedCat.id ? updatedCat : c)));
   };
 
@@ -1385,19 +1478,28 @@ export default function App() {
 
   // 4. Sales Actions (Legacy single-card sales support)
   const handleAddSale = (saleData: Omit<SalesRecord, 'id' | 'timestamp'>) => {
-    const newSale: SalesRecord = {
+    const rawSale: SalesRecord = {
       ...saleData,
       networkId: saleData.networkId || currentTenantId,
       id: `sale-${Date.now()}`,
       timestamp: new Date().toISOString(),
     };
+    const newSale = applyCreationAudit(rawSale, activeUser, {
+      actionTitle: 'تسجيل حركة مبيعات مباشرة',
+      actionType: 'financial',
+    });
 
     const nextSales = [newSale, ...sales];
     setSales(nextSales);
     setPosPoints((prev) => refreshPOSBalances(prev, invoices, nextSales, payments));
   };
 
-  const handleUpdateSale = (updatedSale: SalesRecord) => {
+  const handleUpdateSale = (updatedSaleData: SalesRecord) => {
+    const existing = sales.find((s) => s.id === updatedSaleData.id) || updatedSaleData;
+    const updatedSale = applyUpdateAudit(existing, updatedSaleData, activeUser, {
+      actionTitle: 'تعديل حركة مبيعات',
+      actionType: 'financial',
+    });
     const nextSales = sales.map((s) => (s.id === updatedSale.id ? updatedSale : s));
     setSales(nextSales);
     setPosPoints((prev) => refreshPOSBalances(prev, invoices, nextSales, payments));
@@ -1411,11 +1513,16 @@ export default function App() {
 
   // 5. Category Actions
   const handleAddCategory = (catData: Omit<CardCategory, 'id'>) => {
-    const newCat: CardCategory = {
+    const rawCat: CardCategory = {
       ...catData,
       networkId: catData.networkId || currentTenantId,
       id: `cat-${Date.now()}`,
     };
+    const newCat = applyCreationAudit(rawCat, activeUser, {
+      actionTitle: 'إنشاء فئة كروت وباقة مايكروتك جديدة',
+      details: `تمت إضافة فئة (${rawCat.name}) بسعر بيع ${rawCat.retailPrice} ورصيد مستودع ${rawCat.warehouseStock} كارت`,
+    });
+
     setCategories((prev) => [...prev, newCat]);
     logUserActivity(
       'إضافة فئة كروت',
@@ -1427,7 +1534,13 @@ export default function App() {
     );
   };
 
-  const handleUpdateCategory = (updatedCat: CardCategory) => {
+  const handleUpdateCategory = (updatedCatData: CardCategory) => {
+    const existing = categories.find((c) => c.id === updatedCatData.id) || updatedCatData;
+    const updatedCat = applyUpdateAudit(existing, updatedCatData, activeUser, {
+      actionTitle: 'تعديل بيانات فئة الكروت',
+      details: `تم تحديث أسعار وخصائص الفئة (${updatedCatData.name}) بواسطة ${activeUser?.name || 'المدير'}`,
+    });
+
     setCategories((prev) => prev.map((c) => (c.id === updatedCat.id ? updatedCat : c)));
     logUserActivity(
       'تعديل فئة كروت',
@@ -1456,18 +1569,32 @@ export default function App() {
 
   const handleAdjustStock = (catId: string, delta: number) => {
     setCategories((prev) =>
-      prev.map((c) => (c.id === catId ? { ...c, warehouseStock: Math.max(0, c.warehouseStock + delta) } : c))
+      prev.map((c) => {
+        if (c.id === catId) {
+          const newStock = Math.max(0, c.warehouseStock + delta);
+          return applyUpdateAudit(c, { warehouseStock: newStock }, activeUser, {
+            actionTitle: delta >= 0 ? `زيادة رصيد المستودع (+${delta})` : `خصم من رصيد المستودع (${delta})`,
+            details: `تعديل الرصيد إلى ${newStock} كرت بواسطة ${activeUser?.name || 'المدير'}`,
+          });
+        }
+        return c;
+      })
     );
   };
 
   // 6. Batch Dispatch Actions (Legacy)
   const handleAddDispatch = (dispatchData: Omit<CardBatchDispatch, 'id' | 'soldCount'>) => {
-    const newDispatch: CardBatchDispatch = {
+    const rawDispatch: CardBatchDispatch = {
       ...dispatchData,
       networkId: dispatchData.networkId || currentTenantId,
       id: `disp-${Date.now()}`,
       soldCount: 0,
     };
+    const newDispatch = applyCreationAudit(rawDispatch, activeUser, {
+      actionTitle: 'إرسالية دفع كروت لنقطة بيع',
+      actionType: 'financial',
+      details: `إرسالية عدد ${rawDispatch.quantity} كرت`,
+    });
 
     setDispatches((prev) => [newDispatch, ...prev]);
 
@@ -1480,9 +1607,15 @@ export default function App() {
     );
   };
 
-  const handleUpdateDispatch = (updatedDispatch: CardBatchDispatch) => {
-    const prevDispatch = dispatches.find((d) => d.id === updatedDispatch.id);
-    const qtyDiff = prevDispatch ? updatedDispatch.quantity - prevDispatch.quantity : 0;
+  const handleUpdateDispatch = (updatedDispatchData: CardBatchDispatch) => {
+    const prevDispatch = dispatches.find((d) => d.id === updatedDispatchData.id);
+    const existing = prevDispatch || updatedDispatchData;
+    const qtyDiff = prevDispatch ? updatedDispatchData.quantity - prevDispatch.quantity : 0;
+
+    const updatedDispatch = applyUpdateAudit(existing, updatedDispatchData, activeUser, {
+      actionTitle: 'تعديل إرسالية كروت',
+      actionType: 'financial',
+    });
 
     setDispatches((prev) => prev.map((d) => (d.id === updatedDispatch.id ? updatedDispatch : d)));
 
@@ -1525,12 +1658,14 @@ export default function App() {
       prev.map((d) => {
         if (d.id === dispatchId) {
           const newQty = d.quantity - actualReturn;
-          return {
-            ...d,
+          return applyUpdateAudit(d, {
             quantity: newQty,
             totalWholesaleValue: d.unitWholesalePrice * newQty,
             totalRetailValue: d.unitRetailPrice * newQty,
-          };
+          }, activeUser, {
+            actionTitle: `إرجاع كروت من الإرسالية (${actualReturn} كرت)`,
+            actionType: 'financial',
+          });
         }
         return d;
       })
@@ -1547,12 +1682,18 @@ export default function App() {
 
   // 7. Payment Actions
   const handleAddPayment = (paymentData: Omit<PaymentRecord, 'id' | 'timestamp'>) => {
-    const newPayment: PaymentRecord = {
+    const rawPayment: PaymentRecord = {
       ...paymentData,
       networkId: paymentData.networkId || currentTenantId,
       id: `pay-${Date.now()}`,
       timestamp: new Date().toISOString(),
     };
+
+    const newPayment = applyCreationAudit(rawPayment, activeUser, {
+      actionTitle: 'إصدار سند قبض وتحصيل مالي',
+      actionType: 'financial',
+      details: `تحصيل مبلغ ${(rawPayment.amount ?? 0).toLocaleString()} ${settings.currencySymbol} بسند رقم ${rawPayment.referenceNumber || rawPayment.id.slice(-6)}`,
+    });
 
     const nextPayments = [newPayment, ...payments];
     setPayments(nextPayments);
@@ -1572,7 +1713,14 @@ export default function App() {
     setSelectedPaymentForReceipt(newPayment);
   };
 
-  const handleUpdatePayment = (updatedPayment: PaymentRecord) => {
+  const handleUpdatePayment = (updatedPaymentData: PaymentRecord) => {
+    const existing = payments.find((p) => p.id === updatedPaymentData.id) || updatedPaymentData;
+    const updatedPayment = applyUpdateAudit(existing, updatedPaymentData, activeUser, {
+      actionTitle: 'تعديل سند القبض',
+      actionType: 'financial',
+      details: `تعديل سند القبض رقم ${updatedPaymentData.referenceNumber || updatedPaymentData.id.slice(-6)} بواسطة ${activeUser?.name || 'المدير'}`,
+    });
+
     const nextPayments = payments.map((p) => (p.id === updatedPayment.id ? updatedPayment : p));
     setPayments(nextPayments);
     setPosPoints((prev) => refreshPOSBalances(prev, invoices, sales, nextPayments));
@@ -1606,13 +1754,19 @@ export default function App() {
 
   // User & RBAC Management Handlers
   const handleAddUser = (newUserData: Omit<AppUser, 'id' | 'createdAt'>) => {
-    const newUser: AppUser = {
+    const rawUser: AppUser = {
       ...newUserData,
       networkId: newUserData.networkId || currentTenantId,
       id: `user-${Date.now()}`,
       createdAt: new Date().toISOString().split('T')[0],
       lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16),
     };
+    const newUser = applyCreationAudit(rawUser, activeUser, {
+      actionTitle: 'إنشاء حساب مستخدم وصلاحيات جديدة',
+      actionType: 'security',
+      details: `إنشاء المستخدم ${rawUser.name} (@${rawUser.username}) بالدور (${rawUser.customRoleName || rawUser.role})`,
+    });
+
     setUsers((prev) => [...prev, newUser]);
     logUserActivity(
       'إضافة مستخدم جديد',
@@ -1624,7 +1778,14 @@ export default function App() {
     );
   };
 
-  const handleUpdateUser = (updatedUser: AppUser) => {
+  const handleUpdateUser = (updatedUserData: AppUser) => {
+    const existing = users.find((u) => u.id === updatedUserData.id) || updatedUserData;
+    const updatedUser = applyUpdateAudit(existing, updatedUserData, activeUser, {
+      actionTitle: 'تعديل بيانات وصلاحيات المستخدم',
+      actionType: 'security',
+      details: `تحديث بيانات المستخدم (${updatedUserData.name}) بواسطة ${activeUser?.name || 'المدير'}`,
+    });
+
     setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
 
     // If this user is tied to a POS Point, update POS credentials too!

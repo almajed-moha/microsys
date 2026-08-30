@@ -26,6 +26,7 @@ import {
 } from '../types';
 import { BatchDispatchReceiptModal } from './BatchDispatchReceiptModal';
 import { exportElementToPdf } from '../utils/pdfExport';
+import { RecordAuditInfo } from './RecordAuditInfo';
 
 interface BatchDispatchViewProps {
   dispatches: CardBatchDispatch[];
@@ -367,8 +368,18 @@ export const BatchDispatchView: React.FC<BatchDispatchViewProps> = ({
 
                 return (
                   <tr key={dispatch.id} className="hover:bg-slate-800/40 transition">
-                    <td className="py-3 px-4 font-mono text-slate-300 whitespace-nowrap">
-                      {dispatch.date}
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <div className="font-mono text-slate-300">
+                        {dispatch.date}
+                      </div>
+                      <div className="mt-1">
+                        <RecordAuditInfo
+                          audit={dispatch}
+                          entityName={`تسليم ${cat ? cat.name : 'كروت'}`}
+                          compact={true}
+                          showHistoryButton={true}
+                        />
+                      </div>
                     </td>
                     <td className="py-3 px-4">
                       <strong className="text-white block">{pos ? pos.name : 'غير محدد'}</strong>

@@ -120,12 +120,12 @@ export const OfficialPaymentReceiptModal: React.FC<OfficialPaymentReceiptModalPr
 📅 التاريخ: ${payment.date}
 👤 استلمنا من الأخ/الموزع: *${pos ? pos.name : 'نقطة البيع'}*
 🏢 المسؤول: ${pos?.managerName || ''} (${pos?.phone || ''})
-💵 المبلغ المسدد: *${payment.amount.toLocaleString()} ${settings.currencySymbol}*
+💵 المبلغ المسدد: *${(payment.amount ?? 0).toLocaleString()} ${settings.currencySymbol}*
 📝 فقط: ${numberToArabicWords(payment.amount, settings.currencySymbol)}
 💳 طريقة السداد: ${paymentMethodLabel}
 🏷️ المستلم: ${payment.receivedBy || 'إدارة الشبكة'}
 ${payment.notes ? `📌 ملاحظات: ${payment.notes}` : ''}
-${pos ? `📊 المديونية المتبقية حالياً: ${pos.currentDebt.toLocaleString()} ${settings.currencySymbol}` : ''}
+${pos ? `📊 المديونية المتبقية حالياً: ${(pos.currentDebt ?? 0).toLocaleString()} ${settings.currencySymbol}` : ''}
 ----------------------------------------
 شكراً لتعاملكم ووفائكم بالسداد 🌹
 للاستفسار والدعم: ${settings.supportPhone}`;
@@ -432,9 +432,14 @@ ${pos ? `📊 المديونية المتبقية حالياً: ${pos.currentDeb
               </div>
 
               {/* Footer Note */}
-              <p className="text-[10px] text-center text-slate-500 font-mono font-medium">
-                هذا السند صادر إلكترونياً من نظام إدارة شبكات مايكروتك • {settings.networkName}
-              </p>
+              <div className="text-center pt-4 border-t border-slate-200 space-y-1">
+                <p className="text-[11px] text-slate-700 font-semibold">
+                  {settings.invoiceFooterText || `هذا السند صادر إلكترونياً من نظام إدارة شبكات مايكروتك • ${settings.networkName}`}
+                </p>
+                <p className="text-[9px] text-slate-400 font-mono">
+                  نظام إدارة شبكات مايكروتك • تاريخ الطباعة: {new Date().toLocaleDateString('ar-YE')}
+                </p>
+              </div>
             </div>
           )}
 
@@ -502,7 +507,7 @@ ${pos ? `📊 المديونية المتبقية حالياً: ${pos.currentDeb
               <div className="space-y-1.5 py-1.5 border-b-2 border-dashed border-black">
                 <div className="flex justify-between items-center text-sm font-black">
                   <span>المبلغ المقبوض:</span>
-                  <span className="text-base">{payment.amount.toLocaleString()} {settings.currencySymbol}</span>
+                  <span className="text-base">{(payment.amount ?? 0).toLocaleString()} {settings.currencySymbol}</span>
                 </div>
                 <div className="text-[10px] font-bold text-center bg-slate-100 p-1 rounded border border-slate-300">
                   فقط: {numberToArabicWords(payment.amount, settings.currencySymbol)}
@@ -532,11 +537,8 @@ ${pos ? `📊 المديونية المتبقية حالياً: ${pos.currentDeb
                   <span>ختم الشبكة: ............</span>
                 </div>
 
-                <div className="text-[10px] font-bold pt-1 text-center">
-                  <div>شكراً لتعاملكم ووفائكم بالسداد 🌹</div>
-                  <div className="text-[9px] text-slate-600 mt-0.5">
-                    نظام إدارة الشبكات • {settings.supportPhone}
-                  </div>
+                <div className="text-[10px] font-bold pt-2 text-center leading-relaxed border-t border-dotted border-black">
+                  {settings.cashierFooterText || `شكراً لتعاملكم ووفائكم بالسداد 🌹 • ${settings.supportPhone}`}
                 </div>
               </div>
             </div>

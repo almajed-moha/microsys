@@ -1162,4 +1162,955 @@ export class MikroTikService {
     client.close();
     return { success: createdCount > 0, createdCount, errors: errors.length > 0 ? errors : undefined };
   }
+
+  // 8. Fetch Configured Hotspot Users (/ip/hotspot/user)
+  public static async getConfiguredHotspotUsers(options: MikroTikConnectionOptions): Promise<any[]> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      return [
+        { id: '*u1', name: '849201', profile: 'Profile-200', limitUptime: '2h', limitBytesTotal: 1073741824, bytesIn: 45200000, bytesOut: 489000000, uptime: '1h 24m', disabled: false, comment: 'كارت 200 ريال' },
+        { id: '*u2', name: '772910', profile: 'Profile-100', limitUptime: '1h', limitBytesTotal: 524288000, bytesIn: 12500000, bytesOut: 182000000, uptime: '45m', disabled: false, comment: 'كارت 100 ريال' },
+        { id: '*u3', name: '993412', profile: 'Profile-500', limitUptime: '6h', limitBytesTotal: 2147483648, bytesIn: 180000000, bytesOut: 1650000000, uptime: '3h 10m', disabled: false, comment: 'كارت 500 ريال' },
+        { id: '*u4', name: '102948', profile: 'Profile-100', limitUptime: '1h', limitBytesTotal: 524288000, bytesIn: 8400000, bytesOut: 75000000, uptime: '12m', disabled: false, comment: 'كارت 100 ريال' },
+        { id: '*u5', name: '554433', profile: 'Profile-1000', limitUptime: '12h', limitBytesTotal: 5368709120, bytesIn: 0, bytesOut: 0, uptime: '0s', disabled: false, comment: 'كارت 1000 ريال - غير مستخدم' },
+        { id: '*u6', name: 'admin_wifi', profile: 'default', limitUptime: '', limitBytesTotal: 0, bytesIn: 890000000, bytesOut: 5400000000, uptime: '2d 08h', disabled: false, comment: 'إدارة الشبكة' },
+      ];
+    }
+
+    const proto = options.protocol || 'auto';
+
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+        const data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/ip/hotspot/user');
+        const list = Array.isArray(data) ? data : [data];
+
+        return list.filter(u => u && u.name).map(u => ({
+          id: u['.id'] || u.id || u.name,
+          name: u.name,
+          password: u.password,
+          profile: u.profile || 'default',
+          limitUptime: u['limit-uptime'] || u.limitUptime,
+          limitBytesTotal: Number(u['limit-bytes-total']) || 0,
+          bytesIn: Number(u['bytes-in']) || 0,
+          bytesOut: Number(u['bytes-out']) || 0,
+          uptime: u.uptime || '0s',
+          disabled: u.disabled === 'true' || u.disabled === true,
+          comment: u.comment,
+          email: u.email,
+        }));
+      } catch (err) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    // Binary API
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    const users = await client.sendSentence(['/ip/hotspot/user/print']);
+    client.close();
+
+    return users.map(u => ({
+      id: u['.id'] || u['name'],
+      name: u['name'],
+      password: u['password'],
+      profile: u['profile'] || 'default',
+      limitUptime: u['limit-uptime'],
+      limitBytesTotal: Number(u['limit-bytes-total']) || 0,
+      bytesIn: Number(u['bytes-in']) || 0,
+      bytesOut: Number(u['bytes-out']) || 0,
+      uptime: u['uptime'] || '0s',
+      disabled: u['disabled'] === 'true',
+      comment: u['comment'],
+      email: u['email'],
+    }));
+  }
+
+  // 9. Fetch Hotspot User Profiles (/ip/hotspot/user/profile)
+  public static async getHotspotUserProfiles(options: MikroTikConnectionOptions): Promise<any[]> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      return [
+        { id: '*p1', name: 'default', rateLimit: '3M/1M', sharedUsers: 1, sessionTimeout: '', idleTimeout: '5m', keepaliveTimeout: '2m', statusAutorefresh: '1m', transparentProxy: false },
+        { id: '*p2', name: 'Profile-100', rateLimit: '4M/2M', sharedUsers: 1, sessionTimeout: '', idleTimeout: '5m', keepaliveTimeout: '2m', statusAutorefresh: '1m', transparentProxy: false },
+        { id: '*p3', name: 'Profile-200', rateLimit: '5M/2M', sharedUsers: 1, sessionTimeout: '', idleTimeout: '5m', keepaliveTimeout: '2m', statusAutorefresh: '1m', transparentProxy: false },
+        { id: '*p4', name: 'Profile-500', rateLimit: '6M/3M', sharedUsers: 1, sessionTimeout: '', idleTimeout: '5m', keepaliveTimeout: '2m', statusAutorefresh: '1m', transparentProxy: false },
+        { id: '*p5', name: 'Profile-1000', rateLimit: '8M/4M', sharedUsers: 1, sessionTimeout: '', idleTimeout: '5m', keepaliveTimeout: '2m', statusAutorefresh: '1m', transparentProxy: false },
+      ];
+    }
+
+    const proto = options.protocol || 'auto';
+
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+        const data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/ip/hotspot/user/profile');
+        const list = Array.isArray(data) ? data : [data];
+
+        return list.filter(p => p && p.name).map(p => ({
+          id: p['.id'] || p.id || p.name,
+          name: p.name,
+          rateLimit: p['rate-limit'] || p.rateLimit,
+          sharedUsers: p['shared-users'] || p.sharedUsers || 1,
+          sessionTimeout: p['session-timeout'] || p.sessionTimeout,
+          idleTimeout: p['idle-timeout'] || p.idleTimeout,
+          keepaliveTimeout: p['keepalive-timeout'] || p.keepaliveTimeout,
+          statusAutorefresh: p['status-autorefresh'] || p.statusAutorefresh,
+          transparentProxy: p['transparent-proxy'] === 'true' || p['transparent-proxy'] === true,
+          addressPool: p['address-pool'] || p.addressPool,
+          onLogin: p['on-login'] || p.onLogin,
+          onLogout: p['on-logout'] || p.onLogout,
+        }));
+      } catch (err) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    // Binary API
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    const profiles = await client.sendSentence(['/ip/hotspot/user/profile/print']);
+    client.close();
+
+    return profiles.map(p => ({
+      id: p['.id'] || p['name'],
+      name: p['name'],
+      rateLimit: p['rate-limit'],
+      sharedUsers: p['shared-users'] || 1,
+      sessionTimeout: p['session-timeout'],
+      idleTimeout: p['idle-timeout'],
+      keepaliveTimeout: p['keepalive-timeout'],
+      statusAutorefresh: p['status-autorefresh'],
+      transparentProxy: p['transparent-proxy'] === 'true',
+      addressPool: p['address-pool'],
+      onLogin: p['on-login'],
+      onLogout: p['on-logout'],
+    }));
+  }
+
+  // 10. Delete Configured Hotspot User (/ip/hotspot/user/remove)
+  public static async deleteHotspotUser(options: MikroTikConnectionOptions, userIdOrName: string): Promise<boolean> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      return true;
+    }
+
+    const proto = options.protocol || 'auto';
+
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+
+        if (userIdOrName.startsWith('*')) {
+          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, `/ip/hotspot/user/${encodeURIComponent(userIdOrName)}`, 'DELETE');
+        } else {
+          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, `/ip/hotspot/user/remove`, 'POST', { numbers: userIdOrName });
+        }
+        return true;
+      } catch (err) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    // Binary API
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    await client.sendSentence(['/ip/hotspot/user/remove', `=numbers=${userIdOrName}`]);
+    client.close();
+    return true;
+  }
+
+  // 11. Add / Update Hotspot User Profile (/ip/hotspot/user/profile/add or set)
+  public static async saveHotspotUserProfile(
+    options: MikroTikConnectionOptions,
+    profileData: {
+      id?: string;
+      name: string;
+      rateLimit?: string;
+      sharedUsers?: number | string;
+      statusAutorefresh?: string;
+      idleTimeout?: string;
+      sessionTimeout?: string;
+    }
+  ): Promise<{ success: boolean; message?: string }> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      return { success: true, message: `تم حفظ بروفايل المستخدم (${profileData.name}) بنجاح (وضع المحاكاة).` };
+    }
+
+    const proto = options.protocol || 'auto';
+
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+
+        const body: any = {
+          name: profileData.name,
+        };
+        if (profileData.rateLimit) body['rate-limit'] = profileData.rateLimit;
+        if (profileData.sharedUsers) body['shared-users'] = String(profileData.sharedUsers);
+        if (profileData.statusAutorefresh) body['status-autorefresh'] = profileData.statusAutorefresh;
+        if (profileData.idleTimeout) body['idle-timeout'] = profileData.idleTimeout;
+        if (profileData.sessionTimeout) body['session-timeout'] = profileData.sessionTimeout;
+
+        if (profileData.id && profileData.id.startsWith('*')) {
+          await fetchRestApi(
+            { ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port },
+            `/ip/hotspot/user/profile/${encodeURIComponent(profileData.id)}`,
+            'PATCH',
+            body
+          );
+        } else {
+          await fetchRestApi(
+            { ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port },
+            '/ip/hotspot/user/profile',
+            'PUT',
+            body
+          );
+        }
+        return { success: true, message: `تم حفظ البروفايل ${profileData.name} بنجاح.` };
+      } catch (err: any) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    // Binary API
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    const words = profileData.id
+      ? ['/ip/hotspot/user/profile/set', `=numbers=${profileData.id}`, `=name=${profileData.name}`]
+      : ['/ip/hotspot/user/profile/add', `=name=${profileData.name}`];
+
+    if (profileData.rateLimit) words.push(`=rate-limit=${profileData.rateLimit}`);
+    if (profileData.sharedUsers) words.push(`=shared-users=${profileData.sharedUsers}`);
+    if (profileData.statusAutorefresh) words.push(`=status-autorefresh=${profileData.statusAutorefresh}`);
+    if (profileData.idleTimeout) words.push(`=idle-timeout=${profileData.idleTimeout}`);
+    if (profileData.sessionTimeout) words.push(`=session-timeout=${profileData.sessionTimeout}`);
+
+    await client.sendSentence(words);
+    client.close();
+    return { success: true, message: `تم حفظ البروفايل ${profileData.name} بنجاح.` };
+  }
+
+  // 12. Remote System Control: Reboot / Shutdown / Execute Command
+  public static async executeSystemCommand(
+    options: MikroTikConnectionOptions,
+    command: 'reboot' | 'shutdown' | 'ping' | 'script',
+    extraParams?: Record<string, any>
+  ): Promise<{ success: boolean; message: string; output?: any }> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      if (command === 'reboot') {
+        return { success: true, message: 'تم إرسال أمر إعادة تشغيل الراوتر (Reboot) بنجاح (وضع المحاكاة).' };
+      }
+      if (command === 'shutdown') {
+        return { success: true, message: 'تم إرسال أمر إيقاف تشغيل الراوتر (Shutdown) بنجاح (وضع المحاكاة).' };
+      }
+      if (command === 'ping') {
+        return {
+          success: true,
+          message: 'نجح فحص الاتصال (Ping)',
+          output: [
+            { host: extraParams?.address || '8.8.8.8', size: 56, ttl: 57, time: '22ms', status: 'echo reply' },
+            { host: extraParams?.address || '8.8.8.8', size: 56, ttl: 57, time: '19ms', status: 'echo reply' },
+            { host: extraParams?.address || '8.8.8.8', size: 56, ttl: 57, time: '21ms', status: 'echo reply' },
+            { host: extraParams?.address || '8.8.8.8', size: 56, ttl: 57, time: '20ms', status: 'echo reply' },
+          ],
+        };
+      }
+      return { success: true, message: 'تم تنفيذ الأمر بنجاح.' };
+    }
+
+    const proto = options.protocol || 'auto';
+
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+
+        if (command === 'reboot') {
+          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/system/reboot', 'POST', {});
+          return { success: true, message: 'تم إرسال أمر إعادة تشغيل الراوتر بنجاح.' };
+        }
+        if (command === 'shutdown') {
+          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/system/shutdown', 'POST', {});
+          return { success: true, message: 'تم إرسال أمر إيقاف تشغيل الراوتر بنجاح.' };
+        }
+        if (command === 'ping') {
+          const res = await fetchRestApi(
+            { ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port },
+            '/ping',
+            'POST',
+            { address: extraParams?.address || '8.8.8.8', count: extraParams?.count || 4 }
+          );
+          return { success: true, message: 'تم استلام نتائج اختبار Ping بنجاح.', output: res };
+        }
+      } catch (err: any) {
+        if (proto !== 'auto') {
+          return { success: false, message: `تعذر تنفيذ الأمر: ${err.message}` };
+        }
+      }
+    }
+
+    // Binary API
+    try {
+      const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+      const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+      await client.connect();
+      await client.login(options.username, options.password || '');
+
+      if (command === 'reboot') {
+        await client.sendSentence(['/system/reboot']);
+        client.close();
+        return { success: true, message: 'تم إرسال أمر إعادة تشغيل الراوتر (Reboot) بنجاح.' };
+      }
+      if (command === 'shutdown') {
+        await client.sendSentence(['/system/shutdown']);
+        client.close();
+        return { success: true, message: 'تم إرسال أمر إيقاف تشغيل الراوتر (Shutdown) بنجاح.' };
+      }
+      if (command === 'ping') {
+        const addr = extraParams?.address || '8.8.8.8';
+        const count = extraParams?.count || 4;
+        const res = await client.sendSentence(['/ping', `=address=${addr}`, `=count=${count}`]);
+        client.close();
+        return { success: true, message: 'تم فحص Ping بنجاح.', output: res };
+      }
+
+      client.close();
+      return { success: true, message: 'تم تنفيذ العملية بنجاح.' };
+    } catch (err: any) {
+      return { success: false, message: `تعذر تنفيذ العملية عبر Binary API: ${err.message}` };
+    }
+  }
+
+  // ==========================================
+  // USER MANAGER (v4 / v5 / v6 / v7) SUITE
+  // ==========================================
+
+  // 13. Get User Manager Users / Vouchers
+  public static async getUserManagerUsers(options: MikroTikConnectionOptions): Promise<any[]> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      return [
+        { id: '*um1', name: 'UM-88401', password: '482', actualProfile: 'UM-Profile-500', customer: 'admin', uptimeUsed: '1h 15m', downloadUsed: 450000000, uploadUsed: 35000000, totalBytes: 485000000, limitUptime: '1d', limitBytesTotal: 3670016000, disabled: false, comment: 'فئة 500 ريال' },
+        { id: '*um2', name: 'UM-88402', password: '915', actualProfile: 'UM-Profile-100', customer: 'admin', uptimeUsed: '45m', downloadUsed: 320000000, uploadUsed: 22000000, totalBytes: 342000000, limitUptime: '1h', limitBytesTotal: 524288000, disabled: false, comment: 'فئة 100 ريال' },
+        { id: '*um3', name: 'UM-88403', password: '234', actualProfile: 'UM-Profile-200', customer: 'admin', uptimeUsed: '2h 50m', downloadUsed: 1200000000, uploadUsed: 80000000, totalBytes: 1280000000, limitUptime: '3h', limitBytesTotal: 1572864000, disabled: false, comment: 'فئة 200 ريال' },
+        { id: '*um4', name: 'UM-88404', password: '776', actualProfile: 'UM-Profile-1000', customer: 'admin', uptimeUsed: '0s', downloadUsed: 0, uploadUsed: 0, totalBytes: 0, limitUptime: '3d', limitBytesTotal: 8589934592, disabled: false, comment: 'فئة 1000 ريال - جديد' },
+        { id: '*um5', name: 'UM-88405', password: '601', actualProfile: 'UM-Profile-500', customer: 'admin', uptimeUsed: '23h 59m', downloadUsed: 3600000000, uploadUsed: 120000000, totalBytes: 3720000000, limitUptime: '1d', limitBytesTotal: 3670016000, disabled: true, comment: 'فئة 500 ريال - منتهي' },
+      ];
+    }
+
+    const proto = options.protocol || 'auto';
+
+    // Try REST API (v7 /user-manager/user or v6 /tool/user-manager/user)
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+
+        let data: any = null;
+        try {
+          data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/user');
+        } catch {
+          data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/user');
+        }
+
+        const list = Array.isArray(data) ? data : [data];
+        return list.filter(u => u && u.name).map(u => ({
+          id: u['.id'] || u.id || u.name,
+          name: u.name,
+          password: u.password,
+          actualProfile: u['actual-profile'] || u.actualProfile || u.profile || 'default',
+          customer: u.customer || 'admin',
+          uptimeUsed: u['uptime-used'] || u.uptimeUsed || u.uptime || '0s',
+          downloadUsed: Number(u['download-used'] || u.downloadUsed || u['bytes-out']) || 0,
+          uploadUsed: Number(u['upload-used'] || u.uploadUsed || u['bytes-in']) || 0,
+          totalBytes: (Number(u['download-used'] || u['bytes-out']) || 0) + (Number(u['upload-used'] || u['bytes-in']) || 0),
+          limitUptime: u['limit-uptime'] || u.limitUptime || u['uptime-limit'],
+          limitBytesTotal: Number(u['limit-bytes-total'] || u.limitBytesTotal || u['download-limit']) || 0,
+          disabled: u.disabled === 'true' || u.disabled === true,
+          comment: u.comment,
+          sharedUsers: Number(u['shared-users'] || u.sharedUsers) || 1,
+        }));
+      } catch (err) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    // Binary API
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    let users: any[] = [];
+    try {
+      users = await client.sendSentence(['/user-manager/user/print']);
+    } catch {
+      users = await client.sendSentence(['/tool/user-manager/user/print']);
+    }
+    client.close();
+
+    return users.map(u => ({
+      id: u['.id'] || u['name'],
+      name: u['name'],
+      password: u['password'],
+      actualProfile: u['actual-profile'] || u['profile'] || 'default',
+      customer: u['customer'] || 'admin',
+      uptimeUsed: u['uptime-used'] || u['uptime'] || '0s',
+      downloadUsed: Number(u['download-used'] || u['bytes-out']) || 0,
+      uploadUsed: Number(u['upload-used'] || u['bytes-in']) || 0,
+      totalBytes: (Number(u['download-used'] || u['bytes-out']) || 0) + (Number(u['upload-used'] || u['bytes-in']) || 0),
+      limitUptime: u['limit-uptime'] || u['uptime-limit'],
+      limitBytesTotal: Number(u['limit-bytes-total'] || u['download-limit']) || 0,
+      disabled: u['disabled'] === 'true',
+      comment: u['comment'],
+      sharedUsers: Number(u['shared-users']) || 1,
+    }));
+  }
+
+  // 14. Get User Manager Profiles
+  public static async getUserManagerProfiles(options: MikroTikConnectionOptions): Promise<any[]> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      return [
+        { id: '*ump1', name: 'UM-Profile-100', nameForUsers: 'كارت 100 ريال (1 ساعة / 500 ميجا)', price: 100, validity: '1d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
+        { id: '*ump2', name: 'UM-Profile-200', nameForUsers: 'كارت 200 ريال (3 ساعات / 1.5 جيجا)', price: 200, validity: '2d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
+        { id: '*ump3', name: 'UM-Profile-500', nameForUsers: 'كارت 500 ريال (24 ساعة / 3.5 جيجا)', price: 500, validity: '3d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
+        { id: '*ump4', name: 'UM-Profile-1000', nameForUsers: 'كارت 1000 ريال (3 أيام / 8 جيجا)', price: 1000, validity: '5d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
+      ];
+    }
+
+    const proto = options.protocol || 'auto';
+
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+
+        let data: any = null;
+        try {
+          data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/profile');
+        } catch {
+          data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/profile');
+        }
+
+        const list = Array.isArray(data) ? data : [data];
+        return list.filter(p => p && p.name).map(p => ({
+          id: p['.id'] || p.id || p.name,
+          name: p.name,
+          nameForUsers: p['name-for-users'] || p.nameForUsers || p.name,
+          price: Number(p.price) || 0,
+          validity: p.validity || '',
+          startsAt: p['starts-at'] || p.startsAt || 'logon',
+          overrideSharedUsers: p['override-shared-users'] || p.overrideSharedUsers || 1,
+          owner: p.owner || 'admin',
+        }));
+      } catch (err) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    // Binary API
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    let profiles: any[] = [];
+    try {
+      profiles = await client.sendSentence(['/user-manager/profile/print']);
+    } catch {
+      profiles = await client.sendSentence(['/tool/user-manager/profile/print']);
+    }
+    client.close();
+
+    return profiles.map(p => ({
+      id: p['.id'] || p['name'],
+      name: p['name'],
+      nameForUsers: p['name-for-users'] || p['name'],
+      price: Number(p['price']) || 0,
+      validity: p['validity'] || '',
+      startsAt: p['starts-at'] || 'logon',
+      overrideSharedUsers: p['override-shared-users'] || 1,
+      owner: p['owner'] || 'admin',
+    }));
+  }
+
+  // 15. Get User Manager Limitations
+  public static async getUserManagerLimitations(options: MikroTikConnectionOptions): Promise<any[]> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      return [
+        { id: '*lim1', name: 'UM-Lim-100', uptimeLimit: '1h', downloadLimit: '500M', rateLimitRx: '2M', rateLimitTx: '4M' },
+        { id: '*lim2', name: 'UM-Lim-200', uptimeLimit: '3h', downloadLimit: '1500M', rateLimitRx: '2M', rateLimitTx: '5M' },
+        { id: '*lim3', name: 'UM-Lim-500', uptimeLimit: '1d', downloadLimit: '3500M', rateLimitRx: '3M', rateLimitTx: '6M' },
+        { id: '*lim4', name: 'UM-Lim-1000', uptimeLimit: '3d', downloadLimit: '8G', rateLimitRx: '4M', rateLimitTx: '8M' },
+      ];
+    }
+
+    const proto = options.protocol || 'auto';
+
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+
+        let data: any = null;
+        try {
+          data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/limitation');
+        } catch {
+          data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/limitation');
+        }
+
+        const list = Array.isArray(data) ? data : [data];
+        return list.filter(l => l && l.name).map(l => ({
+          id: l['.id'] || l.id || l.name,
+          name: l.name,
+          uptimeLimit: l['uptime-limit'] || l.uptimeLimit,
+          downloadLimit: l['download-limit'] || l.downloadLimit,
+          uploadLimit: l['upload-limit'] || l.uploadLimit,
+          totalLimit: l['total-limit'] || l.totalLimit,
+          rateLimitRx: l['rate-limit-rx'] || l.rateLimitRx,
+          rateLimitTx: l['rate-limit-tx'] || l.rateLimitTx,
+        }));
+      } catch (err) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    // Binary API
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    let lims: any[] = [];
+    try {
+      lims = await client.sendSentence(['/user-manager/limitation/print']);
+    } catch {
+      lims = await client.sendSentence(['/tool/user-manager/limitation/print']);
+    }
+    client.close();
+
+    return lims.map(l => ({
+      id: l['.id'] || l['name'],
+      name: l['name'],
+      uptimeLimit: l['uptime-limit'],
+      downloadLimit: l['download-limit'],
+      uploadLimit: l['upload-limit'],
+      totalLimit: l['total-limit'],
+      rateLimitRx: l['rate-limit-rx'],
+      rateLimitTx: l['rate-limit-tx'],
+    }));
+  }
+
+  // 16. Get User Manager Routers / NAS
+  public static async getUserManagerRouters(options: MikroTikConnectionOptions): Promise<any[]> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      return [
+        { id: '*r1', name: 'LocalHotspot', ipAddress: '127.0.0.1', sharedSecret: '123456', log: 'auth-fail', disabled: false },
+        { id: '*r2', name: 'AP-West-Station', ipAddress: '192.168.88.2', sharedSecret: 'radius123', log: '', disabled: false },
+      ];
+    }
+
+    const proto = options.protocol || 'auto';
+
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+
+        let data: any = null;
+        try {
+          data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/router');
+        } catch {
+          data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/router');
+        }
+
+        const list = Array.isArray(data) ? data : [data];
+        return list.filter(r => r && r.name).map(r => ({
+          id: r['.id'] || r.id || r.name,
+          name: r.name,
+          ipAddress: r['ip-address'] || r.ipAddress || r.address || '127.0.0.1',
+          sharedSecret: r['shared-secret'] || r.sharedSecret || '******',
+          log: r.log,
+          disabled: r.disabled === 'true' || r.disabled === true,
+        }));
+      } catch (err) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    // Binary API
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    let routers: any[] = [];
+    try {
+      routers = await client.sendSentence(['/user-manager/router/print']);
+    } catch {
+      routers = await client.sendSentence(['/tool/user-manager/router/print']);
+    }
+    client.close();
+
+    return routers.map(r => ({
+      id: r['.id'] || r['name'],
+      name: r['name'],
+      ipAddress: r['ip-address'] || r['address'] || '127.0.0.1',
+      sharedSecret: r['shared-secret'] || '******',
+      log: r['log'],
+      disabled: r['disabled'] === 'true',
+    }));
+  }
+
+  // 17. Batch Create Users in User Manager
+  public static async createUserManagerUsersBatch(
+    options: MikroTikConnectionOptions,
+    cards: Array<{
+      username: string;
+      password?: string;
+      profile: string;
+      customer?: string;
+      comment?: string;
+    }>
+  ): Promise<{ success: boolean; createdCount: number; errors?: string[] }> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      return { success: true, createdCount: cards.length };
+    }
+
+    let createdCount = 0;
+    const errors: string[] = [];
+    const proto = options.protocol || 'auto';
+
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+
+        for (const card of cards) {
+          try {
+            // Check if v7 or v6 endpoint
+            const bodyV7 = {
+              name: card.username,
+              password: card.password || card.username,
+              profile: card.profile || 'default',
+              comment: card.comment || 'POS Batch',
+            };
+
+            try {
+              await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/user', 'PUT', bodyV7);
+            } catch {
+              const bodyV6 = {
+                customer: card.customer || 'admin',
+                username: card.username,
+                password: card.password || card.username,
+                'actual-profile': card.profile,
+                comment: card.comment,
+              };
+              await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/user', 'PUT', bodyV6);
+            }
+            createdCount++;
+          } catch (err: any) {
+            errors.push(`فشل إضافة الكارت ${card.username}: ${err.message}`);
+          }
+        }
+
+        return { success: createdCount > 0, createdCount, errors: errors.length > 0 ? errors : undefined };
+      } catch (err) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    // Binary API
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    for (const card of cards) {
+      try {
+        // Try v7 user-manager syntax first
+        try {
+          const words = [
+            '/user-manager/user/add',
+            `=name=${card.username}`,
+            `=password=${card.password || card.username}`,
+            `=comment=${card.comment || 'POS Batch'}`,
+          ];
+          if (card.profile) words.push(`=profile=${card.profile}`);
+          await client.sendSentence(words);
+        } catch {
+          // Fallback to v6 /tool/user-manager/user/add
+          const wordsV6 = [
+            '/tool/user-manager/user/add',
+            `=customer=${card.customer || 'admin'}`,
+            `=username=${card.username}`,
+            `=password=${card.password || card.username}`,
+          ];
+          if (card.comment) wordsV6.push(`=comment=${card.comment}`);
+          await client.sendSentence(wordsV6);
+
+          if (card.profile) {
+            try {
+              await client.sendSentence([
+                '/tool/user-manager/user/create-and-activate-profile',
+                `=numbers=${card.username}`,
+                `=profile=${card.profile}`,
+                `=customer=${card.customer || 'admin'}`,
+              ]);
+            } catch {
+              // Ignore if profile already active
+            }
+          }
+        }
+        createdCount++;
+      } catch (err: any) {
+        errors.push(`فشل إضافة الكارت ${card.username}: ${err.message}`);
+      }
+    }
+
+    client.close();
+    return { success: createdCount > 0, createdCount, errors: errors.length > 0 ? errors : undefined };
+  }
+
+  // 18. Save User Manager Profile & Limitation
+  public static async saveUserManagerProfile(
+    options: MikroTikConnectionOptions,
+    payload: {
+      profileName: string;
+      limitationName?: string;
+      nameForUsers?: string;
+      price?: number;
+      validityDays?: number | string;
+      uptimeLimit?: string;
+      quotaLimit?: string;
+      rateLimit?: string;
+      startsAt?: string;
+      routerOsVersion?: 'v6' | 'v7';
+    }
+  ): Promise<{ success: boolean; message: string }> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      return { success: true, message: `تم حفظ وتفعيل بروفايل User Manager (${payload.profileName}) بنجاح (وضع المحاكاة).` };
+    }
+
+    const proto = options.protocol || 'auto';
+    const isV7 = payload.routerOsVersion === 'v7';
+    const limName = payload.limitationName || `Lim-${payload.profileName}`;
+    const rx = payload.rateLimit ? (payload.rateLimit.split('/')[1] || '2M') : '2M';
+    const tx = payload.rateLimit ? (payload.rateLimit.split('/')[0] || '4M') : '4M';
+
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+
+        if (isV7) {
+          // v7 Limitation
+          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/limitation', 'PUT', {
+            name: limName,
+            'rate-limit-rx': rx,
+            'rate-limit-tx': tx,
+            'uptime-limit': payload.uptimeLimit || '1d',
+            'download-limit': payload.quotaLimit || '1000M',
+          });
+
+          // v7 Profile
+          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/profile', 'PUT', {
+            name: payload.profileName,
+            'name-for-users': payload.nameForUsers || payload.profileName,
+            price: String(payload.price || 0),
+            validity: payload.validityDays ? `${payload.validityDays}d` : '1d',
+          });
+
+          // v7 Profile-Limitation
+          try {
+            await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/profile-limitation', 'PUT', {
+              profile: payload.profileName,
+              limitation: limName,
+            });
+          } catch {
+            // Already linked
+          }
+        } else {
+          // v6 Limitation
+          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/limitation', 'PUT', {
+            name: limName,
+            'rate-limit-rx': rx,
+            'rate-limit-tx': tx,
+            'uptime-limit': payload.uptimeLimit || '1d',
+            'download-limit': payload.quotaLimit || '1000M',
+          });
+
+          // v6 Profile
+          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/profile', 'PUT', {
+            name: payload.profileName,
+            'name-for-users': payload.nameForUsers || payload.profileName,
+            price: String(payload.price || 0),
+            validity: payload.validityDays ? `${payload.validityDays}d` : '1d',
+            'starts-at': payload.startsAt || 'logon',
+          });
+        }
+
+        return { success: true, message: `تم إنشاء وربط بروفايل User Manager (${payload.profileName}) بنجاح.` };
+      } catch (err: any) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    // Binary API
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    try {
+      if (isV7) {
+        // v7 Add limitation
+        await client.sendSentence([
+          '/user-manager/limitation/add',
+          `=name=${limName}`,
+          `=rate-limit-rx=${rx}`,
+          `=rate-limit-tx=${tx}`,
+          `=uptime-limit=${payload.uptimeLimit || '1d'}`,
+          `=download-limit=${payload.quotaLimit || '1000M'}`,
+        ]);
+
+        // v7 Add profile
+        await client.sendSentence([
+          '/user-manager/profile/add',
+          `=name=${payload.profileName}`,
+          `=name-for-users=${payload.nameForUsers || payload.profileName}`,
+          `=price=${payload.price || 0}`,
+          `=validity=${payload.validityDays ? `${payload.validityDays}d` : '1d'}`,
+        ]);
+
+        // v7 Link profile-limitation
+        try {
+          await client.sendSentence([
+            '/user-manager/profile-limitation/add',
+            `=profile=${payload.profileName}`,
+            `=limitation=${limName}`,
+          ]);
+        } catch {
+          // ignore
+        }
+      } else {
+        // v6 Limitation
+        await client.sendSentence([
+          '/tool/user-manager/limitation/add',
+          `=name=${limName}`,
+          `=rate-limit-rx=${rx}`,
+          `=rate-limit-tx=${tx}`,
+          `=uptime-limit=${payload.uptimeLimit || '1d'}`,
+          `=download-limit=${payload.quotaLimit || '1000M'}`,
+        ]);
+
+        // v6 Profile
+        await client.sendSentence([
+          '/tool/user-manager/profile/add',
+          `=name=${payload.profileName}`,
+          `=name-for-users=${payload.nameForUsers || payload.profileName}`,
+          `=price=${payload.price || 0}`,
+          `=validity=${payload.validityDays ? `${payload.validityDays}d` : '1d'}`,
+          `=starts-at=${payload.startsAt || 'logon'}`,
+        ]);
+
+        // v6 Link
+        try {
+          await client.sendSentence([
+            '/tool/user-manager/profile/limitation/add',
+            `=profile=${payload.profileName}`,
+            `=limitation=${limName}`,
+          ]);
+        } catch {
+          // ignore
+        }
+      }
+
+      client.close();
+      return { success: true, message: `تم إنشاء وربط بروفايل User Manager (${payload.profileName}) في الراوتر بنجاح.` };
+    } catch (err: any) {
+      client.close();
+      return { success: false, message: `خطأ أثناء إنشاء البروفايل في الراوتر: ${err.message}` };
+    }
+  }
+
+  // 19. Delete User Manager User
+  public static async deleteUserManagerUser(options: MikroTikConnectionOptions, userIdOrName: string): Promise<boolean> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      return true;
+    }
+
+    const proto = options.protocol || 'auto';
+
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+
+        try {
+          if (userIdOrName.startsWith('*')) {
+            await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, `/user-manager/user/${encodeURIComponent(userIdOrName)}`, 'DELETE');
+          } else {
+            await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/user/remove', 'POST', { numbers: userIdOrName });
+          }
+        } catch {
+          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/user/remove', 'POST', { numbers: userIdOrName });
+        }
+        return true;
+      } catch (err) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    // Binary API
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    try {
+      await client.sendSentence(['/user-manager/user/remove', `=numbers=${userIdOrName}`]);
+    } catch {
+      await client.sendSentence(['/tool/user-manager/user/remove', `=numbers=${userIdOrName}`]);
+    }
+    client.close();
+    return true;
+  }
+
+  // 20. Reset User Manager User Counters
+  public static async resetUserManagerUserCounters(options: MikroTikConnectionOptions, userIdOrName: string): Promise<boolean> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      return true;
+    }
+
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    try {
+      await client.sendSentence(['/user-manager/user/reset-counters', `=numbers=${userIdOrName}`]);
+    } catch {
+      try {
+        await client.sendSentence(['/tool/user-manager/user/reset-counters', `=numbers=${userIdOrName}`]);
+      } catch {
+        // ignore
+      }
+    }
+    client.close();
+    return true;
+  }
 }

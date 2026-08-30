@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Store,
   ShoppingBag,
@@ -53,9 +53,19 @@ interface POSPortalViewProps {
   settings: NetworkSettings;
   onCreateOrder: (orderData: {
     posPointId: string;
+    posPointName?: string;
+    posPhone?: string;
+    posAddress?: string;
+    posManagerName?: string;
+    currentDebtAtRequest?: number;
+    totalQuantity?: number;
+    totalWholesaleAmount?: number;
+    totalRetailAmount?: number;
     items: CardOrderItem[];
     priority: CardOrderPriority;
     notes?: string;
+    requestDate?: string;
+    timestamp?: string;
   }) => void;
   onCancelOrder: (orderId: string) => void;
   onOpenStatementModal?: (posPoint: POSPoint) => void;
@@ -76,6 +86,15 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
   // Determine currently selected POS Point
   const defaultPosId = activeUser.posPointId || posPoints[0]?.id || '';
   const [selectedPosId, setSelectedPosId] = useState<string>(defaultPosId);
+
+  // Sync selectedPosId if user or posPoints update
+  useEffect(() => {
+    if (activeUser.posPointId) {
+      setSelectedPosId(activeUser.posPointId);
+    } else if (posPoints.length > 0 && (!selectedPosId || !posPoints.some((p) => p.id === selectedPosId))) {
+      setSelectedPosId(posPoints[0].id);
+    }
+  }, [activeUser.posPointId, posPoints, selectedPosId]);
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<'new_order' | 'my_orders' | 'statement' | 'support'>('new_order');
@@ -161,8 +180,28 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
   const totalOrderRetail = orderItemsList.reduce((acc, item) => acc + (item.totalRetailPrice || 0), 0);
   const totalOrderExpectedProfit = totalOrderRetail - totalOrderWholesale;
 
-  // Debt calculations
-  const currentDebt = currentPos?.currentDebt || 0;
+  // Real-time Dynamic Debt calculations from transactions
+  const realTimeDebt = useMemo(() => {
+    if (!currentPos) return 0;
+    const totalSales = posInvoices.filter((i) => i.type === 'sale').reduce((sum, i) => sum + (Number(i.totalWholesaleAmount) || 0), 0);
+    const totalReturns = posInvoices.filter((i) => i.type === 'return').reduce((sum, i) => sum + (Number(i.totalWholesaleAmount) || 0), 0);
+    const totalPaid = posPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    if (posInvoices.length > 0 || posPayments.length > 0) {
+      return Math.max(0, (totalSales - totalReturns) - totalPaid);
+    }
+    return Number(currentPos.currentDebt || 0);
+  }, [currentPos, posInvoices, posPayments]);
+
+  const realTimePaid = useMemo(() => {
+    if (!currentPos) return 0;
+    if (posPayments.length > 0) {
+      return posPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    }
+    return Number(currentPos.totalCashPaid || 0);
+  }, [currentPos, posPayments]);
+
+  const currentDebt = realTimeDebt;
   const maxDebt = currentPos?.maxDebtLimit || 0;
   const remainingDebtAllowance = Math.max(0, maxDebt - currentDebt);
   const isOverDebtLimit = maxDebt > 0 && currentDebt + totalOrderWholesale > maxDebt;
@@ -196,7 +235,7 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
     setPriority('normal');
   };
 
-  // Submit Order
+  // Submit Order with complete POS details
   const handleSubmitOrder = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentPos || orderItemsList.length === 0) return;
@@ -206,9 +245,19 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
     try {
       onCreateOrder({
         posPointId: currentPos.id,
+        posPointName: currentPos.name,
+        posPhone: currentPos.phone,
+        posAddress: currentPos.address,
+        posManagerName: currentPos.managerName,
+        currentDebtAtRequest: currentDebt,
+        totalQuantity: totalOrderQty,
+        totalWholesaleAmount: totalOrderWholesale,
+        totalRetailAmount: totalOrderRetail,
         items: orderItemsList,
         priority,
         notes: orderNotes.trim() || undefined,
+        requestDate: new Date().toISOString().split('T')[0],
+        timestamp: new Date().toISOString(),
       });
 
       setSubmitSuccess('تم إرسال طلب الكروت بنجاح إلى إدارة الشبكة!');
