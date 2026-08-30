@@ -12,6 +12,7 @@ import {
   KeyRound,
   CheckCircle2,
   XCircle,
+  AlertCircle,
   AlertTriangle,
   Lock,
   Unlock,
@@ -55,8 +56,7 @@ import {
 } from '../utils/permissions';
 import { exportToCSV } from '../utils/storage';
 import { AuditLogView } from './AuditLogView';
-import { checkUsernameAvailability, generateAlternativeUsernames } from '../utils/usernameValidator';
-import { UsernameAvailabilityIndicator } from './UsernameAvailabilityIndicator';
+import { checkUsernameAvailability, generateAlternativeUsernames, checkPhoneAvailability } from '../utils/usernameValidator';
 
 interface UsersAndPermissionsViewProps {
   users: AppUser[];
@@ -113,6 +113,7 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
   const [formEmail, setFormEmail] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formRole, setFormRole] = useState<UserRole>('accountant');
+  const [formError, setFormError] = useState('');
   const [formCustomRoleName, setFormCustomRoleName] = useState('');
   const [formAvatar, setFormAvatar] = useState('💼');
   const [formAvatarBg, setFormAvatarBg] = useState('bg-indigo-600');
@@ -134,6 +135,8 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
     usersAndPermissions: false,
     settings: false,
   });
+
+  const canEditUsername = activeUser.role === 'owner' || !editingUser || (activeUser.role === 'super_admin' && editingUser.networkId === activeUser.networkId && editingUser.role !== 'super_admin' && editingUser.role !== 'owner');
 
   // Effective full user list for cross-tenant validation
   const effectiveAllUsers = allUsers || users;
@@ -306,8 +309,38 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
   // Save user submit
   const handleSaveUserSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError('');
     if (!formName.trim() || !formUsername.trim()) return;
-    if (!usernameValidation.isValid) return;
+
+    // Validate Username
+    const userValid = checkUsernameAvailability(
+      formUsername,
+      effectiveAllUsers,
+      posPoints,
+      tenants,
+      { 
+        excludeUserId: editingUser?.id,
+        excludeTenantId: editingUser?.networkId,
+        excludePosId: editingUser?.posPointId
+      }
+    );
+    if (!userValid.isValid) {
+      setFormError(userValid.message);
+      return;
+    }
+
+    // Validate Phone
+    if (formPhone.trim()) {
+      const phoneValid = checkPhoneAvailability(formPhone, effectiveAllUsers, posPoints, {
+        excludeUserId: editingUser?.id,
+        excludePosId: editingUser?.posPointId
+      });
+      if (!phoneValid.isValid) {
+        setFormError(phoneValid.message);
+        return;
+      }
+    }
+
 
     const targetNetworkId = editingUser?.networkId || (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : 'net-microsys');
 
@@ -1003,20 +1036,12 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
                         required
                         placeholder="مثال: accountant2"
                         value={formUsername}
+                        disabled={!canEditUsername}
                         onChange={(e) => setFormUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.-]/g, ''))}
-                        className={`w-full px-3.5 py-2.5 bg-slate-950 border rounded-xl text-sm text-white font-mono focus:outline-hidden ${
-                          usernameValidation.status === 'taken'
-                            ? 'border-rose-500 focus:border-rose-500'
-                            : usernameValidation.status === 'available'
-                            ? 'border-emerald-500 focus:border-emerald-500'
-                            : 'border-slate-800 focus:border-indigo-500'
-                        }`}
+                        className={"w-full px-3.5 py-2.5 bg-slate-950 border rounded-xl text-sm text-white font-mono focus:outline-hidden border-slate-800 focus:border-indigo-500 disabled:opacity-50"}
                         dir="ltr"
                       />
-                      <UsernameAvailabilityIndicator
-                        validation={usernameValidation}
-                        onSelectSuggestion={(sug) => setFormUsername(sug)}
-                      />
+                      
                     </div>
 
                     <div>

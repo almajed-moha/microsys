@@ -1862,19 +1862,19 @@ export default function App() {
       return Array.from(map.values());
     };
 
-    const newCategories = mergeList(categories, backupData.categories);
-    const newInvoices = mergeList(invoices, backupData.invoices);
-    const newExpenses = mergeList(expenses, backupData.expenses);
-    const newExpenseCategories = mergeList(expenseCategories, backupData.expenseCategories);
-    const newDispatches = mergeList(dispatches, backupData.dispatches);
-    const newSales = mergeList(sales, backupData.sales);
-    const newPayments = mergeList(payments, backupData.payments);
-    const newOrders = mergeList(orders, backupData.orders);
-    const newTenants = mergeList(tenants, backupData.tenants);
-    const newUsers = mergeList(users, backupData.users);
-    const newLogs = mergeList(activityLogs, backupData.activityLogs);
+    const newCategories = mergeList<CardCategory>(categories, backupData.categories);
+    const newInvoices = mergeList<InvoiceRecord>(invoices, backupData.invoices);
+    const newExpenses = mergeList<ExpenseRecord>(expenses, backupData.expenses);
+    const newExpenseCategories = mergeList<ExpenseCategory>(expenseCategories, backupData.expenseCategories);
+    const newDispatches = mergeList<CardBatchDispatch>(dispatches, backupData.dispatches);
+    const newSales = mergeList<SalesRecord>(sales, backupData.sales);
+    const newPayments = mergeList<PaymentRecord>(payments, backupData.payments);
+    const newOrders = mergeList<CardOrder>(orders, backupData.orders);
+    const newTenants = mergeList<NetworkTenant>(tenants, backupData.tenants);
+    const newUsers = mergeList<AppUser>(users, backupData.users);
+    const newLogs = mergeList<UserActivityLog>(activityLogs, backupData.activityLogs);
 
-    let newPOS = mergeList(posPoints, backupData.posPoints);
+    let newPOS = mergeList<POSPoint>(posPoints, backupData.posPoints);
     newPOS = synchronizePOSBalances(newPOS, newInvoices, newSales, newPayments, newDispatches);
 
     // Update States

@@ -283,9 +283,9 @@ export async function exportElementToPdf(
     const opt = {
       margin: isThermal ? 2 : 10,
       filename: filename.endsWith('.pdf') ? filename : `${filename}.pdf`,
-      image: { type: 'jpeg', quality: 1 },
+      image: { type: 'jpeg' as const, quality: 1 },
       html2canvas: { scale: options.scale || 2, useCORS: true, logging: false },
-      jsPDF: { unit: 'mm', format: isThermal ? [80, 297] : format, orientation: orientation },
+      jsPDF: { unit: 'mm', format: isThermal ? ([80, 297] as [number, number]) : format, orientation: orientation },
       pagebreak: { mode: ['css', 'legacy'] }
     };
 

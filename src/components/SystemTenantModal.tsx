@@ -2,8 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Server, Save, X, Sparkles } from 'lucide-react';
 import { NetworkTenant, NetworkSettings, AppUser, POSPoint } from '../types';
 import { defaultNetworkSettings } from '../mockData';
-import { checkUsernameAvailability, generateAlternativeUsernames } from '../utils/usernameValidator';
-import { UsernameAvailabilityIndicator } from './UsernameAvailabilityIndicator';
+import { checkUsernameAvailability, generateAlternativeUsernames, checkPhoneAvailability } from '../utils/usernameValidator';
 
 interface SystemTenantModalProps {
   tenant: NetworkTenant | null;
@@ -85,6 +84,8 @@ export const SystemTenantModal: React.FC<SystemTenantModalProps> = ({
       adminUsername: chosen,
     }));
   };
+
+  const [formError, setFormError] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,12 +191,7 @@ export const SystemTenantModal: React.FC<SystemTenantModalProps> = ({
               placeholder="e.g. admin_alfadaa"
             />
 
-            {!tenant && (
-              <UsernameAvailabilityIndicator
-                validation={usernameValidation}
-                onSelectSuggestion={(sug) => setFormData({ ...formData, adminUsername: sug })}
-              />
-            )}
+            
           </div>
 
           <div>

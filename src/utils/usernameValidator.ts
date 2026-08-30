@@ -160,3 +160,52 @@ export function generateAlternativeUsernames(
 
   return results;
 }
+
+export interface PhoneValidationResult {
+  isValid: boolean;
+  message: string;
+}
+
+export function checkPhoneAvailability(
+  rawPhone: string | undefined,
+  allUsers: AppUser[] = [],
+  allPosPoints: POSPoint[] = [],
+  options?: {
+    excludeUserId?: string;
+    excludePosId?: string;
+  }
+): PhoneValidationResult {
+  const phone = (rawPhone || '').trim();
+  if (!phone) {
+    return { isValid: true, message: '' };
+  }
+
+  const conflictingUser = allUsers.find(
+    (u) =>
+      u.phone === phone &&
+      u.id !== options?.excludeUserId &&
+      !(options?.excludePosId && u.posPointId === options.excludePosId)
+  );
+
+  if (conflictingUser) {
+    return {
+      isValid: false,
+      message: `غير متاح! رقم الهاتف محجوز لمستخدم آخر: "${conflictingUser.name}"`,
+    };
+  }
+
+  const conflictingPOS = allPosPoints.find(
+    (p) =>
+      p.phone === phone &&
+      p.id !== options?.excludePosId
+  );
+
+  if (conflictingPOS) {
+    return {
+      isValid: false,
+      message: `غير متاح! رقم الهاتف محجوز لنقطة بيع: "${conflictingPOS.name}"`,
+    };
+  }
+
+  return { isValid: true, message: 'متاح' };
+}

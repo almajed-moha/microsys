@@ -820,7 +820,7 @@ export function exportPosDebtsToExcel(
       'إجمالي المستلم': `${pos.totalCardsDelivered || 0} كارت`,
       'إجمالي المباع': `${pos.totalCardsSold || 0} كارت`,
       'إجمالي المسدد نقداً': `${pos.totalCashPaid || 0} ${currency}`,
-      'حالة النقطة': pos.status === 'active' ? 'نشط' : pos.status === 'inactive' ? 'خامل' : 'محظور',
+      'حالة النقطة': pos.status === 'active' ? 'نشط' : pos.status === 'suspended' ? 'محظور' : 'غير معروف',
     };
   });
 
@@ -861,7 +861,7 @@ export function exportPosDebtsToCSV(
       'إجمالي المستلم': pos.totalCardsDelivered || 0,
       'إجمالي المباع': pos.totalCardsSold || 0,
       'إجمالي المسدد نقداً': pos.totalCashPaid || 0,
-      'حالة النقطة': pos.status === 'active' ? 'نشط' : pos.status === 'inactive' ? 'خامل' : 'محظور',
+      'حالة النقطة': pos.status === 'active' ? 'نشط' : pos.status === 'suspended' ? 'محظور' : 'غير معروف',
     };
   });
 

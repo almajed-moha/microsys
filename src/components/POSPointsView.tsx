@@ -42,8 +42,7 @@ import {
 } from '../types';
 import { calculatePOSInventory, calculatePOSBalance } from '../utils/storage';
 import { exportElementToPdf } from '../utils/pdfExport';
-import { checkUsernameAvailability, generateAlternativeUsernames } from '../utils/usernameValidator';
-import { UsernameAvailabilityIndicator } from './UsernameAvailabilityIndicator';
+import { checkUsernameAvailability, generateAlternativeUsernames, checkPhoneAvailability } from '../utils/usernameValidator';
 
 interface POSPointsViewProps {
   posPoints: POSPoint[];
@@ -923,10 +922,7 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
                       </div>
                     </div>
 
-                    <UsernameAvailabilityIndicator
-                      validation={usernameValidation}
-                      onSelectSuggestion={(sug) => setFormData({ ...formData, username: sug })}
-                    />
+                    
                   </div>
                 </div>
 
