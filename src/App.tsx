@@ -84,7 +84,7 @@ import {
   ROLE_DEFINITIONS,
   getRoleDefaultPermissions,
 } from './utils/permissions';
-import { CheckCircle2, LogIn, Sparkles, X } from 'lucide-react';
+import { CheckCircle2, LogIn, Sparkles, X, ShieldAlert, Network, Phone, LogOut } from 'lucide-react';
 
 // Wipe any previous stale demo data once to ensure pristine master-only state as requested
 const MASTER_ONLY_RESET_FLAG = 'mikrotik_v4_master_only_clean_reset';
@@ -219,6 +219,40 @@ export default function App() {
     if (!targetId) return null;
     return tenants.find((t) => t.id === targetId) || null;
   }, [tenants, activeUser?.role, activeUser?.networkId, selectedTenantFilter]);
+
+  // Subscription check
+  const { isTenantExpired, tenantExpirationMessage, tenantRemainingDays } = useMemo(() => {
+    let expired = false;
+    let message = '';
+    let remainingDays = 0;
+    
+    // system_owner bypasses expiration lock entirely
+    if (activeUser?.role === 'system_owner') {
+      return { isTenantExpired: false, tenantExpirationMessage: '', tenantRemainingDays: null };
+    }
+    
+    if (effectiveTenantId) {
+      const tenant = tenants.find(t => t.id === effectiveTenantId);
+      if (tenant) {
+        if (tenant.status === 'suspended') {
+          expired = true;
+          message = `تم إيقاف حساب الشبكة (${tenant.name}) مؤقتاً. يرجى التواصل مع الإدارة.`;
+        } else if (tenant.subscriptionPlan === 'lifetime') {
+          // No expiration
+        } else if (tenant.subscriptionEndDate) {
+          const endDate = new Date(tenant.subscriptionEndDate);
+          const now = new Date();
+          const diffTime = endDate.getTime() - now.getTime();
+          remainingDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          if (remainingDays < 0) {
+            expired = true;
+            message = `لقد انتهت فترة اشتراك الشبكة (${tenant.name}) منذ ${Math.abs(remainingDays)} يوم. يرجى التواصل مع الإدارة لتجديد الاشتراك.`;
+          }
+        }
+      }
+    }
+    return { isTenantExpired: expired, tenantExpirationMessage: message, tenantRemainingDays: remainingDays };
+  }, [effectiveTenantId, tenants, activeUser?.role]);
 
   const [settings, setSettings] = useState<NetworkSettings>(() => {
     if (currentTenant?.settings) {
@@ -1894,6 +1928,40 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex selection:bg-indigo-500 selection:text-white font-sans antialiased">
+      {/* Subscription Expiration Overlay */}
+      {isTenantExpired && activeUser?.role !== 'system_owner' && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4">
+          <div className="bg-slate-900 border border-rose-500/30 rounded-3xl w-full max-w-lg p-8 text-center shadow-2xl shadow-rose-900/20">
+            <div className="w-20 h-20 bg-rose-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-rose-500/20">
+              <ShieldAlert className="w-10 h-10 text-rose-500" />
+            </div>
+            <h2 className="text-2xl font-black text-white mb-4">انتهت فترة الاشتراك</h2>
+            <p className="text-slate-300 text-base leading-relaxed mb-8">
+              {tenantExpirationMessage}
+            </p>
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 text-right space-y-4 mb-8">
+              <div className="flex items-center gap-3 text-slate-400">
+                <Network className="w-5 h-5 text-indigo-400" />
+                <span className="font-bold">اسم الشبكة:</span>
+                <span className="text-white ml-auto">{currentTenant?.name}</span>
+              </div>
+              <div className="flex items-center gap-3 text-slate-400">
+                <Phone className="w-5 h-5 text-indigo-400" />
+                <span className="font-bold">للتواصل مع الإدارة:</span>
+                <span className="text-white ml-auto" dir="ltr">{settings.supportPhone || settings.whatsappNumber}</span>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold transition w-full flex items-center justify-center gap-2"
+            >
+              <LogOut className="w-5 h-5" />
+              <span>تسجيل الخروج</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar Navigation */}
       <Sidebar
         activeView={activeView}
@@ -1925,6 +1993,8 @@ export default function App() {
         onOpenLogin={() => handleOpenLoginPortal()}
         onOpenAboutProgram={() => setIsAboutModalOpen(true)}
         onLogout={handleLogout}
+        tenantRemainingDays={tenantRemainingDays}
+        tenantPlan={currentTenant?.subscriptionPlan}
         counts={{
           posPoints: scopedPOSPoints.length,
           sales: scopedSales.length,

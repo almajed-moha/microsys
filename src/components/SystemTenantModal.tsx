@@ -216,7 +216,7 @@ export const SystemTenantModal: React.FC<SystemTenantModalProps> = ({
 
           <div>
             <label className="block text-slate-300 text-sm font-bold mb-1.5">
-              حالة الاشتراك:
+              حالة التشغيل:
             </label>
             <select
               value={formData.status || 'active'}
@@ -226,6 +226,38 @@ export const SystemTenantModal: React.FC<SystemTenantModalProps> = ({
               <option value="active">نشط (Active)</option>
               <option value="suspended">موقوف (Suspended)</option>
             </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-300 text-sm font-bold mb-1.5">
+                نوع الاشتراك:
+              </label>
+              <select
+                value={formData.subscriptionPlan || 'monthly'}
+                onChange={(e) => setFormData({ ...formData, subscriptionPlan: e.target.value as any })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+              >
+                <option value="monthly">شهري</option>
+                <option value="yearly">سنوي</option>
+                <option value="custom">مخصص</option>
+                <option value="lifetime">مدى الحياة</option>
+              </select>
+            </div>
+            
+            {formData.subscriptionPlan !== 'lifetime' && (
+              <div>
+                <label className="block text-slate-300 text-sm font-bold mb-1.5">
+                  تاريخ الانتهاء:
+                </label>
+                <input
+                  type="date"
+                  value={formData.subscriptionEndDate || ''}
+                  onChange={(e) => setFormData({ ...formData, subscriptionEndDate: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+            )}
           </div>
 
           <div className="pt-4 flex gap-3">

@@ -160,7 +160,7 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
                 <th className="p-4">الشبكة</th>
                 <th className="p-4">مدير الشبكة</th>
                 <th className="p-4">المستخدمين المرتبطين</th>
-                <th className="p-4">تاريخ الاشتراك</th>
+                <th className="p-4">الاشتراك والمدة</th>
                 <th className="p-4">الحالة</th>
                 <th className="p-4">إجراءات والوصول</th>
               </tr>
@@ -168,14 +168,49 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
             <tbody className="divide-y divide-slate-800/50">
               {tenants.map(tenant => {
                 const tenantUsersCount = users.filter(u => (u.networkId || 'net-microsys') === tenant.id).length;
+                
+                // Calculate subscription status
+                let subscriptionText = '';
+                let subscriptionColor = 'text-slate-400';
+                let isExpired = false;
+                
+                if (tenant.subscriptionPlan === 'lifetime') {
+                  subscriptionText = 'مدى الحياة';
+                  subscriptionColor = 'text-indigo-400';
+                } else if (tenant.subscriptionEndDate) {
+                  const endDate = new Date(tenant.subscriptionEndDate);
+                  const now = new Date();
+                  const diffTime = endDate.getTime() - now.getTime();
+                  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                  
+                  if (diffDays < 0) {
+                    subscriptionText = `منتهي منذ ${Math.abs(diffDays)} يوم`;
+                    subscriptionColor = 'text-rose-400 font-bold';
+                    isExpired = true;
+                  } else if (diffDays <= 7) {
+                    subscriptionText = `باقي ${diffDays} أيام`;
+                    subscriptionColor = 'text-amber-400 font-bold';
+                  } else {
+                    subscriptionText = `باقي ${diffDays} يوم`;
+                    subscriptionColor = 'text-emerald-400';
+                  }
+                } else {
+                  subscriptionText = 'غير محدد';
+                }
+
                 return (
-                  <tr key={tenant.id} className="hover:bg-slate-800/30 transition text-sm">
+                  <tr key={tenant.id} className={`hover:bg-slate-800/30 transition text-sm ${isExpired ? 'bg-rose-950/10' : ''}`}>
                     <td className="p-4">
                       <div className="font-bold text-white flex items-center gap-2">
                         <span>{tenant.name}</span>
                         {(tenant.id === 'net-microsys' || tenant.id === tenants[0]?.id) && (
                           <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] font-mono font-bold">
                             الرئيسية
+                          </span>
+                        )}
+                        {isExpired && (
+                          <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-bold border border-rose-500/30">
+                            منتهي الصلاحية
                           </span>
                         )}
                       </div>
@@ -188,7 +223,18 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
                         <span>{tenantUsersCount} مستخدم</span>
                       </span>
                     </td>
-                    <td className="p-4 text-slate-300">{tenant.createdAt}</td>
+                    <td className="p-4">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm text-slate-300">
+                          {tenant.subscriptionPlan === 'yearly' ? 'سنوي' : 
+                           tenant.subscriptionPlan === 'monthly' ? 'شهري' : 
+                           tenant.subscriptionPlan === 'custom' ? 'مخصص' : 'تلقائي'}
+                        </span>
+                        <span className={`text-xs ${subscriptionColor}`}>
+                          {subscriptionText}
+                        </span>
+                      </div>
+                    </td>
                     <td className="p-4">
                       <span className={`px-2 py-1 rounded-lg text-xs font-bold ${
                         tenant.status === 'active' 

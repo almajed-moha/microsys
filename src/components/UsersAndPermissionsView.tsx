@@ -1318,45 +1318,66 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
                             </div>
                           </div>
 
-                          {/* Sub-Fields Grid */}
+                          {/* Sub-Fields Grid (Grouped by Action Type) */}
                           {isExpanded && (
-                            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                              {modConfig.fields.map((field) => {
-                                const isChecked = Boolean(modPerms && modPerms[field.key]);
+                            <div className="p-4 space-y-4">
+                              {[
+                                { type: 'read', label: 'قراءة وعرض (Read/View)', color: 'text-indigo-400', border: 'border-indigo-500/20' },
+                                { type: 'add', label: 'إضافة وإنشاء (Create/Add)', color: 'text-emerald-400', border: 'border-emerald-500/20' },
+                                { type: 'edit', label: 'تعديل ومعالجة (Update/Edit)', color: 'text-amber-400', border: 'border-amber-500/20' },
+                                { type: 'delete', label: 'حذف وإلغاء (Delete/Cancel)', color: 'text-rose-400', border: 'border-rose-500/20' },
+                                { type: 'special', label: 'صلاحيات أخرى ومتقدمة (Special)', color: 'text-slate-400', border: 'border-slate-800' },
+                              ].map(actionGroup => {
+                                const groupFields = modConfig.fields.filter(f => f.actionType === actionGroup.type);
+                                if (groupFields.length === 0) return null;
 
                                 return (
-                                  <div
-                                    key={field.key}
-                                    onClick={() => handleToggleFieldPermission(modConfig.moduleId, field.key)}
-                                    className={`p-3 rounded-xl border transition-all duration-150 flex items-start justify-between gap-3 cursor-pointer ${
-                                      isChecked
-                                        ? 'bg-slate-900 border-indigo-500/40 text-white'
-                                        : 'bg-slate-950/60 border-slate-800/80 text-slate-400 hover:border-slate-700'
-                                    }`}
-                                  >
-                                    <div>
-                                      <div className="flex items-center gap-1.5">
-                                        <span className="text-xs font-bold text-slate-200">{field.label}</span>
-                                        {field.isDanger && (
-                                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800 font-bold" title="صلاحية مالية أو حساسة">
-                                            حساس
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-[11px] text-slate-400 mt-0.5">{field.description}</p>
-                                    </div>
+                                  <div key={actionGroup.type} className="space-y-2.5 bg-slate-950/40 p-3 rounded-2xl border border-slate-800/60">
+                                    <h5 className={`text-[11px] font-bold ${actionGroup.color} flex items-center gap-1.5`}>
+                                      <div className={`w-1.5 h-1.5 rounded-full bg-current opacity-70`}></div>
+                                      {actionGroup.label}
+                                    </h5>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                      {groupFields.map((field) => {
+                                        const isChecked = Boolean(modPerms && modPerms[field.key]);
 
-                                    {/* Toggle Pill */}
-                                    <div
-                                      className={`w-9 h-5 rounded-full transition-colors relative shrink-0 mt-0.5 ${
-                                        isChecked ? 'bg-indigo-600' : 'bg-slate-800'
-                                      }`}
-                                    >
-                                      <div
-                                        className={`w-4 h-4 rounded-full bg-white transition-transform absolute top-0.5 ${
-                                          isChecked ? 'left-0.5 translate-x-0' : 'right-0.5'
-                                        }`}
-                                      />
+                                        return (
+                                          <div
+                                            key={field.key}
+                                            onClick={() => handleToggleFieldPermission(modConfig.moduleId, field.key)}
+                                            className={`p-3 rounded-xl border transition-all duration-150 flex items-start justify-between gap-3 cursor-pointer ${
+                                              isChecked
+                                                ? 'bg-slate-900 border-indigo-500/40 text-white'
+                                                : 'bg-slate-950/60 border-slate-800/80 text-slate-400 hover:border-slate-700'
+                                            }`}
+                                          >
+                                            <div>
+                                              <div className="flex items-center gap-1.5">
+                                                <span className="text-xs font-bold text-slate-200">{field.label}</span>
+                                                {field.isDanger && (
+                                                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800 font-bold" title="صلاحية مالية أو حساسة">
+                                                    حساس
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">{field.description}</p>
+                                            </div>
+
+                                            {/* Toggle Pill */}
+                                            <div
+                                              className={`w-9 h-5 rounded-full transition-colors relative shrink-0 mt-0.5 ${
+                                                isChecked ? 'bg-indigo-600' : 'bg-slate-800'
+                                              }`}
+                                            >
+                                              <div
+                                                className={`w-4 h-4 rounded-full bg-white transition-transform absolute top-0.5 ${
+                                                  isChecked ? 'left-0.5 translate-x-0' : 'right-0.5'
+                                                }`}
+                                              />
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   </div>
                                 );

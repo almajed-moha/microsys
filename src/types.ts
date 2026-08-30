@@ -385,6 +385,9 @@ export interface NetworkTenant {
   adminUsername: string;
   adminPassword?: string;
   status: 'active' | 'suspended';
+  subscriptionPlan?: 'monthly' | 'yearly' | 'custom' | 'lifetime';
+  subscriptionStartDate?: string;
+  subscriptionEndDate?: string;
   createdAt: string;
   settings: NetworkSettings;
 }

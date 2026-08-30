@@ -102,6 +102,8 @@ interface SidebarProps {
   onOpenLogin?: () => void;
   onLogout?: () => void;
   onOpenAboutProgram?: () => void;
+  tenantRemainingDays?: number | null;
+  tenantPlan?: string;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -136,6 +138,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenLogin,
   onLogout,
   onOpenAboutProgram,
+  tenantRemainingDays,
+  tenantPlan,
 }) => {
   const handleClose = onClose || onCloseMobile || (() => {});
   const handleNavigate = onSelectView || onNavigate || (() => {});
@@ -465,6 +469,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Sidebar Footer with Active User Badge */}
         {!isCollapsed ? (
           <div className="p-3 bg-slate-950/90 border-t border-slate-800 space-y-2.5">
+            {/* Subscription Info Banner */}
+            {activeUser?.role !== 'system_owner' && tenantPlan !== 'lifetime' && tenantRemainingDays !== null && tenantRemainingDays !== undefined && (
+              <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                tenantRemainingDays <= 7 ? 'bg-rose-500/10 border-rose-500/20' : 'bg-slate-900 border-slate-800'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${tenantRemainingDays <= 7 ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
+                  <span className={`text-[11px] font-bold ${tenantRemainingDays <= 7 ? 'text-rose-400' : 'text-slate-400'}`}>
+                    {tenantRemainingDays <= 7 ? 'اشتراكك قارب على الانتهاء' : 'باقي من الاشتراك'}
+                  </span>
+                </div>
+                <span className={`text-xs font-black ${tenantRemainingDays <= 7 ? 'text-rose-300' : 'text-slate-200'}`}>
+                  {tenantRemainingDays} يوم
+                </span>
+              </div>
+            )}
+
             {/* Active User Card in Sidebar */}
             {activeUser && (
               <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between group">
