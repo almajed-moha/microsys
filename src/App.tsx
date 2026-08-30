@@ -1730,7 +1730,7 @@ export default function App() {
   // Logout handler
   const handleLogout = () => {
     setIsLoggedIn(false);
-    setIsLoginModalOpen(true);
+    setIsLoginModalOpen(false);
   };
 
   // Fast switch handler with auto-redirect
@@ -1929,7 +1929,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex selection:bg-indigo-500 selection:text-white font-sans antialiased">
       {/* Subscription Expiration Overlay */}
-      {isTenantExpired && activeUser?.role !== 'system_owner' && (
+      {isLoggedIn && isTenantExpired && activeUser?.role !== 'system_owner' && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4">
           <div className="bg-slate-900 border border-rose-500/30 rounded-3xl w-full max-w-lg p-8 text-center shadow-2xl shadow-rose-900/20">
             <div className="w-20 h-20 bg-rose-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-rose-500/20">
