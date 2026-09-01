@@ -525,6 +525,24 @@ export interface NetworkTenant {
   settings: NetworkSettings;
 }
 
+export interface MaintenanceSettings {
+  enabled: boolean; // هل وضع الصيانة مفعل حالياً؟
+  networkStatus: 'online' | 'maintenance' | 'disabled'; // حالة الشبكة: online = قيد التشغيل, maintenance = وضع الصيانة, disabled = معطلة برمجياً
+  title: string; // عنوان رسالة الصيانة
+  message: string; // نص رسالة الصيانة للمستخدمين
+  expectedReturnTime?: string; // الوقت المتوقع لانتهاء الصيانة والعودة
+  showCountdown?: boolean; // تفعيل العداد التنازلي
+  targetReturnTimestamp?: string; // التوقيت المستهدف للعداد التنازلي ISO string
+  supportContact?: string; // هاتف الدعم الفني
+  whatsappNumber?: string; // رقم الواتساب المباشر
+  severity: 'scheduled' | 'urgent' | 'upgrade' | 'isp_outage' | 'notice'; // نوع الصيانة
+  kickActiveUsersOnEnable?: boolean; // فصل المستخدمين النشطين فوراً عند التفعيل
+  themeStyle: 'warning_amber' | 'danger_red' | 'tech_blue' | 'modern_dark' | 'emerald_pro'; // المظهر البصري لصفحة الهوتسبوت
+  allowBypassedIps?: string; // عناوين IP المستثناة من حظر الصيانة
+  lastUpdated?: string;
+  updatedBy?: string;
+}
+
 export interface NetworkSettings {
   networkName: string; // اسم الشبكة الرئيسي
   networkSlogan: string;
@@ -543,6 +561,7 @@ export interface NetworkSettings {
   invoiceFooterText?: string; // نص تذييل الفواتير وسندات القبض والصرف والتسليم الرسمية (ورق A4)
   cashierFooterText?: string; // نص تذييل إيصالات الكاشير الحرارية (80mm)
   statementFooterText?: string; // نص تذييل كشوفات الحسابات والتقارير المالية
+  maintenanceSettings?: MaintenanceSettings; // إعدادات وضع الصيانة والتحكم بحالة الشبكة
 }
 
 export interface POSCardInventory {

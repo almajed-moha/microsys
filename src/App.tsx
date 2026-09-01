@@ -869,6 +869,7 @@ export default function App() {
         return {
           ...pos,
           currentDebt,
+          totalCardsDelivered: balance.totalCardsDelivered,
           totalCardsSold: balance.totalRetailSales > 0 ? pos.totalCardsSold : pos.totalCardsSold,
           totalCashPaid: balance.totalPaid,
         };
@@ -1053,17 +1054,19 @@ export default function App() {
     // Adjust category warehouse stock for each item in the invoice
     setCategories((prevCategories) => {
       return prevCategories.map((cat) => {
-        const item = newInvoice.items.find((i) => i.categoryId === cat.id);
-        if (!item) return cat;
+        const items = newInvoice.items.filter((i) => i.categoryId === cat.id);
+        if (items.length === 0) return cat;
 
         let stockChange = 0;
-        if (newInvoice.type === 'sale') {
-          // Deduct from warehouse stock when cards are sold/dispatched
-          stockChange = -item.quantity;
-        } else if (newInvoice.type === 'return') {
-          // Return cards back to warehouse stock
-          stockChange = item.quantity;
-        }
+        items.forEach(item => {
+          if (newInvoice.type === 'sale') {
+            // Deduct from warehouse stock when cards are sold/dispatched
+            stockChange -= item.quantity;
+          } else if (newInvoice.type === 'return') {
+            // Return cards back to warehouse stock
+            stockChange += item.quantity;
+          }
+        });
 
         return {
           ...cat,
@@ -1091,7 +1094,38 @@ export default function App() {
   };
 
   const handleUpdateInvoice = (updatedInvoiceData: InvoiceRecord) => {
-    const existing = invoices.find((inv) => inv.id === updatedInvoiceData.id) || updatedInvoiceData;
+    const existing = invoices.find((inv) => inv.id === updatedInvoiceData.id);
+    if (!existing) return;
+
+    // Adjust warehouse stock: reverse old, apply new
+    if (existing.status !== 'cancelled' && updatedInvoiceData.status !== 'cancelled') {
+      setCategories((prev) => 
+        prev.map((cat) => {
+          const oldItems = existing.items.filter((i) => i.categoryId === cat.id);
+          const newItems = updatedInvoiceData.items.filter((i) => i.categoryId === cat.id);
+          
+          if (oldItems.length === 0 && newItems.length === 0) return cat;
+
+          let stockChange = 0;
+          
+          oldItems.forEach(oldItem => {
+             const reverseStock = existing.type === 'sale' ? oldItem.quantity : -oldItem.quantity;
+             stockChange += reverseStock;
+          });
+
+          newItems.forEach(newItem => {
+             const applyStock = updatedInvoiceData.type === 'sale' ? -newItem.quantity : newItem.quantity;
+             stockChange += applyStock;
+          });
+
+          return {
+            ...cat,
+            warehouseStock: Math.max(0, cat.warehouseStock + stockChange)
+          };
+        })
+      );
+    }
+
     const updatedInvoice = applyUpdateAudit(existing, updatedInvoiceData, activeUser, {
       actionTitle: 'تعديل بيانات الفاتورة',
       actionType: 'financial',
@@ -1101,6 +1135,7 @@ export default function App() {
     const nextInvoices = invoices.map((inv) => (inv.id === updatedInvoice.id ? updatedInvoice : inv));
     setInvoices(nextInvoices);
     setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
+    
     logUserActivity(
       'تعديل فاتورة',
       'invoices',

@@ -2113,4 +2113,180 @@ export class MikroTikService {
     client.close();
     return true;
   }
+
+  // 21. Get Hotspot Servers & Current Operational Status
+  public static async getHotspotServers(options: MikroTikConnectionOptions): Promise<any[]> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      return [
+        { id: '*1', name: 'hs-server1', interface: 'bridge-lan', profile: 'hsprof1', addressPool: 'hs-pool-1', disabled: false, invalid: false },
+        { id: '*2', name: 'hs-server2-5G', interface: 'wlan2', profile: 'hsprof1', addressPool: 'hs-pool-2', disabled: false, invalid: false }
+      ];
+    }
+
+    const proto = options.protocol || 'auto';
+
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+        const servers = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/ip/hotspot');
+        if (Array.isArray(servers)) {
+          return servers.map((s: any) => ({
+            id: s['.id'] || s.id,
+            name: s.name,
+            interface: s.interface,
+            profile: s.profile,
+            addressPool: s['address-pool'] || s.addressPool,
+            disabled: s.disabled === true || s.disabled === 'true',
+            invalid: s.invalid === true || s.invalid === 'true',
+          }));
+        }
+      } catch (err: any) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    // Binary API
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    const reply = await client.sendSentence(['/ip/hotspot/print']);
+    client.close();
+
+    return reply
+      .filter((r: any) => r['.id'] || r['name'])
+      .map((r: any) => ({
+        id: r['.id'],
+        name: r['name'],
+        interface: r['interface'],
+        profile: r['profile'],
+        addressPool: r['address-pool'],
+        disabled: r['disabled'] === 'true' || r['disabled'] === true,
+        invalid: r['invalid'] === 'true' || r['invalid'] === true,
+      }));
+  }
+
+  // 22. Set Maintenance State & Programmatic Network Control
+  public static async setHotspotMaintenanceAndNetworkState(
+    options: MikroTikConnectionOptions,
+    params: {
+      networkStatus: 'online' | 'maintenance' | 'disabled';
+      kickActiveUsers?: boolean;
+      maintenanceMessage?: string;
+      maintenanceTitle?: string;
+    }
+  ): Promise<{ success: boolean; message: string; details?: any }> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      let msg = '';
+      if (params.networkStatus === 'online') {
+        msg = 'تم تفعيل الشبكة والهوتسبوت برمجياً بنجاح (وضع المحاكاة). تسجيل الدخول متاح للمستخدمين الآن.';
+      } else if (params.networkStatus === 'maintenance') {
+        msg = `تم تفعيل وضع الصيانة بنجاح (وضع المحاكاة). رسالة الصيانة: "${params.maintenanceTitle || 'صيانة دورية'}".` +
+          (params.kickActiveUsers ? ' تم فصل جميع المشتركين المتصلين لعرض صفحة الصيانة فوراً.' : '');
+      } else {
+        msg = 'تم إيقاف وتعطيل سيرفرات الهوتسبوت برمجياً بنجاح (وضع المحاكاة).' +
+          (params.kickActiveUsers ? ' تم فصل جميع الجلسات النشطة.' : '');
+      }
+      return { success: true, message: msg, details: { status: params.networkStatus, kicked: params.kickActiveUsers } };
+    }
+
+    const proto = options.protocol || 'auto';
+    const isDisableAction = params.networkStatus === 'disabled';
+
+    // 1. Kick active users if requested
+    let kickedCount = 0;
+    if (params.kickActiveUsers) {
+      try {
+        const activeUsers = await this.getActiveHotspotUsers(options);
+        for (const u of activeUsers) {
+          if (u.id) {
+            try {
+              await this.kickHotspotUser(options, u.id);
+              kickedCount++;
+            } catch {
+              // ignore single user kick error
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn('Notice while kicking users for maintenance:', err.message);
+      }
+    }
+
+    // 2. Apply Network Enable/Disable on Hotspot Servers
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+
+        const servers = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/ip/hotspot');
+        if (Array.isArray(servers)) {
+          for (const s of servers) {
+            const sid = s['.id'] || s.id;
+            if (sid) {
+              await fetchRestApi(
+                { ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port },
+                `/ip/hotspot/${encodeURIComponent(sid)}`,
+                'PATCH',
+                { disabled: isDisableAction }
+              );
+            }
+          }
+        }
+
+        let resultMsg = isDisableAction
+          ? `تم تعطيل سيرفرات الهوتسبوت برمجياً بنجاح.`
+          : params.networkStatus === 'maintenance'
+          ? `تم تفعيل وتطبيق وضع الصيانة على الراوتر بنجاح.`
+          : `تم تفعيل سيرفرات الهوتسبوت واستئناف العمل بشكل طبيعي.`;
+
+        if (kickedCount > 0) {
+          resultMsg += ` تم فصل ${kickedCount} مستخدم متصل لتطبيق الحالة فوراً.`;
+        }
+
+        return { success: true, message: resultMsg, details: { status: params.networkStatus, kickedCount } };
+      } catch (err: any) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    // Binary API
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    try {
+      const servers = await client.sendSentence(['/ip/hotspot/print']);
+      for (const s of servers) {
+        const sid = s['.id'];
+        if (sid) {
+          await client.sendSentence([
+            '/ip/hotspot/set',
+            `=.id=${sid}`,
+            `=disabled=${isDisableAction ? 'yes' : 'no'}`
+          ]);
+        }
+      }
+
+      client.close();
+
+      let resultMsg = isDisableAction
+        ? `تم إيقاف وتعطيل سيرفرات الهوتسبوت في راوتر مايكروتك برمجياً بنجاح.`
+        : params.networkStatus === 'maintenance'
+        ? `تم ضبط وتطبيق وضع الصيانة على راوتر مايكروتك بنجاح.`
+        : `تم إعادة تفعيل سيرفرات الهوتسبوت وتنشيط الشبكة بنجاح.`;
+
+      if (kickedCount > 0) {
+        resultMsg += ` تم فصل ${kickedCount} جلسة نشطة.`;
+      }
+
+      return { success: true, message: resultMsg, details: { status: params.networkStatus, kickedCount } };
+    } catch (err: any) {
+      client.close();
+      return { success: false, message: `تعذر تحديث حالة الشبكة عبر Binary API: ${err.message}` };
+    }
+  }
 }

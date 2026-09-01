@@ -648,6 +648,7 @@ export function calculatePOSBalance(
   totalPaid: number;
   currentDebt: number;
   totalDispatchedValue: number;
+  totalCardsDelivered: number;
 } {
   const safeSales = (sales || []).filter((s) => s && s.posPointId === posPointId);
   const safePayments = (payments || []).filter((p) => p && p.posPointId === posPointId);
@@ -659,13 +660,16 @@ export function calculatePOSBalance(
   let totalWholesaleSales = safeSales.reduce((acc, s) => acc + (s.totalWholesaleAmount || 0), 0);
   let totalRetailSales = safeSales.reduce((acc, s) => acc + (s.totalRetailAmount || 0), 0);
   let totalReturns = 0;
+  let totalCardsDelivered = 0;
 
   safeInvoices.forEach((inv) => {
     if (inv.type === 'sale') {
       totalWholesaleSales += inv.totalWholesaleAmount || 0;
       totalRetailSales += inv.totalRetailAmount || 0;
+      inv.items.forEach(item => totalCardsDelivered += Number(item.quantity) || 0);
     } else if (inv.type === 'return') {
       totalReturns += inv.totalWholesaleAmount || 0;
+      inv.items.forEach(item => totalCardsDelivered -= Number(item.quantity) || 0);
     }
   });
 
@@ -685,6 +689,7 @@ export function calculatePOSBalance(
     totalPaid,
     currentDebt,
     totalDispatchedValue,
+    totalCardsDelivered: Math.max(0, totalCardsDelivered),
   };
 }
 

@@ -244,66 +244,66 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   return (
     <div className="space-y-6 pb-12">
       {/* Top Welcome & Quick Actions Bar */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 p-4 sm:p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="bg-slate-900 p-6 sm:p-8 rounded-xl border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl sm:text-2xl font-black text-white">
-              لوحة التحكم والمؤشرات المالية وصافي الأرباح
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+              لوحة التحكم والمؤشرات المالية
             </h2>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+            <span className="px-3 py-1 rounded-full text-[11px] font-medium bg-slate-800 text-slate-300">
               بيانات حية مباشرة
             </span>
           </div>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+          <p className="text-sm text-slate-400 mt-2 leading-relaxed max-w-xl">
             متابعة فواتير المبيعات، المرتجعات، المصروفات التشغيلية، وصافي أرباح الشبكة ونقاط البيع الفعلية ({posPoints.length} نقاط).
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap w-full md:w-auto">
+        <div className="flex items-center gap-3 flex-wrap w-full md:w-auto">
           {onOpenFinancialExport && (
             <button
               onClick={onOpenFinancialExport}
-              className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-sm font-bold shadow-lg shadow-teal-600/25 transition cursor-pointer"
+              className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium transition cursor-pointer border border-slate-700"
             >
               <FileSpreadsheet className="w-4 h-4" />
-              <span>تصدير التقارير (Excel)</span>
+              <span>تصدير Excel</span>
             </button>
           )}
           {canViewIncomeStatement && onOpenIncomeStatement && (
             <button
               onClick={onOpenIncomeStatement}
-              className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold shadow-lg shadow-emerald-600/25 transition cursor-pointer"
+              className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium transition cursor-pointer border border-slate-700"
             >
               <Calculator className="w-4 h-4" />
-              <span>قائمة الدخل والتقرير المالي</span>
+              <span>قائمة الدخل</span>
             </button>
           )}
           <button
             onClick={() => onNavigateToTab('invoices')}
-            className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold shadow-lg shadow-indigo-600/25 transition"
+            className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition"
           >
             <FileText className="w-4 h-4" />
-            <span>+ فاتورة مبيعات / مرتجع</span>
+            <span>+ فاتورة / مرتجع</span>
           </button>
           <button
             onClick={() => onNavigateToTab('expenses')}
-            className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold shadow-lg shadow-amber-600/25 transition"
+            className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium transition"
           >
             <Receipt className="w-4 h-4" />
-            <span>+ سند صرف مصروف</span>
+            <span>+ سند صرف</span>
           </button>
           <button
             onClick={onOpenAI}
-            className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-sm font-bold shadow-lg shadow-purple-600/25 transition"
+            className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-slate-100 hover:bg-white text-slate-900 text-sm font-medium transition shadow-sm"
           >
-            <Sparkles className="w-4 h-4 text-yellow-300" />
+            <Sparkles className="w-4 h-4 text-indigo-600" />
             <span>تحليل ذكي</span>
           </button>
         </div>
       </div>
 
       {/* Filter Control Bar */}
-      <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800/80 shadow-md">
+      <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
         <div className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2 text-slate-300 text-sm font-bold">
             <Filter className="w-4 h-4 text-indigo-400" />
@@ -321,9 +321,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <button
                 key={tab.id}
                 onClick={() => setTimeRange(tab.id as any)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                className={`px-4 py-2 rounded-lg text-[13px] font-medium transition cursor-pointer ${
                   timeRange === tab.id
-                    ? 'bg-indigo-600 text-white shadow-md'
+                    ? 'bg-slate-100 text-slate-900'
                     : 'bg-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-700'
                 }`}
               >
@@ -389,142 +389,105 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* CORE FINANCIAL KPIS GRID */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* 1. Net Sales Revenue */}
-        <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800 shadow-md relative overflow-hidden group hover:border-indigo-500/50 transition">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">صافي المبيعات (Net Sales)</span>
-            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
-              <DollarSign className="w-5 h-5" />
+        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-slate-400">صافي المبيعات</span>
+            <DollarSign className="w-4 h-4 text-slate-500" />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-white tracking-tight">
+              {(financialMetrics.netSales ?? 0).toLocaleString()} <span className="text-sm font-normal text-slate-500">{currency}</span>
             </div>
           </div>
-          <div className="mt-3">
-            <div className="text-xl sm:text-2xl font-black text-white font-mono">
-              {(financialMetrics.netSales ?? 0).toLocaleString()}
-            </div>
-            <span className="text-xs text-slate-400 font-semibold">{currency}</span>
-          </div>
-          <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between">
+          <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
             <span>إجمالي: {(financialMetrics.grossSales ?? 0).toLocaleString()}</span>
-            <span className="text-rose-400 font-medium">مرتجع: {(financialMetrics.returnsTotal ?? 0).toLocaleString()}</span>
+            <span className="text-slate-300">مرتجع: {(financialMetrics.returnsTotal ?? 0).toLocaleString()}</span>
           </div>
         </div>
 
         {/* 2. Cost of Goods Sold (COGS) */}
-        <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800 shadow-md relative overflow-hidden group hover:border-blue-500/50 transition">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">تكلفة البضاعة (Net COGS)</span>
-            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
-              <Package className="w-5 h-5" />
+        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-slate-400">تكلفة البضاعة</span>
+            <Package className="w-4 h-4 text-slate-500" />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-white tracking-tight">
+              {(financialMetrics.netCOGS ?? 0).toLocaleString()} <span className="text-sm font-normal text-slate-500">{currency}</span>
             </div>
           </div>
-          <div className="mt-3">
-            <div className="text-xl sm:text-2xl font-black text-blue-400 font-mono">
-              {(financialMetrics.netCOGS ?? 0).toLocaleString()}
-            </div>
-            <span className="text-xs text-slate-400 font-semibold">{currency}</span>
-          </div>
-          <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between">
+          <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
             <span>مجمل الربح:</span>
-            <span className="text-emerald-400 font-bold font-mono">
+            <span className="text-slate-300 font-medium">
               {(financialMetrics.grossProfit ?? 0).toLocaleString()} {currency}
             </span>
           </div>
         </div>
 
         {/* 3. Operating Expenses */}
-        <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800 shadow-md relative overflow-hidden group hover:border-amber-500/50 transition">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">المصروفات التشغيلية (OPEX)</span>
-            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400">
-              <Receipt className="w-5 h-5" />
+        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-slate-400">المصروفات التشغيلية</span>
+            <Receipt className="w-4 h-4 text-slate-500" />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-white tracking-tight">
+              {(financialMetrics.totalExpenses ?? 0).toLocaleString()} <span className="text-sm font-normal text-slate-500">{currency}</span>
             </div>
           </div>
-          <div className="mt-3">
-            <div className="text-xl sm:text-2xl font-black text-amber-400 font-mono">
-              {(financialMetrics.totalExpenses ?? 0).toLocaleString()}
-            </div>
-            <span className="text-xs text-slate-400 font-semibold">{currency}</span>
-          </div>
-          <div className="mt-2 text-[11px] text-slate-400">
-            {financialMetrics.expensesCount} سندات صرف (باقات، إيجار، صيانة)
+          <div className="mt-4 pt-3 border-t border-slate-800/60 text-xs text-slate-400">
+            {financialMetrics.expensesCount} حركات صرف مسجلة
           </div>
         </div>
 
         {/* 4. NET PROFIT */}
-        <div className={`p-4 rounded-xl border shadow-lg relative overflow-hidden group transition ${
-          financialMetrics.netProfit >= 0
-            ? 'bg-gradient-to-br from-slate-900 via-emerald-950/40 to-slate-900 border-emerald-500/40 hover:border-emerald-500'
-            : 'bg-gradient-to-br from-slate-900 via-rose-950/40 to-slate-900 border-rose-500/40 hover:border-rose-500'
-        }`}>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-slate-200">صافي الربح الحقيقي (Net Profit)</span>
-            <div className={`p-2 rounded-lg ${
-              financialMetrics.netProfit >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
-            }`}>
-              <TrendingUp className="w-5 h-5" />
+        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-slate-400">صافي الربح</span>
+            <TrendingUp className="w-4 h-4 text-slate-500" />
+          </div>
+          <div>
+            <div className={`text-2xl font-bold tracking-tight ${financialMetrics.netProfit >= 0 ? 'text-white' : 'text-slate-300'}`}>
+              {(financialMetrics.netProfit ?? 0).toLocaleString()} <span className="text-sm font-normal text-slate-500">{currency}</span>
             </div>
           </div>
-          <div className="mt-3">
-            <div className={`text-2xl sm:text-3xl font-black font-mono ${
-              financialMetrics.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'
-            }`}>
-              {(financialMetrics.netProfit ?? 0).toLocaleString()}
-            </div>
-            <span className="text-xs text-slate-300 font-semibold">{currency}</span>
+          <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
+            <span>الهامش الصافي</span>
+            <span className="text-slate-300 font-medium">{financialMetrics.profitMargin}%</span>
           </div>
-          <div className="mt-2 text-xs font-bold text-slate-300 flex items-center justify-between">
-            <span>مجمل الربح - المصروفات</span>
-            <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[11px]">
-              هامش {financialMetrics.profitMargin}%
-            </span>
-          </div>
-          {canViewIncomeStatement && onOpenIncomeStatement && (
-            <button
-              onClick={onOpenIncomeStatement}
-              className="mt-3 w-full py-1.5 px-2.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>عرض قائمة الدخل والتقرير المالي المفصل</span>
-            </button>
-          )}
         </div>
       </div>
 
       {/* Secondary Financial Indicators */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Cash Collected */}
-        <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800 shadow-md">
-          <div className="flex items-center justify-between text-slate-400 mb-1">
-            <span className="text-xs font-bold">التحصيلات النقدية (سندات القبض)</span>
-            <CreditCard className="w-4 h-4 text-emerald-400" />
+        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-slate-400">سندات القبض</span>
           </div>
-          <div className="text-xl font-black font-mono text-emerald-400">
-            {(financialMetrics.totalCashCollected ?? 0).toLocaleString()} {currency}
+          <div className="text-xl font-bold text-white tracking-tight">
+            {(financialMetrics.totalCashCollected ?? 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">{currency}</span>
           </div>
-          <div className="text-[11px] text-slate-500 mt-1">المبالغ المقبوضة فعلياً بالخزينة</div>
         </div>
 
         {/* POS Debt */}
-        <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800 shadow-md">
-          <div className="flex items-center justify-between text-slate-400 mb-1">
-            <span className="text-xs font-bold">إجمالي مديونية الموزعين (الآجل)</span>
-            <Store className="w-4 h-4 text-amber-400" />
+        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-slate-400">إجمالي المديونية</span>
           </div>
-          <div className="text-xl font-black font-mono text-amber-400">
-            {(financialMetrics.totalPOSDebt ?? 0).toLocaleString()} {currency}
+          <div className="text-xl font-bold text-white tracking-tight">
+            {(financialMetrics.totalPOSDebt ?? 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">{currency}</span>
           </div>
-          <div className="text-[11px] text-slate-500 mt-1">مستحقات معلقة لدى نقاط البيع الحالية</div>
         </div>
 
         {/* Warehouse Cards */}
-        <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800 shadow-md">
-          <div className="flex items-center justify-between text-slate-400 mb-1">
-            <span className="text-xs font-bold">مخزون الكروت في المستودع</span>
-            <Package className="w-4 h-4 text-blue-400" />
+        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-slate-400">مخزون المستودع</span>
           </div>
-          <div className="text-xl font-black font-mono text-white">
-            {(financialMetrics.totalWarehouseStock ?? 0).toLocaleString()} كارت
+          <div className="text-xl font-bold text-white tracking-tight">
+            {(financialMetrics.totalWarehouseStock ?? 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">كارت</span>
           </div>
-          <div className="text-[11px] text-slate-500 mt-1">جاهزة للتوزيع والطباعة</div>
         </div>
       </div>
 
@@ -590,7 +553,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Interactive Charts Section: Financial Trends & Expenses Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Financial Trends (2 columns) */}
-        <div className="lg:col-span-2 bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md">
+        <div className="lg:col-span-2 bg-slate-900 p-6 rounded-xl border border-slate-800">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="font-bold text-base text-white">
@@ -640,7 +603,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Expenses by Category Breakdown (1 column) */}
-        <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md flex flex-col justify-between">
+        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-1">
               <h3 className="font-bold text-base text-white">
@@ -702,7 +665,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* POS Real Ranking & Card Categories Distribution */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* POS Points Sales Leaderboard - Strictly only existing POS Points */}
-        <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md">
+        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="flex items-center gap-2">
@@ -762,7 +725,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Card Categories Sales & Usage Breakdown */}
-        <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md flex flex-col justify-between">
+        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">
               <div>
@@ -817,13 +780,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {/* Recent Invoices Activity Table */}
-      <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md">
-        <div className="flex items-center justify-between mb-3">
+      <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+        <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="font-bold text-base text-white">
-              آخر الفواتير الصادرة والمرتجعة المعتمدة
-            </h3>
-            <p className="text-xs text-slate-400">العمليات المسجلة لنقاط البيع الفعلية</p>
+            <h3 className="font-bold text-base text-white">آخر الفواتير</h3>
           </div>
           <button
             onClick={() => onNavigateToTab('invoices')}

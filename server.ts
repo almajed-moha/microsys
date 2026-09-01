@@ -436,6 +436,49 @@ app.post("/api/mikrotik/um/reset-user", async (req, res) => {
   }
 });
 
+// 21. Get Hotspot Servers Status
+app.post("/api/mikrotik/hotspot-servers", async (req, res) => {
+  try {
+    const { options } = req.body;
+    if (!options?.host) {
+      return res.status(400).json({ success: false, error: "عنوان الراوتر غير محدد" });
+    }
+    const servers = await MikroTikService.getHotspotServers(options);
+    res.json({ success: true, data: servers });
+  } catch (error: any) {
+    console.warn(`[MikroTik] Hotspot Servers notice: ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر جلب سيرفرات الهوتسبوت من الراوتر",
+      isPrivateIp: isPrivateIp(req.body?.options?.host),
+    });
+  }
+});
+
+// 22. Set Maintenance State & Programmatic Network Control
+app.post("/api/mikrotik/maintenance-state", async (req, res) => {
+  try {
+    const { options, networkStatus, kickActiveUsers, maintenanceMessage, maintenanceTitle } = req.body;
+    if (!options?.host || !networkStatus) {
+      return res.status(400).json({ success: false, error: "بيانات الراوتر وحالة الشبكة مطلوبة" });
+    }
+    const result = await MikroTikService.setHotspotMaintenanceAndNetworkState(options, {
+      networkStatus,
+      kickActiveUsers: Boolean(kickActiveUsers),
+      maintenanceMessage,
+      maintenanceTitle,
+    });
+    res.json(result);
+  } catch (error: any) {
+    console.warn(`[MikroTik] Maintenance State notice: ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر تطبيق حالة الصيانة على الراوتر",
+      isPrivateIp: isPrivateIp(req.body?.options?.host),
+    });
+  }
+});
+
 // AI Sales & POS Analytics endpoint
 app.post("/api/ai/analyze-sales", async (req, res) => {
   try {

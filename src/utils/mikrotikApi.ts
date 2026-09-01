@@ -473,3 +473,252 @@ export function generateUserManagerBatchRscScript(
   return script;
 }
 
+// 23. Fetch Hotspot Servers Status
+export async function fetchHotspotServers(config: Partial<MikroTikConfig>): Promise<any[]> {
+  try {
+    const res = await fetch('/api/mikrotik/hotspot-servers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config }),
+    });
+    const data = await res.json();
+    return data.success && Array.isArray(data.data) ? data.data : [];
+  } catch (error) {
+    console.warn('fetchHotspotServers notice:', error);
+    return [];
+  }
+}
+
+// 24. Update Router Maintenance State & Programmatic Network Control
+export async function updateRouterMaintenanceAndNetworkState(
+  config: Partial<MikroTikConfig>,
+  params: {
+    networkStatus: 'online' | 'maintenance' | 'disabled';
+    kickActiveUsers?: boolean;
+    maintenanceMessage?: string;
+    maintenanceTitle?: string;
+  }
+): Promise<{ success: boolean; message: string; details?: any }> {
+  try {
+    const res = await fetch('/api/mikrotik/maintenance-state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        options: config,
+        networkStatus: params.networkStatus,
+        kickActiveUsers: params.kickActiveUsers,
+        maintenanceMessage: params.maintenanceMessage,
+        maintenanceTitle: params.maintenanceTitle,
+      }),
+    });
+    return await res.json();
+  } catch (error: any) {
+    return {
+      success: false,
+      message: error.message || 'تعذر الاتصال بالخادم لتطبيق حالة الصيانة',
+    };
+  }
+}
+
+// 25. Generate MikroTik Terminal Script (.rsc) for Maintenance & Network Status
+export function generateMaintenanceRouterScript(
+  networkName: string,
+  networkStatus: 'online' | 'maintenance' | 'disabled',
+  maintenanceTitle: string,
+  maintenanceMessage: string,
+  expectedTime?: string,
+  supportPhone?: string
+): string {
+  const timestamp = new Date().toISOString();
+  let script = `# ========================================================\n`;
+  script += `# MikroTik RouterOS Maintenance & Network Control Script\n`;
+  script += `# Network: ${networkName}\n`;
+  script += `# Status Mode: ${networkStatus.toUpperCase()}\n`;
+  script += `# Date: ${timestamp}\n`;
+  script += `# ========================================================\n\n`;
+
+  if (networkStatus === 'disabled') {
+    script += `# 1. Disable All Hotspot Servers (إيقاف الهوتسبوت برمجياً)\n`;
+    script += `/ip hotspot disable [find]\n\n`;
+    script += `# 2. Kick / Disconnect All Active Sessions (فصل جميع المتصلين)\n`;
+    script += `/ip hotspot active remove [find]\n\n`;
+    script += `# 3. Log System Action\n`;
+    script += `:log warning "HOTSPOT NETWORK SUSPENDED: Network disabled programmatically by Admin."\n`;
+  } else if (networkStatus === 'maintenance') {
+    script += `# 1. Ensure Hotspot is active so clients reach captive portal\n`;
+    script += `/ip hotspot enable [find]\n\n`;
+    script += `# 2. Disconnect active users to force maintenance portal redirect\n`;
+    script += `/ip hotspot active remove [find]\n\n`;
+    script += `# 3. Add Log and Notice\n`;
+    script += `:log info "HOTSPOT MAINTENANCE MODE ENABLED: ${maintenanceTitle} - Expected Return: ${expectedTime || 'Soon'}"\n`;
+  } else {
+    script += `# 1. Enable All Hotspot Servers (تفعيل وتشغيل الهوتسبوت)\n`;
+    script += `/ip hotspot enable [find]\n\n`;
+    script += `# 2. Log System Action\n`;
+    script += `:log info "HOTSPOT NETWORK ONLINE: Hotspot servers re-enabled and operational."\n`;
+  }
+
+  return script;
+}
+
+// 26. Generate High-Performance Captive Portal HTML Template (login.html / maintenance.html)
+export function generateCaptivePortalMaintenanceHtml(
+  networkName: string,
+  networkSlogan: string,
+  title: string,
+  message: string,
+  expectedTime: string = 'قريباً',
+  supportPhone: string = '',
+  whatsappNumber: string = '',
+  theme: 'warning_amber' | 'danger_red' | 'tech_blue' | 'modern_dark' | 'emerald_pro' = 'warning_amber',
+  showCountdown: boolean = true,
+  targetTimestamp?: string
+): string {
+  const themeColors = {
+    warning_amber: { bg: '#0f172a', cardBg: '#1e293b', border: '#f59e0b', accent: '#f59e0b', glow: 'rgba(245, 158, 11, 0.25)', icon: '⚠️' },
+    danger_red: { bg: '#09090b', cardBg: '#18181b', border: '#ef4444', accent: '#ef4444', glow: 'rgba(239, 68, 68, 0.25)', icon: '🚨' },
+    tech_blue: { bg: '#030712', cardBg: '#0f172a', border: '#3b82f6', accent: '#3b82f6', glow: 'rgba(59, 130, 246, 0.25)', icon: '🔧' },
+    modern_dark: { bg: '#050505', cardBg: '#121212', border: '#a855f7', accent: '#a855f7', glow: 'rgba(168, 85, 247, 0.25)', icon: '⚡' },
+    emerald_pro: { bg: '#022c22', cardBg: '#064e3b', border: '#10b981', accent: '#10b981', glow: 'rgba(16, 185, 129, 0.25)', icon: '🛡️' },
+  }[theme];
+
+  return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${networkName} - صيانة وتحديث الشبكة</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    body {
+      background: ${themeColors.bg};
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.25rem;
+    }
+    .card {
+      background: ${themeColors.cardBg};
+      border: 1px solid ${themeColors.border};
+      border-radius: 20px;
+      padding: 2rem 1.5rem;
+      max-width: 460px;
+      width: 100%;
+      box-shadow: 0 20px 40px ${themeColors.glow};
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid ${themeColors.border};
+      color: ${themeColors.accent};
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: bold;
+      margin-bottom: 1rem;
+    }
+    .title {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 0.75rem;
+      line-height: 1.4;
+    }
+    .message {
+      font-size: 0.95rem;
+      color: #cbd5e1;
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+      background: rgba(0,0,0,0.25);
+      padding: 1rem;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .info-box {
+      background: rgba(255,255,255,0.04);
+      border-radius: 14px;
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      justify-content: space-around;
+      border: 1px dashed rgba(255,255,255,0.1);
+    }
+    .info-item { display: flex; flex-direction: column; gap: 4px; }
+    .info-label { font-size: 0.75rem; color: #94a3b8; }
+    .info-value { font-size: 1rem; font-weight: bold; color: ${themeColors.accent}; }
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 0.85rem 1rem;
+      border-radius: 12px;
+      font-weight: bold;
+      text-decoration: none;
+      transition: 0.2s;
+      cursor: pointer;
+      font-size: 0.95rem;
+      border: none;
+    }
+    .btn-whatsapp { background: #25d366; color: #ffffff; margin-bottom: 0.75rem; }
+    .btn-whatsapp:hover { background: #1eb857; }
+    .btn-retry { background: rgba(255,255,255,0.1); color: #f8fafc; }
+    .btn-retry:hover { background: rgba(255,255,255,0.18); }
+    .footer { margin-top: 1.5rem; font-size: 0.75rem; color: #64748b; }
+    .pulse-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: ${themeColors.glow};
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      margin: 0 auto 1.25rem;
+      border: 2px solid ${themeColors.border};
+      animation: pulse 2s infinite ease-in-out;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.08); opacity: 0.85; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="pulse-icon">${themeColors.icon}</div>
+    <div class="badge">${networkName} • تنبيه صيانة</div>
+    <h1 class="title">${title}</h1>
+    <p class="message">${message}</p>
+    
+    <div class="info-box">
+      <div class="info-item">
+        <span class="info-label">حالة الخدمة</span>
+        <span class="info-value">صيانة دورية</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">العودة المتوقعة</span>
+        <span class="info-value">${expectedTime || 'خلال دقائق'}</span>
+      </div>
+    </div>
+
+    ${whatsappNumber ? `<a href="https://wa.me/${whatsappNumber.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('مرحباً، أستفسر عن موعد عودة خدمة شبكة ' + networkName)}" target="_blank" class="btn btn-whatsapp">تواصل مع الدعم عبر واتساب</a>` : ''}
+    <button onclick="window.location.reload();" class="btn btn-retry">إعادة فحص الاتصال 🔄</button>
+
+    <div class="footer">
+      ${networkSlogan ? `<div>${networkSlogan}</div>` : ''}
+      <div>نشكركم على تفهمكم وحسن صبركم</div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+

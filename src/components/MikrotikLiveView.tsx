@@ -54,7 +54,8 @@ import {
   Filter,
   CheckSquare,
   Square,
-  Bookmark
+  Bookmark,
+  Wrench,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -97,6 +98,7 @@ import {
 } from '../utils/mikrotikApi';
 import { exportElementToPdf } from '../utils/pdfExport';
 import { UserManagerView } from './UserManagerView';
+import { MikrotikMaintenanceView } from './MikrotikMaintenanceView';
 
 interface MikrotikLiveViewProps {
   settings: NetworkSettings;
@@ -143,7 +145,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
 
   // Sub-tabs
   const [activeSubTab, setActiveSubTab] = useState<
-    'active_users' | 'all_users' | 'profiles' | 'user_manager' | 'interfaces' | 'remote_control' | 'hosts' | 'cards' | 'diagnostics' | 'ai_assistant' | 'settings'
+    'active_users' | 'all_users' | 'profiles' | 'user_manager' | 'maintenance' | 'interfaces' | 'remote_control' | 'hosts' | 'cards' | 'diagnostics' | 'ai_assistant' | 'settings'
   >('active_users');
 
   // Search & Filter States
@@ -1018,6 +1020,28 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
           <Server className="w-4 h-4 text-purple-400" />
           <span>اليوزر مانجر (User Manager)</span>
           <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('maintenance')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition border ${
+            activeSubTab === 'maintenance'
+              ? 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-600/30'
+              : settings.maintenanceSettings?.networkStatus === 'maintenance' || settings.maintenanceSettings?.enabled
+              ? 'bg-amber-950/40 text-amber-300 border-amber-500/40 hover:bg-slate-800'
+              : settings.maintenanceSettings?.networkStatus === 'disabled'
+              ? 'bg-rose-950/40 text-rose-300 border-rose-500/40 hover:bg-slate-800'
+              : 'bg-slate-900 text-amber-400 border-amber-500/20 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <Wrench className="w-4 h-4 text-amber-400" />
+          <span>وضع الصيانة وحالة الشبكة</span>
+          {settings.maintenanceSettings?.networkStatus === 'maintenance' && (
+            <span className="px-1.5 py-0.2 bg-amber-400 text-black text-[9px] font-black rounded-full animate-pulse">نشط</span>
+          )}
+          {settings.maintenanceSettings?.networkStatus === 'disabled' && (
+            <span className="px-1.5 py-0.2 bg-rose-500 text-white text-[9px] font-black rounded-full">معطل</span>
+          )}
         </button>
 
         <button
@@ -2063,6 +2087,16 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
             </pre>
           </div>
         </div>
+      )}
+
+      {/* SUB-VIEW 9.5: Maintenance Mode & Network Programmatic Control */}
+      {activeSubTab === 'maintenance' && (
+        <MikrotikMaintenanceView
+          settings={settings}
+          config={config}
+          onUpdateSettings={onUpdateSettings}
+          onRefreshParent={() => fetchAllLiveData(config)}
+        />
       )}
 
       {/* SUB-VIEW 10: Settings & Connection Configuration */}

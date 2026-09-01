@@ -313,13 +313,37 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     const selectedPOS = posPoints.find((p) => p.id === formPOSId);
     const posPointName = selectedPOS ? selectedPOS.name : 'نقطة بيع غير محددة';
 
-    const processedItems: InvoiceItem[] = formItems.map((item) => {
+    // Group items by categoryId to prevent duplicate rows of the same category
+    const groupedItemsMap = new Map<string, any>();
+    formItems.forEach((item) => {
+      const qty = Number(item.quantity) || 0;
+      if (qty <= 0) return; // ignore zero quantity
+      if (groupedItemsMap.has(item.categoryId)) {
+        const existing = groupedItemsMap.get(item.categoryId);
+        existing.quantity += qty;
+        // Optionally merge serials/notes if needed, but we'll keep the first one's for simplicity
+      } else {
+        groupedItemsMap.set(item.categoryId, {
+          categoryId: item.categoryId,
+          quantity: qty,
+          unitWholesalePrice: Number(item.unitWholesalePrice) || 0,
+          unitRetailPrice: Number(item.unitRetailPrice) || 0,
+          unitCostPrice: Number(item.unitCostPrice) || 0,
+          serialStart: item.serialStart,
+          serialEnd: item.serialEnd,
+          notes: item.notes,
+        });
+      }
+    });
+
+    const processedItems: InvoiceItem[] = Array.from(groupedItemsMap.values()).map((item) => {
       const cat = categories.find((c) => c.id === item.categoryId);
       const catName = cat ? cat.name : 'فئة غير معروفة';
-      const qty = Number(item.quantity) || 0;
-      const wholesale = Number(item.unitWholesalePrice) || 0;
-      const retail = Number(item.unitRetailPrice) || 0;
-      const cost = Number(item.unitCostPrice) || 0;
+      const qty = item.quantity;
+      const wholesale = item.unitWholesalePrice;
+      const retail = item.unitRetailPrice;
+      const cost = item.unitCostPrice;
+
       const totalWholesale = qty * wholesale;
       const totalRetail = qty * retail;
       const profit = totalWholesale - (qty * cost);
@@ -334,9 +358,9 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
         totalRetailPrice: totalRetail,
         unitCostPrice: cost > 0 ? cost : undefined,
         profit: profit > 0 ? profit : undefined,
-        serialStart: item.serialStart.trim() || undefined,
-        serialEnd: item.serialEnd.trim() || undefined,
-        notes: item.notes.trim() || undefined,
+        serialStart: item.serialStart?.trim() || undefined,
+        serialEnd: item.serialEnd?.trim() || undefined,
+        notes: item.notes?.trim() || undefined,
       };
     });
 

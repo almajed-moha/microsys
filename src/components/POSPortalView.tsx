@@ -31,17 +31,8 @@ import {
   ArrowRight,
   ExternalLink,
 } from 'lucide-react';
-import {
-  POSPoint,
-  CardCategory,
-  CardOrder,
-  CardOrderItem,
-  CardOrderPriority,
-  InvoiceRecord,
-  PaymentRecord,
-  NetworkSettings,
-  AppUser,
-} from '../types';
+import { POSPoint, CardCategory, CardOrder, CardOrderItem, CardOrderPriority, InvoiceRecord, PaymentRecord, NetworkSettings, AppUser } from '../types';
+import { isDateInPeriod } from '../utils/financialCalculations';
 
 interface POSPortalViewProps {
   activeUser: AppUser;
@@ -105,6 +96,11 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
   const [orderNotes, setOrderNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+
+  // Profit calculation state
+  const [profitTimeRange, setProfitTimeRange] = useState<'today' | '7days' | '30days' | 'all' | 'custom'>('30days');
+  const [profitStartDate, setProfitStartDate] = useState('');
+  const [profitEndDate, setProfitEndDate] = useState('');
 
   // Filter & Search states in My Orders
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -206,6 +202,56 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
   const remainingDebtAllowance = Math.max(0, maxDebt - currentDebt);
   const isOverDebtLimit = maxDebt > 0 && currentDebt + totalOrderWholesale > maxDebt;
 
+  const totalDeliveredCards = useMemo(() => {
+    let delivered = 0;
+    posInvoices.forEach(inv => {
+      if (inv.type === 'sale') {
+        inv.items.forEach(item => delivered += Number(item.quantity) || 0);
+      } else if (inv.type === 'return') {
+        inv.items.forEach(item => delivered -= Number(item.quantity) || 0);
+      }
+    });
+    return Math.max(0, delivered);
+  }, [posInvoices]);
+
+  const posProfitMetrics = useMemo(() => {
+    if (!currentPos) return { deliveredCards: 0, potentialProfit: 0, totalRetail: 0 };
+    
+    const filteredInvoices = posInvoices.filter((inv) => {
+        return isDateInPeriod(inv.date, profitTimeRange === '30days' ? 'month' : profitTimeRange, profitStartDate, profitEndDate);
+    });
+
+    let deliveredCards = 0;
+    let potentialProfit = 0;
+    let totalRetail = 0;
+
+    filteredInvoices.forEach(inv => {
+      if (inv.type === 'sale') {
+        inv.items.forEach(item => {
+           deliveredCards += (Number(item.quantity) || 0);
+           const wholesale = Number(item.totalWholesalePrice) || 0;
+           const retail = Number(item.totalRetailPrice) || 0;
+           potentialProfit += (retail - wholesale);
+           totalRetail += retail;
+        });
+      } else if (inv.type === 'return') {
+        inv.items.forEach(item => {
+           deliveredCards -= (Number(item.quantity) || 0);
+           const wholesale = Number(item.totalWholesalePrice) || 0;
+           const retail = Number(item.totalRetailPrice) || 0;
+           potentialProfit -= (retail - wholesale);
+           totalRetail -= retail;
+        });
+      }
+    });
+
+    return {
+      deliveredCards: Math.max(0, deliveredCards),
+      potentialProfit,
+      totalRetail: Math.max(0, totalRetail)
+    };
+  }, [currentPos, posInvoices, profitTimeRange, profitStartDate, profitEndDate]);
+
   // Quantity controls
   const handleQuantityChange = (catId: string, val: number) => {
     const safeVal = Math.max(0, val);
@@ -306,23 +352,20 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
   return (
     <div className="space-y-6 pb-12 animate-fade-in" dir="rtl">
       {/* Top Banner & POS Selector */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 border border-slate-800 p-5 sm:p-6 shadow-xl">
-        <div className="absolute top-0 left-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none -translate-x-1/2 -translate-y-1/2" />
-        <div className="absolute bottom-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none translate-x-1/3 translate-y-1/3" />
-
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+      <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 sm:p-8">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           {/* Shop Information */}
           <div className="flex items-start gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20 shrink-0 border border-cyan-400/30">
+            <div className="w-14 h-14 rounded-lg bg-slate-800 flex items-center justify-center text-slate-300 border border-slate-700 shrink-0">
               <Store className="w-7 h-7" />
             </div>
 
             <div>
-              <div className="flex flex-wrap items-center gap-2 mb-1">
-                <h1 className="text-xl sm:text-2xl font-black text-white">{currentPos.name}</h1>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">{currentPos.name}</h1>
+                <span className="px-3 py-1 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  نقطة بيع نشطة
+                  نشطة
                 </span>
                 {isSuperAdminOrManager && (
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-500/10 text-purple-300 border border-purple-500/20">
@@ -401,39 +444,36 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
           </div>
         </div>
 
-        {/* Financial & Debt Metrics Bar */}
-        <div className="mt-6 pt-5 border-t border-slate-800/80 grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <div className="mt-8 pt-6 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-4">
           {/* Current Debt */}
-          <div className="bg-slate-950/60 rounded-xl p-3.5 border border-slate-800/60">
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+          <div className="bg-slate-950 rounded-lg p-4 border border-slate-800">
+            <div className="flex items-center justify-between text-sm font-medium text-slate-400 mb-2">
               <span>المديونية الحالية</span>
-              <DollarSign className="w-3.5 h-3.5 text-amber-400" />
             </div>
-            <div className="text-lg font-black text-amber-400">
-              {(currentDebt ?? 0).toLocaleString()} <span className="text-xs font-normal text-slate-400">{settings.currencySymbol}</span>
+            <div className="text-2xl font-bold text-amber-400 tracking-tight">
+              {(currentDebt ?? 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">{settings.currencySymbol}</span>
             </div>
-            <div className="text-[11px] text-slate-400 mt-1">
+            <div className="text-xs text-slate-500 mt-2">
               سقف الدين: {maxDebt > 0 ? `${(maxDebt ?? 0).toLocaleString()} ${settings.currencySymbol}` : 'مفتوح'}
             </div>
           </div>
 
           {/* Remaining Debt Capacity */}
-          <div className="bg-slate-950/60 rounded-xl p-3.5 border border-slate-800/60">
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+          <div className="bg-slate-950 rounded-lg p-4 border border-slate-800">
+            <div className="flex items-center justify-between text-sm font-medium text-slate-400 mb-2">
               <span>المتبقي حتى السقف</span>
-              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
             </div>
-            <div className={`text-lg font-black ${remainingDebtAllowance > 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
-              {maxDebt > 0 ? (remainingDebtAllowance ?? 0).toLocaleString() : 'غير محدود'} <span className="text-xs font-normal text-slate-400">{settings.currencySymbol}</span>
+            <div className={`text-2xl font-bold tracking-tight ${remainingDebtAllowance > 0 ? 'text-slate-200' : 'text-rose-400'}`}>
+              {maxDebt > 0 ? (remainingDebtAllowance ?? 0).toLocaleString() : 'غير محدود'} <span className="text-xs font-normal text-slate-500">{settings.currencySymbol}</span>
             </div>
-            <div className="w-full bg-slate-800 rounded-full h-1.5 mt-2 overflow-hidden">
+            <div className="w-full bg-slate-800 rounded-full h-1 mt-3 overflow-hidden">
               <div
                 className={`h-full rounded-full ${
                   maxDebt > 0 && currentDebt / maxDebt > 0.85
                     ? 'bg-rose-500'
                     : maxDebt > 0 && currentDebt / maxDebt > 0.5
                     ? 'bg-amber-500'
-                    : 'bg-cyan-500'
+                    : 'bg-indigo-500'
                 }`}
                 style={{ width: `${maxDebt > 0 ? Math.min(100, (currentDebt / maxDebt) * 100) : 0}%` }}
               />
@@ -441,29 +481,27 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
           </div>
 
           {/* Cards Delivered */}
-          <div className="bg-slate-950/60 rounded-xl p-3.5 border border-slate-800/60">
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-              <span>إجمالي الكروت المستلمة</span>
-              <Layers className="w-3.5 h-3.5 text-blue-400" />
+          <div className="bg-slate-950 rounded-lg p-4 border border-slate-800">
+            <div className="flex items-center justify-between text-sm font-medium text-slate-400 mb-2">
+              <span>إجمالي الاستلامات (تاريخياً)</span>
             </div>
-            <div className="text-lg font-black text-blue-400">
-              {(currentPos.totalCardsDelivered || 0).toLocaleString()} <span className="text-xs font-normal text-slate-400">كارت</span>
+            <div className="text-2xl font-bold text-slate-200 tracking-tight">
+              {totalDeliveredCards.toLocaleString()} <span className="text-xs font-normal text-slate-500">كارت</span>
             </div>
-            <div className="text-[11px] text-slate-400 mt-1">
-              المباع المقدر: {(currentPos.totalCardsSold || 0).toLocaleString()}
+            <div className="text-xs text-slate-500 mt-2">
+              حسب فواتير المبيعات
             </div>
           </div>
 
           {/* Total Paid */}
-          <div className="bg-slate-950/60 rounded-xl p-3.5 border border-slate-800/60">
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-              <span>إجمالي المسدد نقداً</span>
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+          <div className="bg-slate-950 rounded-lg p-4 border border-slate-800">
+            <div className="flex items-center justify-between text-sm font-medium text-slate-400 mb-2">
+              <span>المدفوعات نقداً</span>
             </div>
-            <div className="text-lg font-black text-emerald-400">
-              {(currentPos.totalCashPaid || 0).toLocaleString()} <span className="text-xs font-normal text-slate-400">{settings.currencySymbol}</span>
+            <div className="text-2xl font-bold text-emerald-400 tracking-tight">
+              {(currentPos.totalCashPaid || 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">{settings.currencySymbol}</span>
             </div>
-            <div className="text-[11px] text-slate-400 mt-1">
+            <div className="text-xs text-slate-500 mt-2">
               سندات القبض: {posPayments.length} سند
             </div>
           </div>
@@ -592,47 +630,46 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
                   return (
                     <div
                       key={cat.id}
-                      className={`relative rounded-2xl border transition-all p-4 ${
+                      className={`relative rounded-xl border transition-all p-5 ${
                         qty > 0
-                          ? 'bg-slate-850 border-indigo-500/60 shadow-lg shadow-indigo-500/10'
-                          : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
+                          ? 'bg-slate-850 border-indigo-500 shadow-sm'
+                          : 'bg-slate-900 border-slate-800 hover:border-slate-700'
                       }`}
                     >
                       {/* Top Header of Card */}
-                      <div className="flex items-start justify-between gap-2 mb-3">
+                      <div className="flex items-start justify-between gap-2 mb-4">
                         <div>
-                          <h3 className="font-black text-sm text-white">{cat.name}</h3>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[11px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-medium">
+                          <h3 className="font-bold text-base text-white tracking-tight">{cat.name}</h3>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-[11px] px-2 py-1 rounded-md bg-slate-800 text-slate-300 font-medium">
                               الوقت: {cat.uptimeLimit}
                             </span>
-                            <span className="text-[11px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-medium">
+                            <span className="text-[11px] px-2 py-1 rounded-md bg-slate-800 text-slate-300 font-medium">
                               الرصيد: {cat.quotaLimit}
                             </span>
                           </div>
                         </div>
 
                         <div className="text-left shrink-0">
-                          <span className="text-xs font-bold text-slate-400 block">سعر الجمهور</span>
-                          <span className="text-sm font-black text-white">
-                            {cat.retailPrice} <span className="text-[10px] font-normal text-slate-400">{settings.currencySymbol}</span>
+                          <span className="text-xs font-medium text-slate-400 block mb-1">سعر الجمهور</span>
+                          <span className="text-lg font-bold text-white tracking-tight">
+                            {cat.retailPrice} <span className="text-xs font-normal text-slate-500">{settings.currencySymbol}</span>
                           </span>
                         </div>
                       </div>
 
                       {/* Pricing and Margins Box */}
-                      <div className="bg-slate-950/60 rounded-xl p-2.5 border border-slate-800/60 flex items-center justify-between mb-4 text-xs">
+                      <div className="bg-slate-950 rounded-lg p-3 border border-slate-800 flex items-center justify-between mb-5 text-sm">
                         <div>
-                          <span className="text-slate-400 text-[11px]">سعر الجملة (التوريد):</span>
-                          <div className="font-bold text-cyan-400">
+                          <span className="text-slate-400 text-xs mb-1 block">سعر الجملة</span>
+                          <div className="font-medium text-slate-300">
                             {cat.wholesalePrice} {settings.currencySymbol}
                           </div>
                         </div>
 
                         <div className="text-left">
-                          <span className="text-slate-400 text-[11px]">ربحك في الكارت:</span>
+                          <span className="text-slate-400 text-xs mb-1 block">ربحك في الكارت</span>
                           <div className="font-bold text-emerald-400 flex items-center justify-end gap-1">
-                            <TrendingUp className="w-3 h-3" />
                             <span>+{profitPerCard} {settings.currencySymbol}</span>
                           </div>
                         </div>
@@ -815,10 +852,10 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
                 <button
                   type="submit"
                   disabled={orderItemsList.length === 0 || isSubmitting}
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 transition transform active:scale-98"
+                  className="w-full py-4 px-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-sm flex items-center justify-center gap-2 transition"
                 >
                   <Send className="w-4 h-4" />
-                  <span>{isSubmitting ? 'جاري إرسال الطلب...' : 'إرسال طلب الكروت الآن'}</span>
+                  <span>{isSubmitting ? 'جاري إرسال الطلب...' : 'إرسال الطلب'}</span>
                 </button>
               </div>
             </div>
@@ -1061,8 +1098,92 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
       {/* Tab 3: Statements, Invoices & Payments */}
       {activeTab === 'statement' && (
         <div className="space-y-6">
+          {/* Profit Analytics Card */}
+          <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+            <div className="p-5 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="font-bold text-white flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-indigo-400" />
+                  <span>تحليل الأرباح والمبيعات</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  إجمالي الربح المحتمل بناءً على الكروت المستلمة (فواتير المبيعات مطروحاً منها المرتجعات)
+                </p>
+              </div>
+
+              {/* Time Range Filter */}
+              <div className="flex flex-wrap items-center gap-2">
+                {[
+                  { id: 'today', label: 'اليوم' },
+                  { id: '7days', label: '7 أيام' },
+                  { id: '30days', label: 'شهر' },
+                  { id: 'all', label: 'الكل' },
+                  { id: 'custom', label: 'مخصص' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setProfitTimeRange(tab.id as any)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                      profitTimeRange === tab.id
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom Date Inputs */}
+            {profitTimeRange === 'custom' && (
+              <div className="p-4 bg-slate-950/50 border-b border-slate-800 flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-slate-400">من:</label>
+                  <input
+                    type="date"
+                    value={profitStartDate}
+                    onChange={(e) => setProfitStartDate(e.target.value)}
+                    className="bg-slate-900 text-white text-sm rounded-lg border border-slate-700 px-3 py-1.5 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-slate-400">إلى:</label>
+                  <input
+                    type="date"
+                    value={profitEndDate}
+                    onChange={(e) => setProfitEndDate(e.target.value)}
+                    className="bg-slate-900 text-white text-sm rounded-lg border border-slate-700 px-3 py-1.5 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-0 divide-y sm:divide-y-0 sm:divide-x sm:divide-x-reverse divide-slate-800">
+              <div className="p-5">
+                <span className="text-xs font-medium text-slate-400 block mb-2">إجمالي الكروت المستلمة (للفترة)</span>
+                <div className="text-3xl font-bold text-white tracking-tight">
+                  {posProfitMetrics.deliveredCards.toLocaleString()} <span className="text-sm font-normal text-slate-500">كارت</span>
+                </div>
+              </div>
+              <div className="p-5">
+                <span className="text-xs font-medium text-slate-400 block mb-2">قيمة المبيعات (سعر الجمهور)</span>
+                <div className="text-3xl font-bold text-blue-400 tracking-tight">
+                  {posProfitMetrics.totalRetail.toLocaleString()} <span className="text-sm font-normal text-slate-500">{settings.currencySymbol}</span>
+                </div>
+              </div>
+              <div className="p-5 bg-emerald-500/5">
+                <span className="text-xs font-medium text-emerald-400 block mb-2">صافي الربح المقدر</span>
+                <div className="text-3xl font-bold text-emerald-400 tracking-tight">
+                  {posProfitMetrics.potentialProfit.toLocaleString()} <span className="text-sm font-normal text-emerald-500/70">{settings.currencySymbol}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Summary Card */}
-          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <span className="text-xs text-slate-400 block mb-1">الرصيد المستحق الحالي</span>
               <div className="text-2xl font-black text-amber-400">
