@@ -160,7 +160,7 @@ export function resetToMockData(): void {
 
 // Calculate remaining inventory at each POS Point
 export function calculatePOSInventory(
-  posPointId: string,
+  posPointId: string | null | 'all',
   dispatches: CardBatchDispatch[] = [],
   sales: SalesRecord[] = [],
   invoices: InvoiceRecord[] = []
@@ -175,10 +175,11 @@ export function calculatePOSInventory(
   const safeDispatches = dispatches || [];
   const safeSales = sales || [];
   const safeInvoices = invoices || [];
+  const isGlobal = !posPointId || posPointId === 'all';
 
   // Aggregate dispatched
   safeDispatches
-    .filter(d => d && d.posPointId === posPointId)
+    .filter(d => d && (isGlobal || d.posPointId === posPointId))
     .forEach(d => {
       if (!byCategory[d.categoryId]) {
         byCategory[d.categoryId] = { dispatched: 0, sold: 0, returned: 0, remaining: 0 };
@@ -188,7 +189,7 @@ export function calculatePOSInventory(
 
   // Aggregate sales
   safeSales
-    .filter(s => s && s.posPointId === posPointId)
+    .filter(s => s && (isGlobal || s.posPointId === posPointId))
     .forEach(s => {
       if (!byCategory[s.categoryId]) {
         byCategory[s.categoryId] = { dispatched: 0, sold: 0, returned: 0, remaining: 0 };
@@ -198,7 +199,7 @@ export function calculatePOSInventory(
 
   // Aggregate multi-item Invoices
   safeInvoices
-    .filter(inv => inv && inv.posPointId === posPointId && inv.status !== 'cancelled')
+    .filter(inv => inv && inv.status !== 'cancelled' && (isGlobal || inv.posPointId === posPointId))
     .forEach(inv => {
       inv.items?.forEach(item => {
         if (!byCategory[item.categoryId]) {

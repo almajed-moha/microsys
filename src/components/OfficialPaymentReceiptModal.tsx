@@ -117,7 +117,7 @@ export const OfficialPaymentReceiptModal: React.FC<OfficialPaymentReceiptModalPr
     return `*سند قبض مالي رسمي - شبكة ${settings.networkName}*
 ----------------------------------------
 📄 رقم السند: *${payment.referenceNumber || payment.id}*
-📅 التاريخ: ${payment.date}
+📅 التاريخ: ${payment.date} ${payment.time ? `- ${payment.time}` : ''}
 👤 استلمنا من الأخ/الموزع: *${pos ? pos.name : 'نقطة البيع'}*
 🏢 المسؤول: ${pos?.managerName || ''} (${pos?.phone || ''})
 💵 المبلغ المسدد: *${(payment.amount ?? 0).toLocaleString()} ${settings.currencySymbol}*
@@ -328,7 +328,7 @@ ${pos ? `📊 المديونية المتبقية حالياً: ${(pos.currentDe
               <div className="border-b-2 border-emerald-600 pb-4 text-center space-y-1">
                 <div className="flex items-center justify-between">
                   <div className="text-right">
-                    <span className="text-[10px] text-slate-500 block font-mono font-medium">التاريخ: {payment.date}</span>
+                    <span className="text-[10px] text-slate-500 block font-mono font-medium">التاريخ: {payment.date} {payment.time ? ` - ${payment.time}` : ''}</span>
                     <span className="text-[10px] text-slate-500 block font-mono font-medium">
                       الوقت: {new Date(payment.timestamp || Date.now()).toLocaleTimeString('ar-YE')}
                     </span>
@@ -468,7 +468,7 @@ ${pos ? `📊 المديونية المتبقية حالياً: ${(pos.currentDe
                   <span className="font-black">{payment.referenceNumber || payment.id}</span>
                 </div>
                 <div className="flex justify-between items-center text-[10px] text-slate-800">
-                  <span>التاريخ: {payment.date}</span>
+                  <span>التاريخ: {payment.date} {payment.time ? ` - ${payment.time}` : ''}</span>
                   <span>الوقت: {new Date(payment.timestamp || Date.now()).toLocaleTimeString('ar-YE', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               </div>

@@ -61,6 +61,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   // Form State
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
+    time: new Date().toISOString().split('T')[1].substring(0, 5),
     posPointId: posPoints[0]?.id || '',
     amount: 10000,
     paymentMethod: 'cash' as 'cash' | 'bank_transfer' | 'cheque' | 'other',
@@ -80,6 +81,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     setEditingPayment(null);
     setFormData({
       date: new Date().toISOString().split('T')[0],
+    time: new Date().toISOString().split('T')[1].substring(0, 5),
       posPointId: posId || (posPoints[0]?.id || ''),
       amount: 10000,
       paymentMethod: 'cash',
@@ -94,6 +96,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     setEditingPayment(payment);
     setFormData({
       date: payment.date,
+      time: payment.time || new Date().toISOString().split('T')[1].substring(0, 5),
       posPointId: payment.posPointId,
       amount: payment.amount,
       paymentMethod: payment.paymentMethod,
@@ -433,7 +436,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                       <td className="py-3 px-4 text-slate-300 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                          <span>{p.date}</span>
+                          <span>{p.date} {p.time ? ` - ${p.time}` : ''}</span>
                         </div>
                       </td>
                       <td className="py-3 px-4">
@@ -541,9 +544,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                     المبلغ المسدد ({settings.currencySymbol}) <span className="text-rose-400">*</span>:
                   </label>
                   <input
-                    type="number"
-                    min="1"
-                    step="100"
+                    type="text" inputMode="decimal"                    
+                    
                     required
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: Number(e.target.value) })}

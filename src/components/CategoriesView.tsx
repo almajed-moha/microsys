@@ -471,8 +471,8 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                   <div className="flex items-center gap-2 pt-2 border-t border-slate-700/60">
                     <span className="text-slate-400 text-[10px] whitespace-nowrap">كتابة الرصيد مباشرة:</span>
                     <input
-                      type="number"
-                      min="0"
+                      type="text" inputMode="decimal"
+                      
                       value={cat.warehouseStock}
                       onChange={(e) => {
                         const newStock = Math.max(0, parseInt(e.target.value, 10) || 0);
@@ -770,8 +770,8 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                       عدد الأجهزة المسموحة بنفس الكارت:
                     </label>
                     <input
-                      type="number"
-                      min="1"
+                      type="text" inputMode="decimal"
+                      
                       max="10"
                       value={formData.sharedUsers}
                       onChange={(e) => setFormData({ ...formData, sharedUsers: Number(e.target.value) })}
@@ -830,8 +830,8 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                     سعر التكلفة:
                   </label>
                   <input
-                    type="number"
-                    min="0"
+                    type="text" inputMode="decimal"
+                    
                     placeholder="0"
                     value={formData.costPrice === 0 ? '' : formData.costPrice}
                     onChange={(e) => {
@@ -847,8 +847,8 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                     سعر الجملة (للموزع):
                   </label>
                   <input
-                    type="number"
-                    min="0"
+                    type="text" inputMode="decimal"
+                    
                     placeholder="0"
                     value={formData.wholesalePrice === 0 ? '' : formData.wholesalePrice}
                     onChange={(e) => {
@@ -864,8 +864,8 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                     سعر البيع (للجمهور):
                   </label>
                   <input
-                    type="number"
-                    min="0"
+                    type="text" inputMode="decimal"
+                    
                     placeholder="0"
                     value={formData.retailPrice === 0 ? '' : formData.retailPrice}
                     onChange={(e) => {
@@ -884,8 +884,8 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                     رصيد المستودع (كارت):
                   </label>
                   <input
-                    type="number"
-                    min="0"
+                    type="text" inputMode="decimal"
+                    
                     placeholder="0"
                     value={formData.warehouseStock === 0 ? '' : formData.warehouseStock}
                     onChange={(e) => {
@@ -901,8 +901,8 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                     مدة الصلاحية (أيام):
                   </label>
                   <input
-                    type="number"
-                    min="1"
+                    type="text" inputMode="decimal"
+                    
                     placeholder="1"
                     value={formData.validityDays === 0 ? '' : formData.validityDays}
                     onChange={(e) => {

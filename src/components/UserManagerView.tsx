@@ -1,3 +1,5 @@
+import { PrintableCard } from "./PrintableCard";
+import { CardTemplatesManager } from "./CardTemplatesManager";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Server,
@@ -31,7 +33,13 @@ import {
   Info,
   CheckCircle2,
   XCircle,
-  QrCode
+  QrCode,
+  Move,
+  Store,
+  Sparkles,
+  Edit3,
+  Grid,
+  Square
 } from 'lucide-react';
 import {
   NetworkSettings,
@@ -40,7 +48,9 @@ import {
   UserManagerProfile,
   UserManagerLimitation,
   UserManagerRouter,
-  CardCategory
+  CardCategory,
+  CardTemplate,
+  POSPoint
 } from '../types';
 import {
   fetchUserManagerUsers,
@@ -49,6 +59,7 @@ import {
   fetchUserManagerRouters,
   createUserManagerBatchCards,
   saveUserManagerProfileAndLimitation,
+  deleteUserManagerProfile,
   deleteUserManagerUser,
   resetUserManagerUserCounters,
   generateUserManagerBatchRscScript,
@@ -60,6 +71,10 @@ interface UserManagerViewProps {
   settings: NetworkSettings;
   config: MikroTikConfig;
   categories?: CardCategory[];
+  templates?: CardTemplate[];
+  posPoints?: POSPoint[];
+  onSaveTemplate?: (template: CardTemplate) => void;
+  onDeleteTemplate?: (templateId: string) => void;
   onRefreshParent?: () => void;
 }
 
@@ -67,10 +82,14 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
   settings,
   config,
   categories = [],
+  templates = [],
+  posPoints = [],
+  onSaveTemplate,
+  onDeleteTemplate,
   onRefreshParent,
 }) => {
   // Navigation tabs inside User Manager
-  const [activeTab, setActiveTab] = useState<'users' | 'profiles' | 'batch' | 'routers' | 'script'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'profiles' | 'batch' | 'templates' | 'routers' | 'script'>('users');
 
   // Live Data State
   const [users, setUsers] = useState<UserManagerUser[]>([]);
@@ -92,6 +111,9 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
 
   // Profile Modal State
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isDeletingProfile, setIsDeletingProfile] = useState<string | null>(null);
+  const [profileDeleteConfirmId, setProfileDeleteConfirmId] = useState<string | null>(null);
   const [profileFormData, setProfileFormData] = useState({
     profileName: 'UM-Profile-500',
     limitationName: 'UM-Lim-500',
@@ -109,13 +131,23 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
   // Batch Generator State
   const [batchCount, setBatchCount] = useState<number>(30);
   const [batchPrefix, setBatchPrefix] = useState<string>('u');
+  const [batchDigitsLength, setBatchDigitsLength] = useState<number>(6);
+  const [batchTemplateId, setBatchTemplateId] = useState<string>('');
   const [batchProfile, setBatchProfile] = useState<string>('');
-  const [batchPasswordMode, setBatchPasswordMode] = useState<'pin_numeric' | 'user_equals_pass' | 'random_str'>('pin_numeric');
+  const [batchPasswordMode, setBatchPasswordMode] = useState<'username_only' | 'user_equals_pass' | 'pin_numeric' | 'random_str'>('username_only');
+  const [selectedPosId, setSelectedPosId] = useState<string>('');
+  const [customPosName, setCustomPosName] = useState<string>('');
   const [batchCustomer, setBatchCustomer] = useState<string>('admin');
   const [batchSerialStart, setBatchSerialStart] = useState<number>(1001);
   const [isSyncingBatch, setIsSyncingBatch] = useState(false);
   const [batchOutcome, setBatchOutcome] = useState<{ success: boolean; message: string } | null>(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isInteractivePreview, setIsInteractivePreview] = useState(false);
+
+  // Live Sheet Grid & Corner Styling overrides for Preview & Batch Printing
+  const [sheetGridCols, setSheetGridCols] = useState<number | null>(null);
+  const [sheetGridRows, setSheetGridRows] = useState<number | null>(null);
+  const [sheetCornerStyle, setSheetCornerStyle] = useState<'rounded' | 'sharp' | null>(null);
 
   const printAreaRef = useRef<HTMLDivElement>(null);
 
@@ -216,6 +248,185 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     }
   };
 
+  const handleOpenAddProfile = () => {
+    setIsEditingProfile(false);
+    setProfileFormData({
+      profileName: `UM-Profile-${Date.now().toString().slice(-4)}`,
+      limitationName: `UM-Lim-${Date.now().toString().slice(-4)}`,
+      nameForUsers: 'كارت جديد',
+      price: 200,
+      validityDays: 1,
+      uptimeLimit: '1d',
+      quotaLimit: '1000M',
+      rateLimit: '4M/2M',
+      startsAt: 'logon',
+      routerOsVersion: (config.routerOsVersion?.startsWith('7') ? 'v7' : 'v7') as 'v6' | 'v7',
+    });
+    setShowProfileModal(true);
+  };
+
+  const handleOpenEditProfile = (prof: UserManagerProfile) => {
+    const cleanName = prof.name.replace(/^UM-Profile-/, '');
+    const matchedLim = limitations.find(
+      (l) =>
+        l.name === prof.name ||
+        l.name === `Lim-${prof.name}` ||
+        l.name === `UM-Lim-${cleanName}` ||
+        l.name.toLowerCase().includes(cleanName.toLowerCase())
+    );
+
+    let vDays = 1;
+    if (prof.validity) {
+      const m = prof.validity.match(/(\d+)d/);
+      if (m) vDays = parseInt(m[1], 10);
+      else {
+        const num = parseInt(prof.validity, 10);
+        if (!isNaN(num)) vDays = num;
+      }
+    }
+
+    const rate =
+      matchedLim?.rateLimitTx && matchedLim?.rateLimitRx
+        ? `${matchedLim.rateLimitTx}/${matchedLim.rateLimitRx}`
+        : '6M/3M';
+
+    setProfileFormData({
+      profileName: prof.name,
+      limitationName: matchedLim?.name || `Lim-${prof.name}`,
+      nameForUsers: prof.nameForUsers || prof.name,
+      price: prof.price || 0,
+      validityDays: vDays,
+      uptimeLimit: matchedLim?.uptimeLimit || '1d',
+      quotaLimit: matchedLim?.downloadLimit || '1000M',
+      rateLimit: rate,
+      startsAt: prof.startsAt || 'logon',
+      routerOsVersion: (config.routerOsVersion?.startsWith('7') ? 'v7' : 'v7') as 'v6' | 'v7',
+    });
+    setIsEditingProfile(true);
+    setShowProfileModal(true);
+  };
+
+  const handleDuplicateProfile = (prof: UserManagerProfile) => {
+    const cleanName = prof.name.replace(/^UM-Profile-/, '');
+    const matchedLim = limitations.find(
+      (l) =>
+        l.name === prof.name ||
+        l.name === `Lim-${prof.name}` ||
+        l.name === `UM-Lim-${cleanName}`
+    );
+
+    setProfileFormData({
+      profileName: `${prof.name}-copy`,
+      limitationName: matchedLim ? `${matchedLim.name}-copy` : `Lim-${prof.name}-copy`,
+      nameForUsers: `${prof.nameForUsers || prof.name} (نسخة)`,
+      price: prof.price || 0,
+      validityDays: parseInt(prof.validity) || 1,
+      uptimeLimit: matchedLim?.uptimeLimit || '1d',
+      quotaLimit: matchedLim?.downloadLimit || '1000M',
+      rateLimit:
+        matchedLim?.rateLimitTx && matchedLim?.rateLimitRx
+          ? `${matchedLim.rateLimitTx}/${matchedLim.rateLimitRx}`
+          : '6M/3M',
+      startsAt: prof.startsAt || 'logon',
+      routerOsVersion: (config.routerOsVersion?.startsWith('7') ? 'v7' : 'v7') as 'v6' | 'v7',
+    });
+    setIsEditingProfile(false);
+    setShowProfileModal(true);
+  };
+
+  const handleDeleteProfile = async (profileIdOrName: string, profileName: string) => {
+    setIsDeletingProfile(profileIdOrName);
+    const ok = await deleteUserManagerProfile(config, profileIdOrName);
+    setIsDeletingProfile(null);
+    setProfileDeleteConfirmId(null);
+
+    if (ok) {
+      setProfiles((prev) => prev.filter((p) => p.id !== profileIdOrName && p.name !== profileName));
+      setActionFeedback({ success: true, message: `تم حذف بروفايل User Manager (${profileName}) بنجاح.` });
+      setTimeout(() => setActionFeedback(null), 3500);
+    } else {
+      setActionFeedback({ success: false, message: `تعذر حذف البروفايل (${profileName}) من الراوتر.` });
+    }
+  };
+
+  // Active batch template & POS name calculations
+  const activeBatchTemplate = useMemo(() => {
+    const base = templates.find((t) => t.id === batchTemplateId) || templates[0];
+    if (!base) return base;
+    const cols = sheetGridCols ?? base.gridCols ?? 3;
+    const rows = sheetGridRows ?? base.gridRows ?? 6;
+    const cornerStyle = sheetCornerStyle ?? base.cardCornerStyle ?? 'rounded';
+    return {
+      ...base,
+      gridCols: cols,
+      gridRows: rows,
+      cardsPerPage: cols * rows,
+      cardCornerStyle: cornerStyle,
+    };
+  }, [batchTemplateId, templates, sheetGridCols, sheetGridRows, sheetCornerStyle]);
+
+  // Direct automatic calculation of cards in sheet when rows/cols are adjusted
+  const handleGridDimensionChange = (newCols: number, newRows: number) => {
+    const validCols = Math.max(1, Math.min(10, newCols));
+    const validRows = Math.max(1, Math.min(20, newRows));
+    setSheetGridCols(validCols);
+    setSheetGridRows(validRows);
+    const totalCardsInSheet = validCols * validRows;
+    // Set card count directly and automatically
+    setBatchCount(totalCardsInSheet);
+  };
+
+  const handleCornerStyleChange = (style: 'rounded' | 'sharp') => {
+    setSheetCornerStyle(style);
+  };
+
+  const handleSaveSheetSettingsToTemplate = () => {
+    if (!activeBatchTemplate || !onSaveTemplate) return;
+    onSaveTemplate(activeBatchTemplate);
+    setActionFeedback({
+      success: true,
+      message: 'تم حفظ إعدادات التقسيم ونمط الإطار في القالب بنجاح!',
+    });
+    setTimeout(() => setActionFeedback(null), 3000);
+  };
+
+  const chosenPosName = useMemo(() => {
+    if (selectedPosId) {
+      return posPoints.find((p) => p.id === selectedPosId)?.name || '';
+    }
+    return customPosName.trim();
+  }, [selectedPosId, customPosName, posPoints]);
+
+  const handleUpdateTemplatePosition = (elementKey: string, pos: { x: number; y: number }) => {
+    if (!activeBatchTemplate || !onSaveTemplate) return;
+    const updated: CardTemplate = {
+      ...activeBatchTemplate,
+      elementPositions: {
+        ...(activeBatchTemplate.elementPositions || {}),
+        [elementKey]: pos,
+      },
+    };
+    onSaveTemplate(updated);
+  };
+
+  const suggestNextSerial = () => {
+    if (users.length === 0) {
+      setBatchSerialStart(1001);
+      return;
+    }
+    let maxNum = 1000;
+    users.forEach((u) => {
+      const match = u.name.match(/\d+/);
+      if (match) {
+        const val = parseInt(match[0], 10);
+        if (val > maxNum && val < 9999999) {
+          maxNum = val;
+        }
+      }
+    });
+    setBatchSerialStart(maxNum + 1);
+  };
+
   // Generated preview cards for Batch Voucher Generator
   const previewBatchCards = useMemo(() => {
     const list: Array<{ username: string; pin: string; profile: string; serial: number }> = [];
@@ -223,25 +434,27 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
 
     for (let i = 0; i < count; i++) {
       const serialNum = batchSerialStart + i;
-      let username = '';
+      // Format serial number with exact digits length requested by user
+      const formattedSerial = String(serialNum).padStart(batchDigitsLength, '0');
+      let username = `${batchPrefix}${formattedSerial}`;
       let pin = '';
 
-      if (batchPasswordMode === 'pin_numeric') {
-        const rand = Math.floor(1000 + Math.random() * 9000);
-        username = `${batchPrefix}${serialNum}`;
-        pin = String(rand);
+      if (batchPasswordMode === 'username_only') {
+        pin = '';
       } else if (batchPasswordMode === 'user_equals_pass') {
-        const rand = Math.floor(100000 + Math.random() * 900000);
-        username = `${batchPrefix}${rand}`;
         pin = username;
+      } else if (batchPasswordMode === 'pin_numeric') {
+        const pinLen = Math.min(Math.max(3, batchDigitsLength), 10);
+        const minRand = Math.pow(10, pinLen - 1);
+        const maxRand = Math.pow(10, pinLen) - 1;
+        pin = String(Math.floor(minRand + Math.random() * (maxRand - minRand + 1)));
       } else {
-        const randUser = Math.floor(1000 + Math.random() * 9000);
         const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
         let randPin = '';
-        for (let j = 0; j < 5; j++) {
+        const pinLen = Math.min(Math.max(4, batchDigitsLength), 12);
+        for (let j = 0; j < pinLen; j++) {
           randPin += chars.charAt(Math.floor(Math.random() * chars.length));
         }
-        username = `${batchPrefix}${randUser}`;
         pin = randPin;
       }
 
@@ -254,7 +467,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     }
 
     return list;
-  }, [batchCount, batchPrefix, batchProfile, batchPasswordMode, batchSerialStart, profiles]);
+  }, [batchCount, batchPrefix, batchDigitsLength, batchProfile, batchPasswordMode, batchSerialStart, profiles]);
 
   // Sync Generated Batch directly to User Manager
   const handleSyncBatchToRouter = async () => {
@@ -266,7 +479,9 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
       password: c.pin,
       profile: c.profile,
       customer: batchCustomer || 'admin',
-      comment: `UM Batch - ${new Date().toISOString().split('T')[0]}`,
+      comment: chosenPosName
+        ? `UM Batch [${chosenPosName}] - ${new Date().toISOString().split('T')[0]}`
+        : `UM Batch - ${new Date().toISOString().split('T')[0]}`,
     }));
 
     const res = await createUserManagerBatchCards(config, formattedCards);
@@ -368,9 +583,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
 
           <div className="flex items-center gap-2 w-full lg:w-auto">
             <button
-              onClick={() => {
-                setShowProfileModal(true);
-              }}
+              onClick={handleOpenAddProfile}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition shadow-lg shadow-purple-600/25"
             >
               <Plus className="w-4 h-4" />
@@ -491,7 +704,19 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
           }`}
         >
           <Zap className="w-4 h-4 text-amber-400" />
-          <span>توليد ومزامنة وطباعة الكروت</span>
+          <span>توليد الكروت</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("templates")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+            activeTab === "templates"
+              ? "bg-purple-600 text-white shadow-md shadow-purple-600/20"
+              : "bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800"
+          }`}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" className="text-cyan-400"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+          <span>إدارة القوالب</span>
         </button>
 
         <button
@@ -745,7 +970,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
             </div>
 
             <button
-              onClick={() => setShowProfileModal(true)}
+              onClick={handleOpenAddProfile}
               className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-purple-600/25"
             >
               <Plus className="w-4 h-4" />
@@ -753,52 +978,134 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
             </button>
           </div>
 
-          {/* Profiles Grid */}
+          {/* Profiles Grid with Direct View and Edit */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {profiles.map((prof) => (
-              <div
-                key={prof.id}
-                className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md space-y-3 relative overflow-hidden"
-              >
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 font-bold">
-                      <Layers className="w-4 h-4" />
+            {profiles.map((prof) => {
+              const cleanName = prof.name.replace(/^UM-Profile-/, '');
+              const matchedLim = limitations.find(
+                (l) =>
+                  l.name === prof.name ||
+                  l.name === `Lim-${prof.name}` ||
+                  l.name === `UM-Lim-${cleanName}` ||
+                  l.name.toLowerCase().includes(cleanName.toLowerCase())
+              );
+
+              const isConfirmingDelete = profileDeleteConfirmId === prof.id || profileDeleteConfirmId === prof.name;
+              const isDeletingThis = isDeletingProfile === prof.id || isDeletingProfile === prof.name;
+
+              return (
+                <div
+                  key={prof.id}
+                  className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md space-y-3 relative overflow-hidden flex flex-col justify-between hover:border-purple-500/40 transition-colors"
+                >
+                  <div>
+                    <div className="flex items-start justify-between border-b border-slate-800 pb-3 gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 font-bold shrink-0">
+                          <Layers className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-white text-sm tracking-wide">{prof.name}</h4>
+                          <p className="text-[11px] text-slate-400 line-clamp-1">{prof.nameForUsers || prof.name}</p>
+                        </div>
+                      </div>
+
+                      <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 font-bold text-xs border border-emerald-500/20 shrink-0">
+                        {prof.price ? `${prof.price} ${settings.currencySymbol}` : 'مجاني'}
+                      </span>
                     </div>
-                    <div>
-                      <h4 className="font-bold text-white text-sm">{prof.name}</h4>
-                      <p className="text-[11px] text-slate-400">{prof.nameForUsers || prof.name}</p>
+
+                    <div className="space-y-2 text-xs mt-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-amber-400" />
+                          <span>صلاحية الكارت (Validity):</span>
+                        </span>
+                        <span className="font-mono text-white bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                          {prof.validity || 'غير محدد'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">بدء الصلاحية (Starts At):</span>
+                        <span className="font-mono text-slate-300">{prof.startsAt || 'logon'}</span>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">مشاركة الأجهزة:</span>
+                        <span className="font-mono text-slate-300">{prof.overrideSharedUsers || 1} جهاز</span>
+                      </div>
+
+                      {/* Associated Limitation Info */}
+                      {matchedLim && (
+                        <div className="mt-2.5 pt-2.5 border-t border-slate-800/80 grid grid-cols-3 gap-1.5 text-[11px] bg-slate-950/60 p-2 rounded-xl border border-slate-800/60">
+                          <div>
+                            <span className="block text-[10px] text-slate-500">السرعة:</span>
+                            <span className="font-mono text-cyan-400 text-[10px]">
+                              {matchedLim.rateLimitTx || 'مفتوح'}/{matchedLim.rateLimitRx || 'مفتوح'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-[10px] text-slate-500">الاستخدام:</span>
+                            <span className="font-mono text-amber-400 text-[10px]">{matchedLim.uptimeLimit || 'مفتوح'}</span>
+                          </div>
+                          <div>
+                            <span className="block text-[10px] text-slate-500">البيانات:</span>
+                            <span className="font-mono text-emerald-400 text-[10px]">{matchedLim.downloadLimit || 'مفتوح'}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 font-bold text-xs border border-emerald-500/20">
-                    {prof.price ? `${prof.price} ${settings.currencySymbol}` : 'مجاني'}
-                  </span>
+                  {/* Actions Footer */}
+                  <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-1.5 mt-2">
+                    <button
+                      onClick={() => handleOpenEditProfile(prof)}
+                      className="flex-1 py-1.5 px-2.5 rounded-xl bg-purple-600/15 hover:bg-purple-600/25 border border-purple-500/30 text-purple-300 hover:text-white text-xs font-bold flex items-center justify-center gap-1.5 transition"
+                      title="تعديل خصائص البروفايل وقيود السرعة"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>تعديل البروفايل</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleDuplicateProfile(prof)}
+                      className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition"
+                      title="نسخ كبروفايل جديد"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+
+                    {isConfirmingDelete ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleDeleteProfile(prof.id || prof.name, prof.name)}
+                          disabled={isDeletingThis}
+                          className="px-2 py-1 rounded-xl bg-red-600 text-white text-[10px] font-bold hover:bg-red-500 transition disabled:opacity-50"
+                        >
+                          {isDeletingThis ? 'جاري الحذف...' : 'تأكيد الحذف'}
+                        </button>
+                        <button
+                          onClick={() => setProfileDeleteConfirmId(null)}
+                          className="px-1.5 py-1 rounded-xl bg-slate-800 text-slate-400 text-[10px] hover:text-white"
+                        >
+                          إلغاء
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setProfileDeleteConfirmId(prof.id || prof.name)}
+                        className="p-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-xs transition"
+                        title="حذف البروفايل من اليوزر مانجر"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-
-                <div className="space-y-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400 flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-amber-400" />
-                      <span>صلاحية الكارت (Validity):</span>
-                    </span>
-                    <span className="font-mono text-white bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
-                      {prof.validity || 'غير محدد'}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">بدء الصلاحية (Starts At):</span>
-                    <span className="font-mono text-slate-300">{prof.startsAt || 'logon'}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">مشاركة الأجهزة (Shared):</span>
-                    <span className="font-mono text-slate-300">{prof.overrideSharedUsers || 1} جهاز</span>
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Limitations Section */}
@@ -829,6 +1136,18 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
       {/* ========================================================================= */}
       {/* TAB 3: BATCH VOUCHER GENERATOR & PRINTING */}
       {/* ========================================================================= */}
+      {/* ========================================================================= */}
+      {/* TAB: CARD TEMPLATES MANAGER */}
+      {/* ========================================================================= */}
+      {activeTab === 'templates' && (
+        <CardTemplatesManager
+          templates={templates}
+          categories={categories}
+          onSaveTemplate={onSaveTemplate!}
+          onDeleteTemplate={onDeleteTemplate!}
+        />
+      )}
+
       {activeTab === 'batch' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Controls Form */}
@@ -844,6 +1163,33 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
             </div>
 
             <div className="space-y-4 text-xs">
+              {/* Template Select */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-slate-300 font-semibold">قالب الطباعة والتصميم:</label>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('templates')}
+                    className="text-[11px] text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1 transition"
+                  >
+                    <span>تعديل وتصميم القوالب</span>
+                    <span>←</span>
+                  </button>
+                </div>
+                <select
+                  value={batchTemplateId}
+                  onChange={(e) => setBatchTemplateId(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500"
+                >
+                  <option value="">-- القالب الافتراضي --</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.cardWidthMm || 85}×{t.cardHeightMm || 55} مم - {t.cardsPerPage || 18} كارت/ورقة)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Profile Select */}
               <div>
                 <label className="block text-slate-300 font-semibold mb-1.5">اختر البروفايل المطلوب:</label>
@@ -861,8 +1207,50 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                 </select>
               </div>
 
-              {/* Count & Prefix */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Point of Sale (POS) Selection */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-slate-300 font-semibold flex items-center gap-1.5">
+                    <Store className="w-3.5 h-3.5 text-amber-400" />
+                    <span>نقطة البيع (اختياري لطباعة كروت مخصصة لكل نقطة):</span>
+                  </label>
+                  {chosenPosName && (
+                    <span className="text-[10px] text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                      مخصص
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <select
+                    value={selectedPosId}
+                    onChange={(e) => {
+                      setSelectedPosId(e.target.value);
+                      if (e.target.value) setCustomPosName('');
+                    }}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500"
+                  >
+                    <option value="">-- عام (بدون تحديد نقطة بيع / لجميع النقاط) --</option>
+                    {posPoints.map((pos) => (
+                      <option key={pos.id} value={pos.id}>
+                        {pos.name} {pos.location ? `(${pos.location})` : ''}
+                      </option>
+                    ))}
+                  </select>
+
+                  {!selectedPosId && (
+                    <input
+                      type="text"
+                      value={customPosName}
+                      onChange={(e) => setCustomPosName(e.target.value)}
+                      placeholder="أو اكتب اسم نقطة البيع يدوياً (مثال: بقالة الأمانة)..."
+                      className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl px-3 py-2 text-white text-xs placeholder:text-slate-500 focus:outline-none focus:border-purple-500"
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Count & Prefix & Card Number Length */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1.5">عدد الكروت:</label>
                   <input
@@ -881,35 +1269,101 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                     type="text"
                     value={batchPrefix}
                     onChange={(e) => setBatchPrefix(e.target.value)}
-                    placeholder="مثال: um"
+                    placeholder="مثال: u أو اترك فارغاً"
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white font-mono focus:outline-none focus:border-purple-500"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1.5">طول أرقام الكرت (Digits):</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="3"
+                      max="16"
+                      value={batchDigitsLength}
+                      onChange={(e) => setBatchDigitsLength(Math.min(16, Math.max(3, parseInt(e.target.value) || 6)))}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white font-mono font-bold focus:outline-none focus:border-purple-500"
+                    />
+                    <span className="absolute left-3 top-2.5 text-xs text-slate-400 pointer-events-none">أرقام</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Card Digits Length Presets & Live Preview */}
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/80">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] text-slate-400 font-semibold">أطوال شائعة للأرقام:</span>
+                  {[4, 5, 6, 7, 8, 10, 12].map((len) => (
+                    <button
+                      key={len}
+                      type="button"
+                      onClick={() => setBatchDigitsLength(len)}
+                      className={`px-2 py-0.5 rounded-lg text-[11px] font-bold font-mono transition ${
+                        batchDigitsLength === len
+                          ? 'bg-purple-600 text-white shadow-sm'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                      }`}
+                    >
+                      {len} أرقام
+                    </button>
+                  ))}
+                </div>
+                <div className="text-[11px] font-mono text-purple-300 bg-purple-950/40 px-2.5 py-1 rounded-lg border border-purple-800/30">
+                  معاينة كود الكرت:{' '}
+                  <strong className="text-white font-bold">
+                    {batchPrefix}{String(batchSerialStart).padStart(batchDigitsLength, '0')}
+                  </strong>
                 </div>
               </div>
 
               {/* Password Mode */}
               <div>
-                <label className="block text-slate-300 font-semibold mb-1.5">نمط كلمة المرور (PIN):</label>
+                <label className="block text-slate-300 font-semibold mb-1.5 flex items-center justify-between">
+                  <span>نمط كلمة المرور (PIN):</span>
+                  {batchPasswordMode === 'username_only' && (
+                    <span className="text-[10px] text-purple-300 font-bold bg-purple-500/15 px-2 py-0.5 rounded">
+                      كود مستخدم فقط
+                    </span>
+                  )}
+                </label>
                 <select
                   value={batchPasswordMode}
                   onChange={(e) => setBatchPasswordMode(e.target.value as any)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white font-semibold focus:outline-none focus:border-purple-500"
                 >
-                  <option value="pin_numeric">أرقام سرية عشوائية (4 أرقام PIN)</option>
+                  <option value="username_only">✨ استخدام اسم مستخدم فقط (كود الكارت فقط / بدون كلمة سر)</option>
                   <option value="user_equals_pass">اسم المستخدم هو نفس كلمة المرور</option>
+                  <option value="pin_numeric">أرقام سرية عشوائية (4 أرقام PIN)</option>
                   <option value="random_str">حروف وأرقام عشوائية مميزة</option>
                 </select>
+                {batchPasswordMode === 'username_only' && (
+                  <p className="text-[11px] text-purple-300/90 mt-1 bg-purple-950/40 p-2 rounded-lg border border-purple-800/30">
+                    💡 يتيح للمستخدم تسجيل الدخول بكود واحد فقط بدون الحاجة لكلمة سر، ويظهر في الكارت كود وحيد بارز وسهل الإدخال.
+                  </p>
+                )}
               </div>
 
               {/* Serial Start & Customer */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1.5">بداية التسلسل:</label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-slate-300 font-semibold">بداية التسلسل:</label>
+                    <button
+                      type="button"
+                      onClick={suggestNextSerial}
+                      title="حساب التسلسل التالي تلقائياً من الكروت الحالية"
+                      className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-0.5"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>تسلسل ذكي</span>
+                    </button>
+                  </div>
                   <input
                     type="number"
                     value={batchSerialStart}
                     onChange={(e) => setBatchSerialStart(parseInt(e.target.value) || 1000)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-white font-mono focus:outline-none focus:border-purple-500"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-white font-mono font-bold focus:outline-none focus:border-purple-500"
                   />
                 </div>
 
@@ -922,6 +1376,23 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                     placeholder="admin"
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-white font-mono focus:outline-none focus:border-purple-500"
                   />
+                </div>
+              </div>
+
+              {/* Papers & Sheets Summary Calculation */}
+              <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-purple-400" />
+                    <span>عدد الأوراق المطلوبة للطباعة:</span>
+                  </span>
+                  <span className="text-white font-black">
+                    {Math.ceil(previewBatchCards.length / (activeBatchTemplate?.cardsPerPage || 18))} ورقة A4
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-900">
+                  <span>سعة الورقة: <strong className="text-slate-300">{activeBatchTemplate?.cardsPerPage || 18} كارت</strong></span>
+                  <span>إجمالي قيمة الدفعة: <strong className="text-emerald-400">{((profiles.find(p => p.name === batchProfile)?.price || 0) * previewBatchCards.length).toLocaleString()} {settings.currencySymbol}</strong></span>
                 </div>
               </div>
             </div>
@@ -948,7 +1419,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                   className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700 transition"
                 >
                   <Printer className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>{isExportingPdf ? 'جارِ التصدير...' : 'طباعة الكروت (PDF)'}</span>
+                  <span>{isExportingPdf ? 'جارِ التحميل...' : 'تحميل ورقة المعاينة للطباعة (A4 PDF)'}</span>
                 </button>
 
                 <button
@@ -976,56 +1447,209 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
 
           {/* Printable Sheet Preview */}
           <div className="lg:col-span-7 bg-slate-900/90 p-5 rounded-3xl border border-slate-800 flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
-              <span className="font-bold text-white text-xs flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3 border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
                 <Printer className="w-4 h-4 text-purple-400" />
-                <span>معاينة ورقة طباعة كروت اليوزر مانجر ({previewBatchCards.length} كارت)</span>
-              </span>
-              <span className="text-[11px] text-slate-400">مقاس A4 قياسي</span>
+                <span className="font-bold text-white text-xs">
+                  معاينة ورقة طباعة كروت اليوزر مانجر ({previewBatchCards.length} كارت)
+                </span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-950/60 text-purple-300 border border-purple-800/40 font-mono font-bold">
+                  {activeBatchTemplate?.cardsPerPage || 18} كارت بالورقة ({activeBatchTemplate?.gridCols || 3} أعمدة × {activeBatchTemplate?.gridRows || 6} أسطر)
+                </span>
+              </div>
+
+              {/* Interactive Drag & Drop Toggle */}
+              <button
+                type="button"
+                onClick={() => setIsInteractivePreview(!isInteractivePreview)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${
+                  isInteractivePreview
+                    ? 'bg-purple-600 border-purple-400 text-white shadow-lg shadow-purple-600/30'
+                    : 'bg-slate-800 border-slate-700 hover:bg-slate-750 text-slate-300'
+                }`}
+                title="تفعيل سحب وتعديل مواضع العناصر في الكارت بالماوس"
+              >
+                <Move className="w-3.5 h-3.5" />
+                <span>{isInteractivePreview ? 'إنهاء نمط السحب' : 'تفعيل السحب والتعديل المباشر'}</span>
+              </button>
             </div>
 
-            <div
-              id="um-print-sheet"
-              ref={printAreaRef}
-              className="bg-white text-slate-900 p-4 rounded-2xl overflow-y-auto max-h-[600px] grid grid-cols-2 sm:grid-cols-3 gap-3 shadow-inner"
-              style={{ direction: 'rtl' }}
-            >
-              {previewBatchCards.map((card, idx) => (
-                <div
-                  key={idx}
-                  className="border-2 border-dashed border-slate-300 rounded-xl p-3 flex flex-col justify-between bg-gradient-to-br from-slate-50 to-purple-50/40"
-                >
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 mb-1.5">
-                    <span className="font-black text-[11px] text-purple-900 truncate">
-                      {settings.networkName || 'شبكة الواي فاي'}
-                    </span>
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-800">
-                      {card.profile}
-                    </span>
-                  </div>
-
-                  <div className="space-y-1 my-1">
-                    <div className="bg-white p-1.5 rounded-lg border border-slate-200 text-center">
-                      <span className="text-[9px] text-slate-500 block">اسم المستخدم</span>
-                      <span className="font-mono font-black text-xs text-slate-900 tracking-wider">
-                        {card.username}
-                      </span>
-                    </div>
-
-                    <div className="bg-white p-1.5 rounded-lg border border-slate-200 text-center">
-                      <span className="text-[9px] text-slate-500 block">كلمة المرور</span>
-                      <span className="font-mono font-black text-xs text-purple-700 tracking-wider">
-                        {card.pin}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-1 pt-1 border-t border-slate-200 text-[8px] text-slate-500 flex items-center justify-between">
-                    <span>تسجيل الدخول: {settings.hotspotDns || 'net.wifi'}</span>
-                    <span className="font-mono">#{card.serial}</span>
-                  </div>
+            {/* Live Sheet Grid & Corner Tuning Bar */}
+            <div className="mb-3 p-3 bg-slate-950/80 rounded-2xl border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+              {/* Columns and Rows with Direct Automatic Cards Count Update */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <Grid className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="text-slate-300 font-semibold">الأعمدة:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="8"
+                    value={activeBatchTemplate?.gridCols || 3}
+                    onChange={(e) => {
+                      const c = parseInt(e.target.value) || 1;
+                      handleGridDimensionChange(c, activeBatchTemplate?.gridRows || 6);
+                    }}
+                    className="w-14 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white font-mono font-bold text-center"
+                    title="عدد أعمدة الكروت في الورقة"
+                  />
                 </div>
-              ))}
+
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-400 font-bold">×</span>
+                  <span className="text-slate-300 font-semibold">الأسطر:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="15"
+                    value={activeBatchTemplate?.gridRows || 6}
+                    onChange={(e) => {
+                      const r = parseInt(e.target.value) || 1;
+                      handleGridDimensionChange(activeBatchTemplate?.gridCols || 3, r);
+                    }}
+                    className="w-14 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white font-mono font-bold text-center"
+                    title="عدد أسطر الكروت في الورقة"
+                  />
+                </div>
+
+                <span className="text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20 font-bold font-mono">
+                  = {activeBatchTemplate?.cardsPerPage || 18} كارت/ورقة تلقائياً
+                </span>
+              </div>
+
+              {/* Corner Style (Rounded vs Sharp) */}
+              <div className="flex items-center gap-2">
+                <span className="text-slate-300 font-semibold">إطار الكارت:</span>
+                <div className="flex items-center bg-slate-900 p-0.5 rounded-xl border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => handleCornerStyleChange('rounded')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                      (activeBatchTemplate?.cardCornerStyle || 'rounded') === 'rounded'
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span>مستدير</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCornerStyleChange('sharp')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                      activeBatchTemplate?.cardCornerStyle === 'sharp'
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Square className="w-3 h-3" />
+                    <span>مركن (90°)</span>
+                  </button>
+                </div>
+
+                {onSaveTemplate && (
+                  <button
+                    type="button"
+                    onClick={handleSaveSheetSettingsToTemplate}
+                    className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold border border-slate-700 transition"
+                    title="حفظ تقسيم الأعمدة والأسطر ونمط الإطار في القالب الحالي"
+                  >
+                    حفظ بالقالب
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {isInteractivePreview && (
+              <div className="mb-3 p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-xs text-purple-200 flex items-center gap-2 animate-in fade-in">
+                <Sparkles className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                <span>
+                  <strong>نمط السحب والتعديل المباشر:</strong> يمكنك سحب أي عنصر (الشعار، كود الكارت، الباركود، الفئة) بالماوس لتعديل موضعه على الكارت، وتُحفظ التعديلات في القالب فوراً!
+                </span>
+              </div>
+            )}
+
+            <div className="bg-slate-800 rounded-2xl overflow-hidden shadow-inner flex justify-center p-4">
+              <div
+                className="overflow-y-auto max-h-[70vh] w-full flex justify-center custom-scrollbar"
+                style={{ direction: 'rtl' }}
+              >
+                <div
+                  id="um-print-sheet"
+                  ref={printAreaRef}
+                  className="bg-white text-slate-900"
+                  style={{
+                    width: '210mm', // Standard A4 width
+                    minHeight: '297mm', // Standard A4 height
+                    padding: `${activeBatchTemplate?.pageMarginMm || 5}mm`,
+                    direction: 'rtl',
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${activeBatchTemplate?.gridCols || 3}, minmax(0, 1fr))`,
+                    gridTemplateRows: `repeat(${activeBatchTemplate?.gridRows || 6}, minmax(0, 1fr))`,
+                    gap: `${activeBatchTemplate?.cardGapMm || 3}mm`,
+                    justifyItems: 'stretch',
+                    alignItems: 'stretch',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                  }}
+                >
+                  {previewBatchCards.map((card, idx) => {
+                const activeTemplate = activeBatchTemplate;
+                if (activeTemplate) {
+                  return (
+                    <PrintableCard
+                      key={idx}
+                      template={activeTemplate}
+                      networkName={settings.networkName || 'شبكة الواي فاي'}
+                      networkSlogan={settings.networkSlogan}
+                      username={card.username}
+                      password={card.pin}
+                      profileName={card.profile}
+                      serial={card.serial}
+                      price={profiles.find(p => p.name === card.profile)?.price}
+                      currency={settings.currencySymbol}
+                      supportPhone={settings.supportPhone}
+                      posPointName={chosenPosName}
+                      interactive={isInteractivePreview}
+                      onUpdatePosition={handleUpdateTemplatePosition}
+                    />
+                  );
+                }
+                // Fallback rendering
+                return (
+                  <div
+                    key={idx}
+                    className="w-[85mm] h-[55mm] border-2 border-dashed border-slate-400 rounded-xl p-3 flex flex-col justify-between bg-white"
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 mb-1.5">
+                      <span className="font-black text-[12px] text-purple-900 truncate">
+                        {settings.networkName || 'شبكة الواي فاي'}
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800">
+                        {card.profile}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5 my-auto">
+                      <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 text-center">
+                        <span className="text-[9px] text-slate-500 block">اسم المستخدم</span>
+                        <strong className="text-lg font-mono tracking-widest text-slate-900">{card.username}</strong>
+                      </div>
+                      {card.username !== card.pin && (
+                        <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 text-center">
+                          <span className="text-[9px] text-slate-500 block">كلمة المرور</span>
+                          <strong className="text-lg font-mono tracking-widest text-slate-900">{card.pin}</strong>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between mt-1.5 border-t border-slate-200 pt-1.5">
+                      <span className="text-[9px] text-slate-400 font-mono">SN: {card.serial}</span>
+                      <span className="text-[9px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">
+                        {profiles.find(p => p.name === card.profile)?.price || 0} {settings.currencySymbol}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1203,8 +1827,12 @@ set [find] use-radius=yes radius-accounting=yes`}
                   <Layers className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">إضافة وتفعيل بروفايل في User Manager</h3>
-                  <p className="text-xs text-slate-400">إنشاء البروفايل وربط القيد (Limitation) وتطبيقه على الراوتر</p>
+                  <h3 className="text-base font-bold text-white">
+                    {isEditingProfile ? `تعديل بروفايل اليوزر مانجر: ${profileFormData.profileName}` : 'إضافة وتفعيل بروفايل في User Manager'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {isEditingProfile ? 'تعديل بيانات البروفايل، السرعة، الحصة وصلاحية الكارت في الراوتر مباشرة' : 'إنشاء البروفايل وربط القيد (Limitation) وتطبيقه على الراوتر'}
+                  </p>
                 </div>
               </div>
 
@@ -1297,7 +1925,7 @@ set [find] use-radius=yes radius-accounting=yes`}
                       سعر البيع ({settings.currencySymbol}):
                     </label>
                     <input
-                      type="number"
+                      type="text" inputMode="decimal"
                       value={profileFormData.price}
                       onChange={(e) => setProfileFormData({ ...profileFormData, price: Number(e.target.value) })}
                       className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold focus:outline-none focus:border-emerald-500"
@@ -1307,7 +1935,7 @@ set [find] use-radius=yes radius-accounting=yes`}
                   <div>
                     <label className="block text-slate-300 font-semibold mb-1">الصلاحية (بالأيام):</label>
                     <input
-                      type="number"
+                      type="text" inputMode="decimal"
                       value={profileFormData.validityDays}
                       onChange={(e) => setProfileFormData({ ...profileFormData, validityDays: Number(e.target.value) })}
                       className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-purple-500"
@@ -1331,7 +1959,7 @@ set [find] use-radius=yes radius-accounting=yes`}
                   className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/30 flex items-center gap-2 transition disabled:opacity-50"
                 >
                   {isSavingProfile ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                  <span>حفظ وتطبيق البروفايل في الراوتر</span>
+                  <span>{isEditingProfile ? 'حفظ التعديلات في الراوتر' : 'حفظ وتطبيق البروفايل في الراوتر'}</span>
                 </button>
               </div>
             </form>

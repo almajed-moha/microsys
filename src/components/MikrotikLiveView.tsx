@@ -68,6 +68,8 @@ import {
 } from 'recharts';
 import {
   NetworkSettings,
+  CardTemplate,
+  POSPoint,
   MikroTikConfig,
   RouterSystemInfo,
   HotspotActiveUser,
@@ -103,12 +105,20 @@ import { MikrotikMaintenanceView } from './MikrotikMaintenanceView';
 interface MikrotikLiveViewProps {
   settings: NetworkSettings;
   categories?: CardCategory[];
+  templates?: CardTemplate[];
+  posPoints?: POSPoint[];
+  onSaveTemplate?: (template: CardTemplate) => void;
+  onDeleteTemplate?: (templateId: string) => void;
   onUpdateSettings: (newSettings: NetworkSettings) => void;
 }
 
 export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   settings,
   categories = [],
+  templates = [],
+  posPoints = [],
+  onSaveTemplate,
+  onDeleteTemplate,
   onUpdateSettings,
 }) => {
   // Config state
@@ -145,7 +155,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
 
   // Sub-tabs
   const [activeSubTab, setActiveSubTab] = useState<
-    'active_users' | 'all_users' | 'profiles' | 'user_manager' | 'maintenance' | 'interfaces' | 'remote_control' | 'hosts' | 'cards' | 'diagnostics' | 'ai_assistant' | 'settings'
+    'active_users' | 'all_users' | 'profiles' | 'user_manager' | 'maintenance' | 'interfaces' | 'remote_control' | 'hosts' | 'diagnostics' | 'ai_assistant' | 'settings'
   >('active_users');
 
   // Search & Filter States
@@ -1081,18 +1091,6 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
         </button>
 
         <button
-          onClick={() => setActiveSubTab('cards')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeSubTab === 'cards'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Zap className="w-4 h-4 text-amber-400" />
-          <span>توليد ومزامنة الكروت</span>
-        </button>
-
-        <button
           onClick={() => setActiveSubTab('ai_assistant')}
           className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
             activeSubTab === 'ai_assistant'
@@ -1457,6 +1455,10 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
           settings={settings}
           config={config}
           categories={categories}
+          templates={templates}
+          posPoints={posPoints}
+          onSaveTemplate={onSaveTemplate}
+          onDeleteTemplate={onDeleteTemplate}
           onRefreshParent={() => fetchAllLiveData(config)}
         />
       )}
@@ -1754,231 +1756,6 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
         </div>
       )}
 
-      {/* SUB-VIEW 7: Direct Card Generator & MikroTik Sync */}
-      {activeSubTab === 'cards' && (
-        <div className="space-y-6 animate-in fade-in duration-200 text-xs">
-          <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md space-y-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
-              <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Zap className="w-5 h-5 text-amber-400" />
-                  <span>توليد ومزامنة كروت الهوتسبوت مباشرة مع الراوتر</span>
-                </h3>
-                <p className="text-slate-400 mt-0.5">
-                  إنشاء كروت برقم سري أو بدون، مع إمكانية المزامنة اللحظية في الراوتر وتصدير ملف سكربت (.rsc) أو طباعة الكروت PDF.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={handleDownloadCardsRsc}
-                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold border border-slate-700 flex items-center gap-1.5 transition text-xs"
-                >
-                  <FileCode className="w-4 h-4 text-indigo-400" />
-                  <span>سكربت (.rsc)</span>
-                </button>
-
-                <button
-                  onClick={handleExportCardsPdf}
-                  disabled={isExportingCardsPdf}
-                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-300 font-bold border border-emerald-500/30 flex items-center gap-1.5 transition text-xs"
-                >
-                  {isExportingCardsPdf ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
-                  ) : (
-                    <FileDown className="w-4 h-4 text-emerald-400" />
-                  )}
-                  <span>تصدير PDF</span>
-                </button>
-
-                <button
-                  onClick={handleSyncCardsWithRouter}
-                  disabled={isSyncingWithRouter || !isConnected}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition text-xs disabled:opacity-50"
-                >
-                  {isSyncingWithRouter ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>جارِ المزامنة بالراوتر...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-4 h-4 text-amber-300" />
-                      <span>🚀 مزامنة وإنشاء في الراوتر ({previewCards.length})</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {syncOutcome && (
-              <div
-                className={`p-4 rounded-xl border flex items-start gap-3 ${
-                  syncOutcome.success
-                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                    : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                }`}
-              >
-                {syncOutcome.success ? (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-                ) : (
-                  <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-                )}
-                <div className="flex-1">
-                  <div className="font-bold text-sm">
-                    {syncOutcome.success ? 'نجحت عملية المزامنة بالراوتر' : 'تنبيه المزامنة'}
-                  </div>
-                  <div className="text-xs mt-0.5 whitespace-pre-line">{syncOutcome.message}</div>
-                </div>
-              </div>
-            )}
-
-            {/* Inputs */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">فئة الكارت:</label>
-                <select
-                  value={selectedCatId}
-                  onChange={(e) => {
-                    const catId = e.target.value;
-                    setSelectedCatId(catId);
-                    const cat = categories.find((c) => c.id === catId);
-                    if (cat) {
-                      setCardPrefix(cat.code ? `${cat.code}-` : 'c');
-                      setCardProfile(cat.mikrotikProfile || 'default');
-                      setCardUptime(cat.uptimeLimit || '1h');
-                      setCardQuota(cat.quotaLimit || '500M');
-                    }
-                  }}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-indigo-500"
-                >
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.retailPrice} ريال)
-                    </option>
-                  ))}
-                  <option value="custom">-- فئة مخصصة --</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">عدد الكروت:</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="500"
-                  value={cardCount}
-                  onChange={(e) => setCardCount(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">بادئة الاسم (Prefix):</label>
-                <input
-                  type="text"
-                  value={cardPrefix}
-                  onChange={(e) => setCardPrefix(e.target.value)}
-                  placeholder="مثال: c100-"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">بداية التسلسل:</label>
-                <input
-                  type="number"
-                  value={cardSerialStart}
-                  onChange={(e) => setCardSerialStart(parseInt(e.target.value) || 1001)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">بروفايل الهوتسبوت:</label>
-                <select
-                  value={cardProfile}
-                  onChange={(e) => setCardProfile(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-indigo-500"
-                >
-                  {userProfiles.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">نوع كلمة المرور:</label>
-                <select
-                  value={cardPasswordMode}
-                  onChange={(e) => setCardPasswordMode(e.target.value as any)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="pin">رمز PIN عشوائي (4 أرقام)</option>
-                  <option value="same">نفس اسم المستخدم</option>
-                  <option value="none">بدون كلمة سر (فارغ)</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Cards Preview Grid */}
-          <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                <span>معاينة كروت الدفعة الجاهزة للإرسال والطباعة ({previewCards.length} كارت)</span>
-              </h4>
-              <span className="text-[11px] text-slate-400">
-                قيمة الدفعة الإجمالية:{' '}
-                <strong className="text-emerald-400">
-                  {((previewCards?.reduce((acc, c) => acc + (c?.price || 0), 0) ?? 0)).toLocaleString()} {settings.currency || 'ريال'}
-                </strong>
-              </span>
-            </div>
-
-            <div id="mikrotik-cards-sheet-container" className="p-4 bg-slate-950 rounded-xl border border-slate-800">
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                {previewCards.map((card, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-xl border border-indigo-500/30 bg-gradient-to-br from-slate-900 to-slate-950 text-slate-100 flex flex-col justify-between shadow-sm relative overflow-hidden"
-                  >
-                    <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500" />
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
-                      <span className="font-bold text-[10px] text-indigo-300 truncate">{settings.networkName}</span>
-                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold text-[10px]">
-                        {card.price} {settings.currency || 'ريال'}
-                      </span>
-                    </div>
-
-                    <div className="space-y-1 my-1">
-                      <div className="flex justify-between items-center text-[10px]">
-                        <span className="text-slate-400">اسم المستخدم:</span>
-                        <span className="font-mono font-bold text-white select-all">{card.username}</span>
-                      </div>
-                      {card.pin && (
-                        <div className="flex justify-between items-center text-[10px]">
-                          <span className="text-slate-400">الرمز السري:</span>
-                          <span className="font-mono font-bold text-amber-300 select-all">{card.pin}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between border-t border-slate-800/80 pt-1.5 mt-1 text-[9px] text-slate-400 font-mono">
-                      <span>{card.uptime || 'غير محدد'}</span>
-                      <span>{card.quota || 'غير محدود'}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* SUB-VIEW 8: AI MikroTik Assistant */}
       {activeSubTab === 'ai_assistant' && (
         <div className="bg-slate-900/95 p-5 rounded-2xl border border-purple-500/30 shadow-xl space-y-4 animate-in fade-in duration-200 text-xs">
@@ -2152,7 +1929,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
                 منفذ الاتصال (Port):
               </label>
               <input
-                type="number"
+                type="text" inputMode="decimal"
                 value={config.port}
                 onChange={(e) => saveConfig({ ...config, port: Number(e.target.value) })}
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500"
@@ -2256,8 +2033,8 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">عدد الأجهزة المشتركة (Shared Users):</label>
                 <input
-                  type="number"
-                  min="1"
+                  type="text" inputMode="decimal"
+                  
                   max="10"
                   value={editingProfile.sharedUsers || 1}
                   onChange={(e) => setEditingProfile({ ...editingProfile, sharedUsers: parseInt(e.target.value) || 1 })}

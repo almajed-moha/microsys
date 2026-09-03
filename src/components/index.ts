@@ -37,3 +37,4 @@ export { AboutProgramModal } from './AboutProgramModal';
 export { DatabaseBackupModal } from './DatabaseBackupModal';
 export { RecordAuditInfo } from './RecordAuditInfo';
 export { EntityAuditHistoryModal } from './EntityAuditHistoryModal';
+export * from "./PrintableCard";

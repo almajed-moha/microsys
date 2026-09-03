@@ -64,6 +64,7 @@ export const BatchDispatchView: React.FC<BatchDispatchViewProps> = ({
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
+    time: new Date().toISOString().split('T')[1].substring(0, 5),
     posPointId: selectedPOSIdForDispatch || (posPoints[0]?.id || ''),
     categoryId: categories[0]?.id || '',
     quantity: 50,
@@ -89,6 +90,7 @@ export const BatchDispatchView: React.FC<BatchDispatchViewProps> = ({
     setEditingDispatch(null);
     setFormData({
       date: new Date().toISOString().split('T')[0],
+    time: new Date().toISOString().split('T')[1].substring(0, 5),
       posPointId: posId || selectedPOSIdForDispatch || (posPoints[0]?.id || ''),
       categoryId: categories[0]?.id || '',
       quantity: 50,
@@ -103,6 +105,7 @@ export const BatchDispatchView: React.FC<BatchDispatchViewProps> = ({
     setEditingDispatch(dispatch);
     setFormData({
       date: dispatch.date,
+      time: dispatch.time || new Date().toISOString().split('T')[1].substring(0, 5),
       posPointId: dispatch.posPointId,
       categoryId: dispatch.categoryId,
       quantity: dispatch.quantity,
@@ -370,7 +373,7 @@ export const BatchDispatchView: React.FC<BatchDispatchViewProps> = ({
                   <tr key={dispatch.id} className="hover:bg-slate-800/40 transition">
                     <td className="py-3 px-4 whitespace-nowrap">
                       <div className="font-mono text-slate-300">
-                        {dispatch.date}
+                        {dispatch.date} {dispatch.time ? ` - ${dispatch.time}` : ''}
                       </div>
                       <div className="mt-1">
                         <RecordAuditInfo
@@ -553,8 +556,8 @@ export const BatchDispatchView: React.FC<BatchDispatchViewProps> = ({
                     الكمية المسلمة (كارت) <span className="text-rose-400">*</span>:
                   </label>
                   <input
-                    type="number"
-                    min="1"
+                    type="text" inputMode="decimal"
+                    
                     required
                     placeholder="10"
                     value={formData.quantity === 0 ? '' : formData.quantity}
@@ -682,8 +685,8 @@ export const BatchDispatchView: React.FC<BatchDispatchViewProps> = ({
             <div>
               <label className="block text-slate-400 text-xs mb-1">الكمية المرتجعة:</label>
               <input
-                type="number"
-                min="1"
+                type="text" inputMode="decimal"
+                
                 max={returnModalState.dispatch.quantity - (returnModalState.dispatch.soldCount || 0)}
                 placeholder="1"
                 value={returnModalState.returnQty === 0 ? '' : returnModalState.returnQty}

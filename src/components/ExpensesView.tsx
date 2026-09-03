@@ -112,6 +112,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     paymentMethod: 'cash' | 'bank_transfer' | 'cheque' | 'other';
     paidTo: string;
     date: string;
+    time: string;
     referenceNumber: string;
     notes: string;
     createdByName: string;
@@ -122,6 +123,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     paymentMethod: 'cash',
     paidTo: '',
     date: new Date().toISOString().split('T')[0],
+      time: new Date().toISOString().split('T')[1].substring(0, 5),
     referenceNumber: '',
     notes: '',
     createdByName: 'الإدارة المالية',
@@ -374,6 +376,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       paymentMethod: 'cash',
       paidTo: '',
       date: new Date().toISOString().split('T')[0],
+      time: new Date().toISOString().split('T')[1].substring(0, 5),
       referenceNumber: '',
       notes: '',
       createdByName: 'الإدارة المالية',
@@ -431,6 +434,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
         paymentMethod: formData.paymentMethod,
         paidTo: formData.paidTo.trim() || undefined,
         date: formData.date,
+      time: formData.time,
         referenceNumber: formData.referenceNumber.trim() || undefined,
         notes: formData.notes.trim() || undefined,
         createdByName: formData.createdByName.trim() || undefined,
@@ -445,6 +449,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
         paymentMethod: formData.paymentMethod,
         paidTo: formData.paidTo.trim() || undefined,
         date: formData.date,
+      time: formData.time,
         referenceNumber: formData.referenceNumber.trim() || undefined,
         notes: formData.notes.trim() || undefined,
         createdByName: formData.createdByName.trim() || undefined,
@@ -1194,7 +1199,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                       </div>
                     </td>
                     <td className="py-3 px-4 text-slate-300 font-mono">
-                      {exp.date}
+                      {exp.date} {exp.time ? ` - ${exp.time}` : ''}
                     </td>
                     <td className="py-3 px-4">
                       <span className="inline-block px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-200 border border-slate-700">
@@ -1399,9 +1404,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 <div>
                   <label className="block text-slate-400 font-bold mb-1">المبلغ المصروف ({currency}) *</label>
                   <input
-                    type="number"
-                    min="0"
-                    step="any"
+                    type="text" inputMode="decimal"                    
+                    
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: e.target.value === '' ? '' : Number(e.target.value) })}
                     placeholder="0.00"

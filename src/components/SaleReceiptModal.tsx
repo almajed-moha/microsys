@@ -162,7 +162,7 @@ export const SaleReceiptModal: React.FC<SaleReceiptModalProps> = ({
     return `*فاتورة مبيعات كروت - شبكة ${settings.networkName}*
 ----------------------------------------
 📄 رقم الفاتورة: *${sale.invoiceNumber}*
-📅 التاريخ: ${sale.date}
+📅 التاريخ: ${sale.date} ${sale.time ? `- ${sale.time}` : ''}
 🏪 نقطة البيع: *${pos ? pos.name : 'مبيعات مباشرة'}*
 👤 المسؤول: ${pos?.managerName || ''} (${pos?.phone || ''})
 🏷️ فئة الكارت: *${cat ? cat.name : 'كارت شبكة'}*
@@ -377,7 +377,7 @@ ${pos ? `📊 رصيد المديونية المتبقي: ${(pos.currentDebt ?? 
                 <div className="flex items-center justify-between">
                   <div className="text-right">
                     <span className="text-[10px] text-slate-600 block font-semibold">تاريخ الفاتورة:</span>
-                    <span className="text-xs font-mono font-bold text-slate-950">{sale.date}</span>
+                    <span className="text-xs font-mono font-bold text-slate-950">{sale.date} {sale.time ? ` - ${sale.time}` : ''}</span>
                   </div>
 
                   <div className="text-center flex-1">
@@ -589,7 +589,7 @@ ${pos ? `📊 رصيد المديونية المتبقي: ${(pos.currentDebt ?? 
                   <span className="font-black">{sale.invoiceNumber}</span>
                 </div>
                 <div className="flex justify-between items-center text-[10px] text-slate-800">
-                  <span>التاريخ: {sale.date}</span>
+                  <span>التاريخ: {sale.date} {sale.time ? ` - ${sale.time}` : ''}</span>
                   <span>الوقت: {new Date().toLocaleTimeString('ar-YE', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               </div>

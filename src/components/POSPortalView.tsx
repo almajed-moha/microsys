@@ -689,9 +689,8 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
                           </button>
 
                           <input
-                            type="number"
-                            min="0"
-                            step="5"
+                            type="text" inputMode="decimal"                            
+                            
                             value={qty === 0 ? '' : qty}
                             onChange={(e) => handleQuantityChange(cat.id, parseInt(e.target.value) || 0)}
                             placeholder="0"

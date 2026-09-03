@@ -96,6 +96,8 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
   const [newOrderQuantities, setNewOrderQuantities] = useState<Record<string, number>>({});
   const [newOrderPriority, setNewOrderPriority] = useState<CardOrderPriority>('normal');
   const [newOrderNotes, setNewOrderNotes] = useState('');
+  const [newOrderDate, setNewOrderDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newOrderTime, setNewOrderTime] = useState(new Date().toISOString().split('T')[1].substring(0, 5));
 
   // KPIs
   const pendingOrders = useMemo(() => orders.filter((o) => o.status === 'pending'), [orders]);
@@ -207,7 +209,8 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
         totalRetailAmount: totalRetail,
         priority: newOrderPriority,
         notes: newOrderNotes.trim() || undefined,
-        requestDate: new Date().toISOString().split('T')[0],
+        requestDate: newOrderDate,
+        time: newOrderTime,
         timestamp: new Date().toISOString(),
       });
     }
@@ -488,7 +491,7 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
                         <span>•</span>
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                          <span>{order.requestDate}</span>
+                          <span>{order.requestDate} {order.time ? ` - ${order.time}` : ''}</span>
                         </span>
                         <span>•</span>
                         <span className="font-bold text-white">
@@ -826,7 +829,7 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
                 </div>
                 <div>
                   <span className="text-slate-500 block">التاريخ:</span>
-                  <strong className="font-bold text-slate-900">{printingOrder.requestDate}</strong>
+                  <strong className="font-bold text-slate-900">{printingOrder.requestDate} {printingOrder.time ? ` - ${printingOrder.time}` : ''}</strong>
                 </div>
                 <div>
                   <span className="text-slate-500 block">الهاتف:</span>
@@ -949,9 +952,8 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
 
                       <div className="flex items-center gap-2">
                         <input
-                          type="number"
-                          min="0"
-                          step="10"
+                          type="text" inputMode="decimal"                          
+                          
                           value={newOrderQuantities[cat.id] || ''}
                           onChange={(e) => {
                             const val = parseInt(e.target.value) || 0;
@@ -970,6 +972,29 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
                 </div>
               </div>
 
+              {/* Date and Time */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <label className="block font-bold text-slate-300">التاريخ:</label>
+                  <input
+                    type="date"
+                    value={newOrderDate}
+                    onChange={(e) => setNewOrderDate(e.target.value)}
+                    className="w-full bg-slate-950 text-white rounded-xl p-2.5 border border-slate-800 focus:outline-none focus:border-indigo-500"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block font-bold text-slate-300">الوقت:</label>
+                  <input
+                    type="time"
+                    value={newOrderTime}
+                    onChange={(e) => setNewOrderTime(e.target.value)}
+                    className="w-full bg-slate-950 text-white rounded-xl p-2.5 border border-slate-800 focus:outline-none focus:border-indigo-500"
+                    required
+                  />
+                </div>
+              </div>
               {/* Priority */}
               <div className="space-y-1.5">
                 <label className="block font-bold text-slate-300">الأولوية:</label>

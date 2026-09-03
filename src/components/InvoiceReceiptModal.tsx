@@ -176,7 +176,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
       `# MikroTik RouterOS Script for Invoice: ${invoice.invoiceNumber}`,
       `# Type: ${isReturn ? 'Return Invoice' : 'Sales / Delivery Batch'}`,
       `# POS Point: ${invoice.posPointName || posPoint?.name || 'Unknown'}`,
-      `# Date: ${invoice.date}`,
+      `# Date: ${invoice.date} ${invoice.time ? `- ${invoice.time}` : ''}`,
       `# Total Quantity: ${invoice.totalQuantity} Cards`,
       '# ========================================================',
       '',
@@ -219,7 +219,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
     return `*${settings.networkName}*\n` +
       `🧾 *${isReturn ? 'سند مرتجع كروت معتمد' : 'فاتورة تسليم كروت ومبيعات'}*\n` +
       `رقم الفاتورة: *${invoice.invoiceNumber}*\n` +
-      `التاريخ: ${invoice.date}\n` +
+      `التاريخ: ${invoice.date} ${invoice.time ? `- ${invoice.time}` : ''}\n` +
       `نقطة البيع: *${invoice.posPointName || posPoint?.name}*\n` +
       `المسؤول المستلم: ${invoice.receivedBy || posPoint?.managerName || '—'}\n` +
       `طريقة السداد: ${isReturn ? 'خصم مديونية' : invoice.paymentType === 'cash' ? 'نقداً فوري' : 'آجل على الحساب'}\n` +
@@ -288,7 +288,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
               </div>
               <div className="flex items-center gap-2 mt-1">
                 <p className="text-xs text-slate-400">
-                  {invoice.posPointName || posPoint?.name} • {invoice.date}
+                  {invoice.posPointName || posPoint?.name} • {invoice.date} {invoice.time ? ` - ${invoice.time}` : ''}
                 </p>
                 <RecordAuditInfo
                   audit={invoice}
@@ -415,7 +415,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
                   </div>
                   <div className="mt-2 text-xs text-slate-700 font-mono text-left">
                     <div>رقم الفاتورة: <strong className="text-slate-900 font-bold">{invoice.invoiceNumber}</strong></div>
-                    <div>تاريخ الإصدار: <strong className="text-slate-900">{invoice.date}</strong></div>
+                    <div>تاريخ الإصدار: <strong className="text-slate-900">{invoice.date} {invoice.time ? ` - ${invoice.time}` : ''}</strong></div>
                   </div>
                   <div className="mt-2">
                     <Barcode value={invoice.invoiceNumber} width={1.4} height={32} fontSize={9} margin={0} />
@@ -583,7 +583,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span>التاريخ:</span>
-                  <span>{invoice.date}</span>
+                  <span>{invoice.date} {invoice.time ? ` - ${invoice.time}` : ''}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>نقطة البيع:</span>

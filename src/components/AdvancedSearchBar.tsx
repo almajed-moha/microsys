@@ -387,7 +387,7 @@ export const AdvancedSearchBar: React.FC<AdvancedSearchBarProps> = ({
           <div>
             <label className="block text-[11px] font-bold text-slate-400 mb-1">الحد الأدنى للمبلغ ({currency}):</label>
             <input
-              type="number"
+              type="text" inputMode="decimal"
               value={filters.minAmount || ''}
               onChange={(e) => updateField('minAmount', e.target.value)}
               placeholder="0"
@@ -398,7 +398,7 @@ export const AdvancedSearchBar: React.FC<AdvancedSearchBarProps> = ({
           <div>
             <label className="block text-[11px] font-bold text-slate-400 mb-1">الحد الأقصى للمبلغ ({currency}):</label>
             <input
-              type="number"
+              type="text" inputMode="decimal"
               value={filters.maxAmount || ''}
               onChange={(e) => updateField('maxAmount', e.target.value)}
               placeholder="بلا حد"

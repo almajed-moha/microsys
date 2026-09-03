@@ -1580,15 +1580,25 @@ export class MikroTikService {
     }));
   }
 
+  // Mutable Demo Storage for User Manager Profiles & Limitations
+  private static demoUMProfiles: any[] = [
+    { id: '*ump1', name: 'UM-Profile-100', nameForUsers: 'كارت 100 ريال (1 ساعة / 500 ميجا)', price: 100, validity: '1d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
+    { id: '*ump2', name: 'UM-Profile-200', nameForUsers: 'كارت 200 ريال (3 ساعات / 1.5 جيجا)', price: 200, validity: '2d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
+    { id: '*ump3', name: 'UM-Profile-500', nameForUsers: 'كارت 500 ريال (24 ساعة / 3.5 جيجا)', price: 500, validity: '3d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
+    { id: '*ump4', name: 'UM-Profile-1000', nameForUsers: 'كارت 1000 ريال (3 أيام / 8 جيجا)', price: 1000, validity: '5d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
+  ];
+
+  private static demoUMLimitations: any[] = [
+    { id: '*lim1', name: 'UM-Lim-100', uptimeLimit: '1h', downloadLimit: '500M', rateLimitRx: '2M', rateLimitTx: '4M' },
+    { id: '*lim2', name: 'UM-Lim-200', uptimeLimit: '3h', downloadLimit: '1500M', rateLimitRx: '2M', rateLimitTx: '5M' },
+    { id: '*lim3', name: 'UM-Lim-500', uptimeLimit: '1d', downloadLimit: '3500M', rateLimitRx: '3M', rateLimitTx: '6M' },
+    { id: '*lim4', name: 'UM-Lim-1000', uptimeLimit: '3d', downloadLimit: '8G', rateLimitRx: '4M', rateLimitTx: '8M' },
+  ];
+
   // 14. Get User Manager Profiles
   public static async getUserManagerProfiles(options: MikroTikConnectionOptions): Promise<any[]> {
     if (options.protocol === 'demo' || options.host === 'demo') {
-      return [
-        { id: '*ump1', name: 'UM-Profile-100', nameForUsers: 'كارت 100 ريال (1 ساعة / 500 ميجا)', price: 100, validity: '1d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
-        { id: '*ump2', name: 'UM-Profile-200', nameForUsers: 'كارت 200 ريال (3 ساعات / 1.5 جيجا)', price: 200, validity: '2d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
-        { id: '*ump3', name: 'UM-Profile-500', nameForUsers: 'كارت 500 ريال (24 ساعة / 3.5 جيجا)', price: 500, validity: '3d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
-        { id: '*ump4', name: 'UM-Profile-1000', nameForUsers: 'كارت 1000 ريال (3 أيام / 8 جيجا)', price: 1000, validity: '5d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
-      ];
+      return [...MikroTikService.demoUMProfiles];
     }
 
     const proto = options.protocol || 'auto';
@@ -1650,12 +1660,7 @@ export class MikroTikService {
   // 15. Get User Manager Limitations
   public static async getUserManagerLimitations(options: MikroTikConnectionOptions): Promise<any[]> {
     if (options.protocol === 'demo' || options.host === 'demo') {
-      return [
-        { id: '*lim1', name: 'UM-Lim-100', uptimeLimit: '1h', downloadLimit: '500M', rateLimitRx: '2M', rateLimitTx: '4M' },
-        { id: '*lim2', name: 'UM-Lim-200', uptimeLimit: '3h', downloadLimit: '1500M', rateLimitRx: '2M', rateLimitTx: '5M' },
-        { id: '*lim3', name: 'UM-Lim-500', uptimeLimit: '1d', downloadLimit: '3500M', rateLimitRx: '3M', rateLimitTx: '6M' },
-        { id: '*lim4', name: 'UM-Lim-1000', uptimeLimit: '3d', downloadLimit: '8G', rateLimitRx: '4M', rateLimitTx: '8M' },
-      ];
+      return [...MikroTikService.demoUMLimitations];
     }
 
     const proto = options.protocol || 'auto';
@@ -1802,12 +1807,14 @@ export class MikroTikService {
         for (const card of cards) {
           try {
             // Check if v7 or v6 endpoint
-            const bodyV7 = {
+            const bodyV7: Record<string, any> = {
               name: card.username,
-              password: card.password || card.username,
               profile: card.profile || 'default',
               comment: card.comment || 'POS Batch',
             };
+            if (card.password !== undefined && card.password !== '') {
+              bodyV7.password = card.password;
+            }
 
             try {
               await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/user', 'PUT', bodyV7);
@@ -1815,7 +1822,7 @@ export class MikroTikService {
               const bodyV6 = {
                 customer: card.customer || 'admin',
                 username: card.username,
-                password: card.password || card.username,
+                password: card.password || '',
                 'actual-profile': card.profile,
                 comment: card.comment,
               };
@@ -1846,9 +1853,9 @@ export class MikroTikService {
           const words = [
             '/user-manager/user/add',
             `=name=${card.username}`,
-            `=password=${card.password || card.username}`,
             `=comment=${card.comment || 'POS Batch'}`,
           ];
+          if (card.password) words.push(`=password=${card.password}`);
           if (card.profile) words.push(`=profile=${card.profile}`);
           await client.sendSentence(words);
         } catch {
@@ -1857,7 +1864,7 @@ export class MikroTikService {
             '/tool/user-manager/user/add',
             `=customer=${card.customer || 'admin'}`,
             `=username=${card.username}`,
-            `=password=${card.password || card.username}`,
+            `=password=${card.password || ''}`,
           ];
           if (card.comment) wordsV6.push(`=comment=${card.comment}`);
           await client.sendSentence(wordsV6);
@@ -1901,15 +1908,58 @@ export class MikroTikService {
       routerOsVersion?: 'v6' | 'v7';
     }
   ): Promise<{ success: boolean; message: string }> {
+    const limName = payload.limitationName || `Lim-${payload.profileName}`;
+    const rx = payload.rateLimit ? (payload.rateLimit.split('/')[1] || '2M') : '2M';
+    const tx = payload.rateLimit ? (payload.rateLimit.split('/')[0] || '4M') : '4M';
+
     if (options.protocol === 'demo' || options.host === 'demo') {
-      return { success: true, message: `تم حفظ وتفعيل بروفايل User Manager (${payload.profileName}) بنجاح (وضع المحاكاة).` };
+      // Upsert in demo memory
+      const existingProfIndex = MikroTikService.demoUMProfiles.findIndex(
+        p => p.name === payload.profileName || p.id === payload.profileName
+      );
+      const updatedProfile = {
+        id: existingProfIndex >= 0 ? MikroTikService.demoUMProfiles[existingProfIndex].id : `*ump_${Date.now()}`,
+        name: payload.profileName,
+        nameForUsers: payload.nameForUsers || payload.profileName,
+        price: Number(payload.price) || 0,
+        validity: payload.validityDays ? `${payload.validityDays}d` : '1d',
+        startsAt: payload.startsAt || 'logon',
+        overrideSharedUsers: 1,
+        owner: 'admin',
+      };
+
+      if (existingProfIndex >= 0) {
+        MikroTikService.demoUMProfiles[existingProfIndex] = updatedProfile;
+      } else {
+        MikroTikService.demoUMProfiles.push(updatedProfile);
+      }
+
+      const existingLimIndex = MikroTikService.demoUMLimitations.findIndex(
+        l => l.name === limName || l.name === `Lim-${payload.profileName}`
+      );
+      const updatedLim = {
+        id: existingLimIndex >= 0 ? MikroTikService.demoUMLimitations[existingLimIndex].id : `*lim_${Date.now()}`,
+        name: limName,
+        uptimeLimit: payload.uptimeLimit || '1d',
+        downloadLimit: payload.quotaLimit || '1000M',
+        rateLimitRx: rx,
+        rateLimitTx: tx,
+      };
+
+      if (existingLimIndex >= 0) {
+        MikroTikService.demoUMLimitations[existingLimIndex] = updatedLim;
+      } else {
+        MikroTikService.demoUMLimitations.push(updatedLim);
+      }
+
+      return {
+        success: true,
+        message: `تم ${existingProfIndex >= 0 ? 'تحديث' : 'إنشاء'} بروفايل User Manager (${payload.profileName}) بنجاح.`
+      };
     }
 
     const proto = options.protocol || 'auto';
     const isV7 = payload.routerOsVersion === 'v7';
-    const limName = payload.limitationName || `Lim-${payload.profileName}`;
-    const rx = payload.rateLimit ? (payload.rateLimit.split('/')[1] || '2M') : '2M';
-    const tx = payload.rateLimit ? (payload.rateLimit.split('/')[0] || '4M') : '4M';
 
     if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
       try {
@@ -1917,24 +1967,50 @@ export class MikroTikService {
         const port = options.port || (isHttps ? 443 : 80);
 
         if (isV7) {
-          // v7 Limitation
-          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/limitation', 'PUT', {
-            name: limName,
-            'rate-limit-rx': rx,
-            'rate-limit-tx': tx,
-            'uptime-limit': payload.uptimeLimit || '1d',
-            'download-limit': payload.quotaLimit || '1000M',
-          });
+          // Check if limitation exists to either PUT (create) or PATCH (update)
+          try {
+            await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/limitation', 'PUT', {
+              name: limName,
+              'rate-limit-rx': rx,
+              'rate-limit-tx': tx,
+              'uptime-limit': payload.uptimeLimit || '1d',
+              'download-limit': payload.quotaLimit || '1000M',
+            });
+          } catch {
+            // If already exists, attempt to update via PATCH/POST
+            try {
+              await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, `/user-manager/limitation/${encodeURIComponent(limName)}`, 'PATCH', {
+                'rate-limit-rx': rx,
+                'rate-limit-tx': tx,
+                'uptime-limit': payload.uptimeLimit || '1d',
+                'download-limit': payload.quotaLimit || '1000M',
+              });
+            } catch {
+              // ignore
+            }
+          }
 
           // v7 Profile
-          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/profile', 'PUT', {
-            name: payload.profileName,
-            'name-for-users': payload.nameForUsers || payload.profileName,
-            price: String(payload.price || 0),
-            validity: payload.validityDays ? `${payload.validityDays}d` : '1d',
-          });
+          try {
+            await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/profile', 'PUT', {
+              name: payload.profileName,
+              'name-for-users': payload.nameForUsers || payload.profileName,
+              price: String(payload.price || 0),
+              validity: payload.validityDays ? `${payload.validityDays}d` : '1d',
+            });
+          } catch {
+            try {
+              await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, `/user-manager/profile/${encodeURIComponent(payload.profileName)}`, 'PATCH', {
+                'name-for-users': payload.nameForUsers || payload.profileName,
+                price: String(payload.price || 0),
+                validity: payload.validityDays ? `${payload.validityDays}d` : '1d',
+              });
+            } catch {
+              // ignore
+            }
+          }
 
-          // v7 Profile-Limitation
+          // v7 Profile-Limitation link
           try {
             await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/profile-limitation', 'PUT', {
               profile: payload.profileName,
@@ -1945,25 +2021,33 @@ export class MikroTikService {
           }
         } else {
           // v6 Limitation
-          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/limitation', 'PUT', {
-            name: limName,
-            'rate-limit-rx': rx,
-            'rate-limit-tx': tx,
-            'uptime-limit': payload.uptimeLimit || '1d',
-            'download-limit': payload.quotaLimit || '1000M',
-          });
+          try {
+            await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/limitation', 'PUT', {
+              name: limName,
+              'rate-limit-rx': rx,
+              'rate-limit-tx': tx,
+              'uptime-limit': payload.uptimeLimit || '1d',
+              'download-limit': payload.quotaLimit || '1000M',
+            });
+          } catch {
+            // ignore
+          }
 
           // v6 Profile
-          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/profile', 'PUT', {
-            name: payload.profileName,
-            'name-for-users': payload.nameForUsers || payload.profileName,
-            price: String(payload.price || 0),
-            validity: payload.validityDays ? `${payload.validityDays}d` : '1d',
-            'starts-at': payload.startsAt || 'logon',
-          });
+          try {
+            await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/profile', 'PUT', {
+              name: payload.profileName,
+              'name-for-users': payload.nameForUsers || payload.profileName,
+              price: String(payload.price || 0),
+              validity: payload.validityDays ? `${payload.validityDays}d` : '1d',
+              'starts-at': payload.startsAt || 'logon',
+            });
+          } catch {
+            // ignore
+          }
         }
 
-        return { success: true, message: `تم إنشاء وربط بروفايل User Manager (${payload.profileName}) بنجاح.` };
+        return { success: true, message: `تم حفظ بروفايل User Manager (${payload.profileName}) بنجاح.` };
       } catch (err: any) {
         if (proto !== 'auto') throw err;
       }
@@ -1977,26 +2061,57 @@ export class MikroTikService {
 
     try {
       if (isV7) {
-        // v7 Add limitation
-        await client.sendSentence([
-          '/user-manager/limitation/add',
-          `=name=${limName}`,
-          `=rate-limit-rx=${rx}`,
-          `=rate-limit-tx=${tx}`,
-          `=uptime-limit=${payload.uptimeLimit || '1d'}`,
-          `=download-limit=${payload.quotaLimit || '1000M'}`,
+        // 1. Check if limitation already exists
+        const existingLim = await client.sendSentence([
+          '/user-manager/limitation/print',
+          `?name=${limName}`,
         ]);
 
-        // v7 Add profile
-        await client.sendSentence([
-          '/user-manager/profile/add',
-          `=name=${payload.profileName}`,
-          `=name-for-users=${payload.nameForUsers || payload.profileName}`,
-          `=price=${payload.price || 0}`,
-          `=validity=${payload.validityDays ? `${payload.validityDays}d` : '1d'}`,
+        if (existingLim && existingLim.length > 0 && existingLim[0]['.id']) {
+          await client.sendSentence([
+            '/user-manager/limitation/set',
+            `=.id=${existingLim[0]['.id']}`,
+            `=rate-limit-rx=${rx}`,
+            `=rate-limit-tx=${tx}`,
+            `=uptime-limit=${payload.uptimeLimit || '1d'}`,
+            `=download-limit=${payload.quotaLimit || '1000M'}`,
+          ]);
+        } else {
+          await client.sendSentence([
+            '/user-manager/limitation/add',
+            `=name=${limName}`,
+            `=rate-limit-rx=${rx}`,
+            `=rate-limit-tx=${tx}`,
+            `=uptime-limit=${payload.uptimeLimit || '1d'}`,
+            `=download-limit=${payload.quotaLimit || '1000M'}`,
+          ]);
+        }
+
+        // 2. Check if profile already exists
+        const existingProf = await client.sendSentence([
+          '/user-manager/profile/print',
+          `?name=${payload.profileName}`,
         ]);
 
-        // v7 Link profile-limitation
+        if (existingProf && existingProf.length > 0 && existingProf[0]['.id']) {
+          await client.sendSentence([
+            '/user-manager/profile/set',
+            `=.id=${existingProf[0]['.id']}`,
+            `=name-for-users=${payload.nameForUsers || payload.profileName}`,
+            `=price=${payload.price || 0}`,
+            `=validity=${payload.validityDays ? `${payload.validityDays}d` : '1d'}`,
+          ]);
+        } else {
+          await client.sendSentence([
+            '/user-manager/profile/add',
+            `=name=${payload.profileName}`,
+            `=name-for-users=${payload.nameForUsers || payload.profileName}`,
+            `=price=${payload.price || 0}`,
+            `=validity=${payload.validityDays ? `${payload.validityDays}d` : '1d'}`,
+          ]);
+        }
+
+        // 3. Link profile-limitation if not linked
         try {
           await client.sendSentence([
             '/user-manager/profile-limitation/add',
@@ -2004,30 +2119,60 @@ export class MikroTikService {
             `=limitation=${limName}`,
           ]);
         } catch {
-          // ignore
+          // already linked
         }
       } else {
-        // v6 Limitation
-        await client.sendSentence([
-          '/tool/user-manager/limitation/add',
-          `=name=${limName}`,
-          `=rate-limit-rx=${rx}`,
-          `=rate-limit-tx=${tx}`,
-          `=uptime-limit=${payload.uptimeLimit || '1d'}`,
-          `=download-limit=${payload.quotaLimit || '1000M'}`,
+        // v6 Binary API
+        const existingLimV6 = await client.sendSentence([
+          '/tool/user-manager/limitation/print',
+          `?name=${limName}`,
         ]);
 
-        // v6 Profile
-        await client.sendSentence([
-          '/tool/user-manager/profile/add',
-          `=name=${payload.profileName}`,
-          `=name-for-users=${payload.nameForUsers || payload.profileName}`,
-          `=price=${payload.price || 0}`,
-          `=validity=${payload.validityDays ? `${payload.validityDays}d` : '1d'}`,
-          `=starts-at=${payload.startsAt || 'logon'}`,
+        if (existingLimV6 && existingLimV6.length > 0 && existingLimV6[0]['.id']) {
+          await client.sendSentence([
+            '/tool/user-manager/limitation/set',
+            `=.id=${existingLimV6[0]['.id']}`,
+            `=rate-limit-rx=${rx}`,
+            `=rate-limit-tx=${tx}`,
+            `=uptime-limit=${payload.uptimeLimit || '1d'}`,
+            `=download-limit=${payload.quotaLimit || '1000M'}`,
+          ]);
+        } else {
+          await client.sendSentence([
+            '/tool/user-manager/limitation/add',
+            `=name=${limName}`,
+            `=rate-limit-rx=${rx}`,
+            `=rate-limit-tx=${tx}`,
+            `=uptime-limit=${payload.uptimeLimit || '1d'}`,
+            `=download-limit=${payload.quotaLimit || '1000M'}`,
+          ]);
+        }
+
+        const existingProfV6 = await client.sendSentence([
+          '/tool/user-manager/profile/print',
+          `?name=${payload.profileName}`,
         ]);
 
-        // v6 Link
+        if (existingProfV6 && existingProfV6.length > 0 && existingProfV6[0]['.id']) {
+          await client.sendSentence([
+            '/tool/user-manager/profile/set',
+            `=.id=${existingProfV6[0]['.id']}`,
+            `=name-for-users=${payload.nameForUsers || payload.profileName}`,
+            `=price=${payload.price || 0}`,
+            `=validity=${payload.validityDays ? `${payload.validityDays}d` : '1d'}`,
+            `=starts-at=${payload.startsAt || 'logon'}`,
+          ]);
+        } else {
+          await client.sendSentence([
+            '/tool/user-manager/profile/add',
+            `=name=${payload.profileName}`,
+            `=name-for-users=${payload.nameForUsers || payload.profileName}`,
+            `=price=${payload.price || 0}`,
+            `=validity=${payload.validityDays ? `${payload.validityDays}d` : '1d'}`,
+            `=starts-at=${payload.startsAt || 'logon'}`,
+          ]);
+        }
+
         try {
           await client.sendSentence([
             '/tool/user-manager/profile/limitation/add',
@@ -2040,10 +2185,59 @@ export class MikroTikService {
       }
 
       client.close();
-      return { success: true, message: `تم إنشاء وربط بروفايل User Manager (${payload.profileName}) في الراوتر بنجاح.` };
+      return { success: true, message: `تم حفظ وتحديث بروفايل User Manager (${payload.profileName}) بنجاح.` };
     } catch (err: any) {
       client.close();
-      return { success: false, message: `خطأ أثناء إنشاء البروفايل في الراوتر: ${err.message}` };
+      return { success: false, message: `خطأ أثناء حفظ البروفايل في الراوتر: ${err.message}` };
+    }
+  }
+
+  // 19. Delete User Manager Profile
+  public static async deleteUserManagerProfile(options: MikroTikConnectionOptions, profileIdOrName: string): Promise<boolean> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      MikroTikService.demoUMProfiles = MikroTikService.demoUMProfiles.filter(
+        p => p.id !== profileIdOrName && p.name !== profileIdOrName
+      );
+      return true;
+    }
+
+    const proto = options.protocol || 'auto';
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+        try {
+          if (profileIdOrName.startsWith('*')) {
+            await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, `/user-manager/profile/${encodeURIComponent(profileIdOrName)}`, 'DELETE');
+          } else {
+            await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/profile/remove', 'POST', { numbers: profileIdOrName });
+          }
+        } catch {
+          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/profile/remove', 'POST', { numbers: profileIdOrName });
+        }
+        return true;
+      } catch (err) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    try {
+      const idParam = profileIdOrName.startsWith('*') ? `=.id=${profileIdOrName}` : `=numbers=${profileIdOrName}`;
+      try {
+        await client.sendSentence(['/user-manager/profile/remove', idParam]);
+      } catch {
+        await client.sendSentence(['/tool/user-manager/profile/remove', idParam]);
+      }
+      client.close();
+      return true;
+    } catch {
+      client.close();
+      return false;
     }
   }
 

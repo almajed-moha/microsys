@@ -95,8 +95,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 المبلغ المسدد ({settings.currencySymbol}) <span className="text-rose-400">*</span>:
               </label>
               <input
-                type="number"
-                min="1"
+                type="text" inputMode="decimal"
+                
                 required
                 placeholder="10000"
                 value={amount === 0 ? '' : amount}

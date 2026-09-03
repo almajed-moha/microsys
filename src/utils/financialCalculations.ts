@@ -636,7 +636,7 @@ export function calculateComprehensiveFinancials(params: {
  * Calculate accurate POS account balance and real-time debt
  */
 export function calculatePOSBalance(
-  posPointId: string,
+  posPointId: string | null | 'all',
   sales: SalesRecord[] = [],
   payments: PaymentRecord[] = [],
   dispatches: CardBatchDispatch[] = [],
@@ -650,11 +650,12 @@ export function calculatePOSBalance(
   totalDispatchedValue: number;
   totalCardsDelivered: number;
 } {
-  const safeSales = (sales || []).filter((s) => s && s.posPointId === posPointId);
-  const safePayments = (payments || []).filter((p) => p && p.posPointId === posPointId);
-  const safeDispatches = (dispatches || []).filter((d) => d && d.posPointId === posPointId);
+  const isGlobal = !posPointId || posPointId === 'all';
+  const safeSales = (sales || []).filter((s) => s && (isGlobal || s.posPointId === posPointId));
+  const safePayments = (payments || []).filter((p) => p && (isGlobal || p.posPointId === posPointId));
+  const safeDispatches = (dispatches || []).filter((d) => d && (isGlobal || d.posPointId === posPointId));
   const safeInvoices = (invoices || []).filter(
-    (inv) => inv && inv.posPointId === posPointId && inv.status !== 'cancelled'
+    (inv) => inv && inv.status !== 'cancelled' && (isGlobal || inv.posPointId === posPointId)
   );
 
   let totalWholesaleSales = safeSales.reduce((acc, s) => acc + (s.totalWholesaleAmount || 0), 0);

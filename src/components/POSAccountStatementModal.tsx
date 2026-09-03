@@ -33,7 +33,8 @@ import {
   SalesRecord,
   PaymentRecord,
   CardBatchDispatch,
-  NetworkSettings
+  NetworkSettings,
+  InvoiceRecord
 } from '../types';
 import { calculatePOSInventory, calculatePOSBalance } from '../utils/storage';
 import {
@@ -43,29 +44,35 @@ import {
 } from '../utils/pdfExport';
 
 interface POSAccountStatementModalProps {
-  posPoint: POSPoint;
+  posPoint?: POSPoint | null;
+  posPoints?: POSPoint[];
   categories: CardCategory[];
   sales: SalesRecord[];
   payments: PaymentRecord[];
   dispatches: CardBatchDispatch[];
+  invoices?: InvoiceRecord[];
   settings: NetworkSettings;
   initialPaperFormat?: 'a4' | 'pos-80mm';
   onClose: () => void;
   onViewPaymentReceipt?: (payment: PaymentRecord) => void;
   onPrintSaleReceipt?: (sale: SalesRecord) => void;
+  onViewInvoiceReceipt?: (invoice: InvoiceRecord) => void;
 }
 
 export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> = ({
   posPoint,
+  posPoints = [],
   categories,
   sales,
   payments,
   dispatches,
+  invoices = [],
   settings,
   initialPaperFormat = 'a4',
   onClose,
   onViewPaymentReceipt,
   onPrintSaleReceipt,
+  onViewInvoiceReceipt,
 }) => {
   const [paperFormat, setPaperFormat] = useState<'a4' | 'pos-80mm'>(initialPaperFormat);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
@@ -76,29 +83,35 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
   // Filters State
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [txTypeFilter, setTxTypeFilter] = useState<'all' | 'sale' | 'payment' | 'dispatch'>('all');
+  const [txTypeFilter, setTxTypeFilter] = useState<'all' | 'sale' | 'payment' | 'dispatch' | 'return'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
   // Overall Inventory & Balance
-  const fullInventory = useMemo(() => calculatePOSInventory(posPoint.id, dispatches, sales), [posPoint.id, dispatches, sales]);
-  const fullBalance = useMemo(() => calculatePOSBalance(posPoint.id, sales, payments, dispatches), [posPoint.id, sales, payments, dispatches]);
+  const [globalPosId, setGlobalPosId] = useState<string>('all');
+  const activePosId = posPoint ? posPoint.id : globalPosId;
+  const activePosPoint = posPoint || posPoints.find((p) => p.id === activePosId);
+
+  const fullInventory = useMemo(() => calculatePOSInventory(activePosId, dispatches, sales, invoices), [activePosId, dispatches, sales, invoices]);
+  const fullBalance = useMemo(() => calculatePOSBalance(activePosId, sales, payments, dispatches, invoices), [activePosId, sales, payments, dispatches, invoices]);
 
   // Combine Dispatches, Sales, and Payments into chronological transactions
   const allPosTransactions = useMemo(() => {
-    const posSales = sales.filter((s) => s.posPointId === posPoint.id);
-    const posPayments = payments.filter((p) => p.posPointId === posPoint.id);
-    const posDispatches = dispatches.filter((d) => d.posPointId === posPoint.id);
+    const posSales = activePosId === 'all' ? sales : sales.filter((s) => s.posPointId === activePosId);
+    const posPayments = activePosId === 'all' ? payments : payments.filter((p) => p.posPointId === activePosId);
+    const posDispatches = activePosId === 'all' ? dispatches : dispatches.filter((d) => d.posPointId === activePosId);
+    const posInvoices = invoices.filter((i) => i.status !== 'cancelled' && (activePosId === 'all' || i.posPointId === activePosId));
 
     const list = [
       ...posDispatches.map((d) => {
         const cat = categories.find((c) => c.id === d.categoryId);
         return {
           id: d.id,
-          date: d.date,
+          date: d.date, time: d.time,
           type: 'dispatch' as const,
           typeName: 'تسليم دفعة كروت',
           description: `تسليم دفعة كروت (${cat?.name || 'كروت'} × ${d.quantity})`,
           quantity: d.quantity,
+          posPointName: posPoints.find((p) => p.id === d.posPointId)?.name || d.posPointId,
           categoryName: cat?.name || 'غير محدد',
           unitPrice: d.wholesalePricePerCard,
           debit: d.totalWholesaleValue,
@@ -111,11 +124,12 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
         const cat = categories.find((c) => c.id === s.categoryId);
         return {
           id: s.id,
-          date: s.date,
+          date: s.date, time: s.time,
           type: 'sale' as const,
           typeName: s.paymentType === 'cash' ? 'مبيعات كروت (نقداً)' : 'مبيعات كروت (آجل)',
           description: `مبيعات كروت (${cat?.name || 'كروت'} × ${s.quantity}) - ${s.paymentType === 'cash' ? 'نقداً' : 'آجل على الحساب'}`,
           quantity: s.quantity,
+          posPointName: posPoints.find((p) => p.id === s.posPointId)?.name || s.posPointId,
           categoryName: cat?.name || 'غير محدد',
           unitPrice: s.wholesaleUnitPrice,
           debit: s.totalWholesaleAmount,
@@ -124,13 +138,39 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
           rawObj: s,
         };
       }),
+      ...posInvoices.flatMap((inv) => {
+        return inv.items.map((item, index) => {
+          const typeName = inv.type === 'sale' 
+            ? (inv.paymentType === 'cash' ? 'مبيعات كروت (نقداً)' : 'مبيعات كروت (آجل)') 
+            : 'مرتجع مبيعات كروت';
+          
+          const description = `${inv.type === 'sale' ? 'مبيعات' : 'مرتجع'} كروت (${item.categoryName} × ${item.quantity}) - ${inv.type === 'sale' ? (inv.paymentType === 'cash' ? 'نقداً' : 'آجل على الحساب') : 'خصم مديونية'}`;
+          
+          return {
+            id: `${inv.id}-${index}`,
+            date: inv.date, time: inv.time,
+            type: inv.type === 'sale' ? 'invoice_sale' as const : 'invoice_return' as const,
+            typeName,
+            description,
+            quantity: inv.type === 'sale' ? item.quantity : -item.quantity,
+            posPointName: posPoints.find((p) => p.id === inv.posPointId)?.name || inv.posPointId,
+            categoryName: item.categoryName,
+            unitPrice: item.unitWholesalePrice,
+            debit: inv.type === 'sale' ? item.totalWholesalePrice : 0,
+            credit: inv.type === 'sale' ? (inv.paymentType === 'cash' ? item.totalWholesalePrice : 0) : item.totalWholesalePrice,
+            ref: inv.invoiceNumber,
+            rawObj: inv,
+          };
+        });
+      }),
       ...posPayments.map((p) => ({
         id: p.id,
-        date: p.date,
+        date: p.date, time: p.time,
         type: 'payment' as const,
         typeName: 'سداد دفعة نقدية',
         description: `سداد دفعة نقدية (${p.receivedBy || 'التحصيل'}) ${p.notes ? `- ${p.notes}` : ''}`,
         quantity: 0,
+        posPointName: posPoints.find((pos) => pos.id === p.posPointId)?.name || p.posPointId,
         categoryName: '-',
         unitPrice: 0,
         debit: 0,
@@ -142,7 +182,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
 
     // Sort chronologically (oldest first) to compute accurate running balance
     return list.sort((a, b) => a.date.localeCompare(b.date));
-  }, [sales, payments, dispatches, posPoint.id, categories]);
+  }, [sales, payments, dispatches, activePosId, categories]);
 
   // Financial Ledger Math with Opening Balance for Date Ranges
   const ledgerData = useMemo(() => {
@@ -172,7 +212,12 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
 
     // Filter by txType and search inside the period
     const filteredPeriodTxs = periodTxs.filter((tx) => {
-      if (txTypeFilter !== 'all' && tx.type !== txTypeFilter) return false;
+      if (txTypeFilter !== 'all') {
+        if (txTypeFilter === 'sale' && tx.type !== 'sale' && tx.type !== 'invoice_sale') return false;
+        if (txTypeFilter === 'payment' && tx.type !== 'payment') return false;
+        if (txTypeFilter === 'dispatch' && tx.type !== 'dispatch') return false;
+        if (txTypeFilter === 'return' && tx.type !== 'invoice_return') return false;
+      }
       if (searchTerm) {
         const s = searchTerm.toLowerCase();
         const matchesDesc = tx.description.toLowerCase().includes(s);
@@ -251,8 +296,8 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
 
     return `*كشف حساب مالي ومخزني - ${settings.networkName}*
 ----------------------------------------
-👤 الموزع / نقطة البيع: *${posPoint.name}*
-📱 المسؤول: ${posPoint.managerName} (${posPoint.phone})
+👤 الموزع / نقطة البيع: *${activePosPoint?.name || 'كافة الموزعين'}*
+📱 المسؤول: ${activePosPoint?.managerName || 'الإدارة'} (${activePosPoint?.phone || ''})
 📅 الفترة: ${periodLabel}
 ⏱ تاريخ الكشف: ${new Date().toLocaleDateString('ar-EG')} ${new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
 
@@ -281,11 +326,11 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
   const handleShareWhatsApp = async () => {
     setIsSharingWhatsApp(true);
     try {
-      const fileName = `كشف_حساب_${posPoint.name.replace(/\s+/g, '_')}_${paperFormat}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      const fileName = `كشف_حساب_${activePosPoint?.name || 'كافة الموزعين'.replace(/\s+/g, '_')}_${paperFormat}_${new Date().toISOString().slice(0, 10)}.pdf`;
       const res = await sharePdfToWhatsApp('pos-statement-document', {
         filename: fileName,
-        title: `كشف حساب - ${posPoint.name}`,
-        phone: posPoint.phone,
+        title: `كشف حساب - ${activePosPoint?.name || 'كافة الموزعين'}`,
+        phone: activePosPoint?.phone || '',
         messageText: getFormattedWhatsAppMessage(),
         format: paperFormat,
         scale: 2.5,
@@ -298,7 +343,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
       }
     } catch (err) {
       console.error('WhatsApp Share Error:', err);
-      const cleanPhone = posPoint.phone ? (posPoint.phone.startsWith('967') ? posPoint.phone : `967${posPoint.phone}`) : '';
+      const cleanPhone = activePosPoint?.phone || '' ? (activePosPoint?.phone || ''.startsWith('967') ? activePosPoint?.phone || '' : `967${activePosPoint?.phone || ''}`) : '';
       const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(getFormattedWhatsAppMessage())}`;
       window.open(url, '_blank');
     } finally {
@@ -310,10 +355,10 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
   const handleExportPdf = async () => {
     setIsExportingPdf(true);
     try {
-      const fileName = `كشف_حساب_${posPoint.name.replace(/\s+/g, '_')}_${paperFormat}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      const fileName = `كشف_حساب_${activePosPoint?.name || 'كافة الموزعين'.replace(/\s+/g, '_')}_${paperFormat}_${new Date().toISOString().slice(0, 10)}.pdf`;
       const ok = await exportElementToPdf('pos-statement-document', {
         filename: fileName,
-        title: `كشف حساب مالي ومخزني - ${posPoint.name}`,
+        title: `كشف حساب مالي ومخزني - ${activePosPoint?.name || 'كافة الموزعين'}`,
         format: paperFormat,
         scale: 2.5,
       });
@@ -335,7 +380,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
     setIsPrinting(true);
     try {
       await printElementDocument('pos-statement-document', {
-        filename: `كشف_حساب_${posPoint.name.replace(/\s+/g, '_')}.pdf`,
+        filename: `كشف_حساب_${activePosPoint?.name || 'كافة الموزعين'.replace(/\s+/g, '_')}.pdf`,
         format: paperFormat,
         scale: 2.5,
       });
@@ -364,7 +409,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
 
       const csvContent =
         '\uFEFF' +
-        `"كشف حساب نقطة البيع: ${posPoint.name} - ${settings.networkName}"\n` +
+        `"كشف حساب نقطة البيع: ${activePosPoint?.name || 'كافة الموزعين'} - ${settings.networkName}"\n` +
         `"الفترة: ${dateFrom || 'البداية'} إلى ${dateTo || 'الآن'}"\n` +
         `"الرصيد الافتتاحي السابق: ${ledgerData.openingBalance} ${settings.currencySymbol}"\n` +
         `"الرصيد الختامي المتبقي: ${ledgerData.closingBalance} ${settings.currencySymbol}"\n\n` +
@@ -374,7 +419,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.setAttribute('href', url);
-      link.setAttribute('download', `كشف_حساب_${posPoint.name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`);
+      link.setAttribute('download', `كشف_حساب_${activePosPoint?.name || 'كافة الموزعين'.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -398,11 +443,11 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
               <div className="flex items-center gap-2">
                 <h3 className="text-sm sm:text-base font-black text-white truncate">كشف حساب نقطة البيع والموزع</h3>
                 <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800/60 font-mono">
-                  {posPoint.name}
+                  {activePosPoint?.name || 'كافة الموزعين'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-mono truncate">
-                المسؤول: {posPoint.managerName} • {posPoint.phone} • {posPoint.address || 'المركز'}
+                المسؤول: {activePosPoint?.managerName || 'الإدارة'} • {activePosPoint?.phone || ''} • {activePosPoint?.address || '' || 'المركز'}
               </p>
             </div>
           </div>
@@ -514,8 +559,25 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
         {/* Filter Bar with Date Range, Preset Buttons, and Search (No-Print) */}
         <div className="bg-slate-950/80 p-3 sm:p-4 border-b border-slate-800 space-y-2.5 no-print text-xs">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+            {/* Global POS Filter */}
+            {!posPoint && (
+              <div className="lg:col-span-2">
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">تصفية حسب نقطة البيع:</label>
+                <select
+                  value={globalPosId}
+                  onChange={(e) => setGlobalPosId(e.target.value)}
+                  className="w-full bg-slate-800/90 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="all">كافة نقاط البيع والموزعين</option>
+                  {posPoints.map((pos) => (
+                    <option key={pos.id} value={pos.id}>{pos.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* Search within ledger */}
-            <div className="lg:col-span-2 relative">
+            <div className={!posPoint ? "lg:col-span-1 relative" : "lg:col-span-2 relative"}>
               <label className="block text-[11px] font-medium text-slate-400 mb-1">بحث في كشف الحساب:</label>
               <div className="relative">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-2.5" />
@@ -541,6 +603,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                 <option value="sale">مبيعات الكروت فقط</option>
                 <option value="payment">سداد دفعات نقدية فقط</option>
                 <option value="dispatch">تسليم دفعات الكروت فقط</option>
+                <option value="return">مرتجع مبيعات</option>
               </select>
             </div>
 
@@ -670,15 +733,15 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                 <div className="bg-slate-50 p-2 rounded border border-slate-200 text-[10px] space-y-0.5 font-mono">
                   <div className="flex justify-between font-bold text-slate-950">
                     <span>نقطة البيع:</span>
-                    <span>{posPoint.name}</span>
+                    <span>{activePosPoint?.name || 'كافة الموزعين'}</span>
                   </div>
                   <div className="flex justify-between text-slate-700">
                     <span>المسؤول:</span>
-                    <span>{posPoint.managerName}</span>
+                    <span>{activePosPoint?.managerName || 'الإدارة'}</span>
                   </div>
                   <div className="flex justify-between text-slate-700">
                     <span>الهاتف:</span>
-                    <span>{posPoint.phone}</span>
+                    <span>{activePosPoint?.phone || ''}</span>
                   </div>
                   <div className="flex justify-between text-slate-600 pt-0.5 border-t border-slate-200">
                     <span>الفترة:</span>
@@ -740,7 +803,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                     {ledgerData.periodTxs.slice(0, 15).map((tx, idx) => (
                       <div key={idx} className="border-b border-slate-200 pb-1 font-mono">
                         <div className="flex justify-between text-slate-600">
-                          <span>{tx.date}</span>
+                          <span>{tx.date} {tx.time ? ` - ${tx.time}` : ''}</span>
                           <span className="font-bold text-slate-900">{tx.typeName}</span>
                         </div>
                         <div className="text-slate-800 text-[9px] truncate">{tx.description}</div>
@@ -805,7 +868,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                       كشف حساب مالي ومخزني لموزع
                     </span>
                     <div className="text-[11px] text-slate-500 mt-1.5 font-mono font-medium">
-                      رقم الكشف: STMT-POS-{posPoint.id.slice(0, 6).toUpperCase()}
+                      رقم الكشف: STMT-POS-{activePosId.slice(0, 6).toUpperCase()}
                     </div>
                     <div className="text-[11px] text-slate-500 font-mono font-medium">
                       تاريخ الإصدار: {new Date().toLocaleDateString('ar-EG')} {new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
@@ -831,19 +894,19 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 p-4 bg-slate-50 rounded-xl border border-slate-200">
                   <div>
                     <span className="text-slate-500 block text-[11px] font-semibold">اسم نقطة البيع / المحل:</span>
-                    <strong className="text-slate-950 text-sm font-black">{posPoint.name}</strong>
+                    <strong className="text-slate-950 text-sm font-black">{activePosPoint?.name || 'كافة الموزعين'}</strong>
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[11px] font-semibold">المسؤول / المستلم:</span>
-                    <span className="text-slate-800 font-bold">{posPoint.managerName}</span>
+                    <span className="text-slate-800 font-bold">{activePosPoint?.managerName || 'الإدارة'}</span>
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[11px] font-semibold">رقم الهاتف:</span>
-                    <span className="font-mono font-black text-slate-900">{posPoint.phone}</span>
+                    <span className="font-mono font-black text-slate-900">{activePosPoint?.phone || ''}</span>
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[11px] font-semibold">العنوان / الموقع:</span>
-                    <span className="text-slate-700 font-medium">{posPoint.address || 'المركز الرئيسي'}</span>
+                    <span className="text-slate-700 font-medium">{activePosPoint?.address || '' || 'المركز الرئيسي'}</span>
                   </div>
                 </div>
 
@@ -942,6 +1005,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                         <tr>
                           <th className="py-2.5 px-2 text-center w-10">#</th>
                           <th className="py-2.5 px-3">التاريخ</th>
+                          {!posPoint && <th className="py-2.5 px-3 text-right">النقطة</th>}
                           <th className="py-2.5 px-3">البيان / الحركة</th>
                           <th className="py-2.5 px-3 text-left font-mono">مدين (+)</th>
                           <th className="py-2.5 px-3 text-left font-mono">دائن (-)</th>
@@ -956,7 +1020,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                           <tr className="bg-slate-50 font-bold text-slate-800 break-inside-avoid">
                             <td className="py-2 px-2 text-center font-mono text-[11px]">-</td>
                             <td className="py-2 px-3 font-mono text-[11px]">{dateFrom}</td>
-                            <td className="py-2 px-3 font-sans text-indigo-900" colSpan={3}>
+                            <td className="py-2 px-3 font-sans text-indigo-900" colSpan={!posPoint ? 4 : 3}>
                               ★ الرصيد السابق المنقول قبل تاريخ {dateFrom}
                             </td>
                             <td className="py-2 px-3 font-mono text-left font-black text-slate-900 bg-slate-100">
@@ -971,7 +1035,8 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                         {ledgerData.periodTxs.map((row, idx) => (
                           <tr key={idx} className="hover:bg-slate-50 transition break-inside-avoid">
                             <td className="py-2 px-2 text-center font-mono text-slate-500 text-[11px]">{idx + 1}</td>
-                            <td className="py-2 px-3 font-mono text-slate-700 font-medium whitespace-nowrap">{row.date}</td>
+                            <td className="py-2 px-3 font-mono text-slate-700 font-medium whitespace-nowrap">{row.date} {row.time ? ` - ${row.time}` : ''}</td>
+                            {!posPoint && <td className="py-2 px-3 text-[10px] text-slate-600 font-bold whitespace-nowrap">{row.posPointName}</td>}
                             <td className="py-2 px-3 text-slate-900 font-semibold">{row.description}</td>
                             <td className="py-2 px-3 font-mono font-bold text-amber-800 text-left whitespace-nowrap">
                               {(row.debit || 0) > 0 ? `${(row.debit || 0).toLocaleString()} ${settings.currencySymbol}` : '-'}
@@ -1002,6 +1067,15 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                                   فاتورة
                                 </button>
                               )}
+                              {(row.type === 'invoice_sale' || row.type === 'invoice_return') && onViewInvoiceReceipt && (
+                                <button
+                                  onClick={() => onViewInvoiceReceipt(row.rawObj as InvoiceRecord)}
+                                  className="px-2 py-0.5 rounded bg-indigo-100 hover:bg-indigo-200 text-indigo-800 text-[10px] font-bold transition cursor-pointer"
+                                  title="عرض الفاتورة"
+                                >
+                                  فاتورة
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -1018,7 +1092,7 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
                       {/* Table Footer Totals */}
                       <tfoot className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-300">
                         <tr>
-                          <td colSpan={3} className="py-3 px-3 text-right">
+                          <td colSpan={!posPoint ? 4 : 3} className="py-3 px-3 text-right">
                             إجمالي حركات الفترة المحددة:
                           </td>
                           <td className="py-3 px-3 font-mono text-left text-amber-900">

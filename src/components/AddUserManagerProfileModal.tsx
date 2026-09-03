@@ -415,7 +415,7 @@ add profile="${profileName}" limitation="${limitationName}"`;
                   سعر البيع للجمهور ({settings.currencySymbol}):
                 </label>
                 <input
-                  type="number"
+                  type="text" inputMode="decimal"
                   value={retailPrice}
                   onChange={(e) => setRetailPrice(Number(e.target.value))}
                   className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs font-mono font-bold focus:outline-none focus:border-emerald-500"
@@ -427,7 +427,7 @@ add profile="${profileName}" limitation="${limitationName}"`;
                   سعر الجملة للنقاط ({settings.currencySymbol}):
                 </label>
                 <input
-                  type="number"
+                  type="text" inputMode="decimal"
                   value={wholesalePrice}
                   onChange={(e) => setWholesalePrice(Number(e.target.value))}
                   className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs font-mono font-bold focus:outline-none focus:border-indigo-500"
@@ -439,7 +439,7 @@ add profile="${profileName}" limitation="${limitationName}"`;
                   سعر التكلفة ({settings.currencySymbol}):
                 </label>
                 <input
-                  type="number"
+                  type="text" inputMode="decimal"
                   value={costPrice}
                   onChange={(e) => setCostPrice(Number(e.target.value))}
                   className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-slate-500"
@@ -454,7 +454,7 @@ add profile="${profileName}" limitation="${limitationName}"`;
                   صلاحية الكارت (بالأيام):
                 </label>
                 <input
-                  type="number"
+                  type="text" inputMode="decimal"
                   value={validityDays}
                   onChange={(e) => setValidityDays(Number(e.target.value))}
                   className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-white text-xs font-mono focus:outline-none focus:border-indigo-500"

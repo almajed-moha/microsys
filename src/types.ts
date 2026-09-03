@@ -113,6 +113,7 @@ export interface CardBatchDispatch extends EntityAuditMetadata {
   id: string;
   networkId?: string;
   date: string;
+  time?: string;
   posPointId: string;
   categoryId: string;
   quantity: number;
@@ -148,7 +149,8 @@ export interface InvoiceRecord extends EntityAuditMetadata {
   networkId?: string;
   invoiceNumber: string; // e.g. "INV-2026-001" or "RET-2026-001"
   type: 'sale' | 'return'; // 'sale' = فاتورة مبيعات/تسليم دفعة, 'return' = فاتورة مرتجع كروت
-  date: string; // YYYY-MM-DD
+  date: string;
+  time?: string;
   timestamp: string; // ISO string
   posPointId: string;
   posPointName?: string;
@@ -180,7 +182,8 @@ export interface ExpenseRecord extends EntityAuditMetadata {
   id: string;
   networkId?: string;
   voucherNumber: string; // e.g. "EXP-2026-001"
-  date: string; // YYYY-MM-DD
+  date: string;
+  time?: string;
   timestamp: string; // ISO string
   categoryId: string;
   categoryName: string;
@@ -206,7 +209,8 @@ export interface FinancialSummary {
 export interface SalesRecord extends EntityAuditMetadata {
   id: string;
   networkId?: string;
-  date: string; // YYYY-MM-DD
+  date: string;
+  time?: string;
   timestamp: string; // ISO string
   posPointId: string;
   categoryId: string;
@@ -225,6 +229,7 @@ export interface PaymentRecord extends EntityAuditMetadata {
   id: string;
   networkId?: string;
   date: string;
+  time?: string;
   timestamp: string;
   posPointId: string;
   amount: number;
@@ -232,6 +237,14 @@ export interface PaymentRecord extends EntityAuditMetadata {
   referenceNumber?: string;
   receivedBy?: string;
   notes?: string;
+}
+
+export interface CardElementStyle {
+  color?: string;
+  fontFamily?: 'cairo' | 'tajawal' | 'almarai' | 'ibm' | 'mono';
+  fontSize?: number | string;
+  fontWeight?: 'normal' | 'semibold' | 'bold' | 'black';
+  backgroundColor?: string;
 }
 
 export interface CardTemplate extends EntityAuditMetadata {
@@ -248,6 +261,11 @@ export interface CardTemplate extends EntityAuditMetadata {
   bgOpacity?: number; // 0.1 to 1.0
   themeColor: string; // Tailwind color or Hex
   accentColor?: string;
+  borderColor?: string;
+
+  // Frame Corner Style: 'rounded' (مستدير) or 'sharp' (مركن / زوايا حادة 90 درجة)
+  cardCornerStyle?: 'rounded' | 'sharp';
+  cardBorderRadius?: number; // in px, e.g. 14 for rounded, 0 for sharp
 
   // A4 Printing & Grid Setup
   cardsPerPage: number; // calculated gridCols * gridRows
@@ -280,11 +298,18 @@ export interface CardTemplate extends EntityAuditMetadata {
   showSupportPhone: boolean;
   showInstructions: boolean;
   showFooterBanner?: boolean;
+  showPosName?: boolean;
+  showPrintDate?: boolean;
+  showCodeLabel?: boolean; // When false, renders strictly only the code with zero extra text labels
+  fontFamily?: 'cairo' | 'tajawal' | 'almarai' | 'ibm' | 'mono';
+  bgOverlayOpacity?: number; // 0 to 0.8
+  elementPositions?: Record<string, { x: number; y: number }>;
+  elementStyles?: Record<string, CardElementStyle>; // Per-element custom font, color, size, and weight
 
   // Typography & Code Layout
-  codeBoxStyle: 'rounded-white' | 'dark-box' | 'amber-box' | 'glassmorphism' | 'clean-border' | 'transparent';
+  codeBoxStyle: 'transparent' | 'solid-bg' | 'rounded-white' | 'dark-box' | 'amber-box' | 'glassmorphism' | 'clean-border';
   codeTextColor: string; // '#0f172a', '#ffffff', etc.
-  codeFontSize: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+  codeFontSize: number | string;
   codeLetterSpacing: 'normal' | 'wide' | 'widest';
 
   createdAt: string;
@@ -512,6 +537,21 @@ export interface DhcpLease {
   expiresAfter?: string;
 }
 
+export type TenantAllowedModule =
+  | 'dashboard'
+  | 'invoices'
+  | 'orders'
+  | 'expenses'
+  | 'payments'
+  | 'pos'
+  | 'categories'
+  | 'mikrotik'
+  | 'users'
+  | 'pos_portal'
+  | 'settings'
+  | 'backup'
+  | 'ai_assistant';
+
 export interface NetworkTenant {
   id: string;
   name: string;
@@ -523,6 +563,10 @@ export interface NetworkTenant {
   subscriptionEndDate?: string;
   createdAt: string;
   settings: NetworkSettings;
+  // صلاحيات وقوائم مدير الشبكة المحددة من قبل مالك النظام
+  accessMode?: 'all' | 'custom'; // 'all' = جميع القوائم والواجهات، 'custom' = قوائم مخصصة
+  allowedModules?: TenantAllowedModule[]; // مصفوفة القوائم والواجهات المسموحة
+  notes?: string;
 }
 
 export interface MaintenanceSettings {
@@ -743,7 +787,7 @@ export interface UserActivityLog {
   title: string;
   details?: string;
   timestamp: string; // ISO string e.g. "2026-08-27T14:14:00Z"
-  date: string; // YYYY-MM-DD
+  date: string;
   time: string; // HH:mm:ss
   ipAddress?: string;
   status?: 'success' | 'warning' | 'danger' | 'info';

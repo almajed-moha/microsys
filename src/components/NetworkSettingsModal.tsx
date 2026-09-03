@@ -396,7 +396,7 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
                 <div>
                   <label className="block text-slate-400 font-semibold mb-1 text-[10px]">منفذ الـ API (Port):</label>
                   <input
-                    type="number"
+                    type="text" inputMode="decimal"
                     value={formData.mikrotikConfig?.port || 8728}
                     onChange={(e) => setFormData({
                       ...formData,

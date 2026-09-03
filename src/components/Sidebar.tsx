@@ -41,6 +41,7 @@ import {
   ExpenseRecord,
   AppUser,
   CardOrder,
+  NetworkTenant,
 } from '../types';
 import { hasPermission, ROLE_DEFINITIONS } from '../utils/permissions';
 
@@ -104,6 +105,7 @@ interface SidebarProps {
   onOpenAboutProgram?: () => void;
   tenantRemainingDays?: number | null;
   tenantPlan?: string;
+  activeTenant?: NetworkTenant | null;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -140,6 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenAboutProgram,
   tenantRemainingDays,
   tenantPlan,
+  activeTenant,
 }) => {
   const handleClose = onClose || onCloseMobile || (() => {});
   const handleNavigate = onSelectView || onNavigate || (() => {});
@@ -273,7 +276,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
     
     // Hide POS Portal from other roles (optional, but requested implicitly by restricting POS agent to it, usually admins don't need to see "بوابتي" as a main nav item if they have everything else, but if they want to preview it, it's fine. Wait, the original code had a 'معاينة' badge for non-pos agents, so we let others see it if they have orders view permission).
-    return hasPermission(activeUser, item.permissionModule, 'view');
+    return hasPermission(activeUser, item.permissionModule, 'view', activeTenant);
   });
 
   const activeUserRoleMeta = activeUser ? ROLE_DEFINITIONS[activeUser.role] : null;
@@ -393,7 +396,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {/* AI Assistant Button */}
-          {(!activeUser || hasPermission(activeUser, 'settings', 'useAIAssistant')) && (
+          {(!activeUser || hasPermission(activeUser, 'settings', 'useAIAssistant', activeTenant)) && (
             <button
               onClick={() => {
                 handleOpenAI();
@@ -417,7 +420,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {/* Database Backup & Restore Button */}
-          {onOpenBackup && (!activeUser || hasPermission(activeUser, 'settings', 'backupAndRestore')) && (
+          {onOpenBackup && (!activeUser || hasPermission(activeUser, 'settings', 'backupAndRestore', activeTenant)) && (
             <button
               onClick={() => {
                 onOpenBackup();
@@ -434,7 +437,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {/* Network Settings Modal Button */}
-          {(!activeUser || hasPermission(activeUser, 'settings', 'view')) && (
+          {(!activeUser || hasPermission(activeUser, 'settings', 'view', activeTenant)) && (
             <button
               onClick={() => {
                 handleOpenSettings();

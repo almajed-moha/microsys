@@ -87,6 +87,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const [deletingSale, setDeletingSale] = useState<SalesRecord | null>(null);
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
+    time: new Date().toISOString().split('T')[1].substring(0, 5),
     posPointId: selectedPOSIdForQuickSale || (posPoints[0]?.id || ''),
     categoryId: categories[0]?.id || '',
     quantity: 10,
@@ -113,6 +114,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     setEditingSale(null);
     setFormData({
       date: new Date().toISOString().split('T')[0],
+    time: new Date().toISOString().split('T')[1].substring(0, 5),
       posPointId: posId || selectedPOSIdForQuickSale || (posPoints[0]?.id || ''),
       categoryId: categories[0]?.id || '',
       quantity: 10,
@@ -126,6 +128,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     setEditingSale(sale);
     setFormData({
       date: sale.date,
+      time: sale.time || new Date().toISOString().split('T')[1].substring(0, 5),
       posPointId: sale.posPointId,
       categoryId: sale.categoryId,
       quantity: sale.quantity,
@@ -301,7 +304,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     const message = `*فاتورة مبيعات كروت شبكة ${settings.networkName}*
 -----------------------------
 رقم السند: *${sale.invoiceNumber}*
-التاريخ: ${sale.date}
+التاريخ: ${sale.date} ${sale.time ? `- ${sale.time}` : ''}
 نقطة البيع: *${pos ? pos.name : 'مبيعات مباشرة'}*
 فئة الكارت: *${cat ? cat.name : ''}*
 الكمية المباعة: *${sale.quantity} كارت*
@@ -484,7 +487,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                       </div>
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-300 whitespace-nowrap">
-                      {sale.date}
+                      {sale.date} {sale.time ? ` - ${sale.time}` : ''}
                     </td>
                     <td className="py-3 px-4">
                       <strong className="text-white block">{pos ? pos.name : 'مبيعات مباشرة'}</strong>
@@ -667,8 +670,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
                     الكمية المباعة (كارت) <span className="text-rose-400">*</span>:
                   </label>
                   <input
-                    type="number"
-                    min="1"
+                    type="text" inputMode="decimal"
+                    
                     required
                     placeholder="10"
                     value={formData.quantity === 0 ? '' : formData.quantity}

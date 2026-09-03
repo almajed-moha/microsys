@@ -117,7 +117,7 @@ export const ExpenseReceiptModal: React.FC<ExpenseReceiptModalProps> = ({
     return `*${settings.networkName}*\n` +
       `💳 *سند صرف مصروفات رسمي*\n` +
       `رقم السند: *${expense.voucherNumber}*\n` +
-      `التاريخ: ${expense.date}\n` +
+      `التاريخ: ${expense.date} ${expense.time ? `- ${expense.time}` : ''}\n` +
       `نوع المصروف: *${expense.categoryName}*\n` +
       `البيان: *${expense.title}*\n` +
       `المدفوع له: *${expense.paidTo || '—'}*\n` +
@@ -217,7 +217,7 @@ export const ExpenseReceiptModal: React.FC<ExpenseReceiptModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                {expense.categoryName} • {expense.date}
+                {expense.categoryName} • {expense.date} {expense.time ? ` - ${expense.time}` : ''}
               </p>
             </div>
           </div>
@@ -325,7 +325,7 @@ export const ExpenseReceiptModal: React.FC<ExpenseReceiptModalProps> = ({
                   </div>
                   <div className="mt-2 text-xs text-slate-700 font-mono text-left">
                     <div>رقم السند: <strong className="text-slate-900">{expense.voucherNumber}</strong></div>
-                    <div>التاريخ: <strong className="text-slate-900">{expense.date}</strong></div>
+                    <div>التاريخ: <strong className="text-slate-900">{expense.date} {expense.time ? ` - ${expense.time}` : ''}</strong></div>
                   </div>
                   <div className="mt-2">
                     <Barcode value={expense.voucherNumber} width={1.4} height={32} fontSize={9} margin={0} />
@@ -440,7 +440,7 @@ export const ExpenseReceiptModal: React.FC<ExpenseReceiptModalProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span>التاريخ:</span>
-                  <span>{expense.date}</span>
+                  <span>{expense.date} {expense.time ? ` - ${expense.time}` : ''}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>نوع المصروف:</span>

@@ -468,7 +468,7 @@ export const SalesReportModal: React.FC<SalesReportModalProps> = ({
                             {sale.invoiceNumber}
                           </td>
                           <td className="py-2 px-3 font-mono text-slate-700 whitespace-nowrap">
-                            {sale.date}
+                            {sale.date} {sale.time ? ` - ${sale.time}` : ''}
                           </td>
                           <td className="py-2 px-3">
                             <strong className="text-slate-950 block">{pos ? pos.name : 'مبيعات مباشرة'}</strong>
@@ -650,7 +650,7 @@ export const SalesReportModal: React.FC<SalesReportModalProps> = ({
                         </div>
                         <div className="flex justify-between text-[9px] text-slate-700">
                           <span>{cat?.name || 'كارت'} ({sale.quantity} كارت)</span>
-                          <span>{sale.date} • {sale.paymentType === 'cash' ? 'نقدي' : 'آجل'}</span>
+                          <span>{sale.date} {sale.time ? ` - ${sale.time}` : ''} • {sale.paymentType === 'cash' ? 'نقدي' : 'آجل'}</span>
                         </div>
                       </div>
                     );

@@ -49,6 +49,7 @@ import {
   getRoleDefaultPermissions,
   createFullPermissions,
   createEmptyPermissions,
+  buildPermissionsForAllowedModules,
   countPermissions,
   hasPermission,
   RoleMeta,
@@ -125,6 +126,7 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
     getRoleDefaultPermissions('accountant')
   );
   const [activeFormTab, setActiveFormTab] = useState<'info' | 'templates' | 'permissions'>('info');
+  const [formNetworkId, setFormNetworkId] = useState<string>('');
   const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({
     dashboard: true,
     invoices: true,
@@ -136,6 +138,30 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
     usersAndPermissions: false,
     settings: false,
   });
+
+  // Effective tenant for current context & isolation
+  const currentTenant = useMemo(() => {
+    const targetNetId = editingUser?.networkId || formNetworkId || (activeUser.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : (tenants?.[0]?.id || 'net-microsys'));
+    return tenants?.find((t) => t.id === targetNetId) || null;
+  }, [tenants, editingUser?.networkId, formNetworkId, activeUser.networkId]);
+
+  // Is this tenant limited to custom allowed modules?
+  const isRestrictedTenant = activeUser.role !== 'system_owner' && currentTenant?.accessMode === 'custom' && Boolean(currentTenant.allowedModules?.length);
+
+  // Filter permission modules according to role & tenant restrictions
+  const visibleModulesConfig = useMemo(() => {
+    return PERMISSION_MODULES_CONFIG.filter((modConfig) => {
+      // systemTenants module is strictly reserved for the master system owner
+      if (modConfig.moduleId === 'systemTenants') {
+        return activeUser.role === 'system_owner';
+      }
+      // If tenant is restricted to custom modules, only show those modules
+      if (isRestrictedTenant && currentTenant?.allowedModules) {
+        return currentTenant.allowedModules.includes(modConfig.moduleId);
+      }
+      return true;
+    });
+  }, [activeUser.role, isRestrictedTenant, currentTenant]);
 
   const canEditUsername = activeUser.role === 'owner' || !editingUser || (activeUser.role === 'super_admin' && editingUser.networkId === activeUser.networkId && editingUser.role !== 'super_admin' && editingUser.role !== 'owner');
 
@@ -205,6 +231,7 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
     setFormAvatar('💼');
     setFormAvatarBg('bg-indigo-600');
     setFormStatus('active');
+    setFormNetworkId(activeUser.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : (tenants?.[0]?.id || 'net-microsys'));
     setFormMaxDiscount(0);
     setFormNotes('');
     setFormPermissions(getRoleDefaultPermissions('accountant'));
@@ -226,6 +253,7 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
     setFormAvatar(user.avatar || '👤');
     setFormAvatarBg(user.avatarBgColor || 'bg-slate-700');
     setFormStatus(user.status);
+    setFormNetworkId(user.networkId || (activeUser.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : (tenants?.[0]?.id || 'net-microsys')));
     setFormMaxDiscount(user.maxDiscountPercent || 0);
     setFormNotes(user.notes || '');
     setFormPermissions(JSON.parse(JSON.stringify(user.permissions)));
@@ -237,7 +265,21 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
   const handleApplyRoleTemplate = (role: UserRole) => {
     setFormRole(role);
     const templatePerms = getRoleDefaultPermissions(role);
-    setFormPermissions(JSON.parse(JSON.stringify(templatePerms)));
+    let finalPerms = JSON.parse(JSON.stringify(templatePerms));
+
+    // If tenant has restricted module access, clamp template permissions to allowed modules only
+    if (isRestrictedTenant && currentTenant?.allowedModules) {
+      const allowed = currentTenant.allowedModules;
+      const clampedPerms = createEmptyPermissions();
+      for (const mod of allowed) {
+        if (finalPerms[mod]) {
+          clampedPerms[mod] = finalPerms[mod];
+        }
+      }
+      finalPerms = clampedPerms;
+    }
+
+    setFormPermissions(finalPerms);
 
     // Suggest matching avatar
     const roleMeta = ROLE_DEFINITIONS[role];
@@ -343,7 +385,9 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
     }
 
 
-    const targetNetworkId = editingUser?.networkId || (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : 'net-microsys');
+    const targetNetworkId = activeUser?.role === 'system_owner'
+      ? (formNetworkId || editingUser?.networkId || 'net-microsys')
+      : (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : (editingUser?.networkId || 'net-microsys'));
 
     const userData: Omit<AppUser, 'id' | 'createdAt'> = {
       name: formName.trim(),
@@ -648,10 +692,23 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
                   <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold border ${ROLE_DEFINITIONS[activeUser.role]?.bgLight || 'bg-slate-800'} ${ROLE_DEFINITIONS[activeUser.role]?.color || 'text-slate-300'} ${ROLE_DEFINITIONS[activeUser.role]?.borderLight || 'border-slate-700'}`}>
                     {activeUser.customRoleName || ROLE_DEFINITIONS[activeUser.role]?.badge || 'مستخدم'}
                   </span>
+                  {currentTenant && (
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-800 text-indigo-300 font-bold border border-slate-700 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                      <span>{currentTenant.name}</span>
+                      {currentTenant.accessMode === 'custom' && (
+                        <span className="text-[10px] text-amber-400 font-normal">({currentTenant.allowedModules?.length || 0} واجهات مخصصة)</span>
+                      )}
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  {activeUser.role === 'super_admin'
-                    ? 'تمتلك صلاحيات كاملة. يمكنك التبديل لأي مستخدم آخر لاختبار كيف تظهر الشاشات والصلاحيات الحقيقية له!'
+                  {activeUser.role === 'system_owner'
+                    ? 'حساب مالك النظام العام - وصول كامل ومستقل لإدارة كافة الشبكات وتعيين صلاحياتها.'
+                    : activeUser.role === 'super_admin'
+                    ? currentTenant?.accessMode === 'custom'
+                      ? `مدير شبكة (${currentTenant.name}) - بيئة مخصصة بقوائم وواجهات محددة (${currentTenant.allowedModules?.length || 0} واجهات فقط).`
+                      : `مدير شبكة (${currentTenant?.name || 'الشبكة'}) - صلاحيات وصول وإدارة شاملة لكافة واجهات الشبكة.`
                     : `صلاحيات محددة: ${countPermissions(activeUser.permissions).granted} من ${countPermissions(activeUser.permissions).total} صلاحية.`}
                 </p>
               </div>
@@ -1111,6 +1168,38 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
                       </select>
                     </div>
 
+                    {/* Network / Tenant Selector */}
+                    {activeUser.role === 'system_owner' && tenants && tenants.length > 0 ? (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                          الشبكة التابع لها المستخدم (بيئة العمل)
+                        </label>
+                        <select
+                          value={formNetworkId}
+                          onChange={(e) => setFormNetworkId(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-hidden focus:border-indigo-500"
+                        >
+                          {tenants.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name} ({t.accessMode === 'custom' ? `مخصص: ${t.allowedModules?.length || 0} واجهات` : 'وصول شامل'})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                          الشبكة التابع لها
+                        </label>
+                        <div className="px-3.5 py-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-sm text-slate-300 flex items-center justify-between">
+                          <span className="font-bold text-white">{currentTenant?.name || 'الشبكة الخاصة'}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-indigo-400 font-mono">
+                            {currentTenant?.accessMode === 'custom' ? 'بيئة واجهات مخصصة' : 'بيئة شبكة معزولة'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     <div>
                       <label className="block text-xs font-bold text-slate-300 mb-1.5">
                         رقم الهاتف / واتساب
@@ -1241,6 +1330,19 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
               {/* TAB 3: Granular Permission Matrix */}
               {activeFormTab === 'permissions' && (
                 <div className="space-y-4 animate-fadeIn">
+                  {/* Tenant Restriction Alert Banner */}
+                  {isRestrictedTenant && currentTenant && (
+                    <div className="bg-indigo-950/40 border border-indigo-500/30 p-3.5 rounded-2xl flex items-start sm:items-center gap-3 text-xs text-indigo-200">
+                      <ShieldCheck className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5 sm:mt-0" />
+                      <div>
+                        <div className="font-black text-white text-sm">بيئة صلاحيات مخصصة لشبكة ({currentTenant.name})</div>
+                        <p className="text-indigo-300/80 mt-0.5">
+                          هذه الشبكة مجهزة فقط بـ ({currentTenant.allowedModules?.length || 0}) واجهات وقوائم معتمدة من مالك النظام. الصلاحيات المتاحة للمستخدمين تنحصر في هذه الواجهات فقط حفاظاً على استقلالية كل مدير شبكة ومستخدميه.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Quick helper banner */}
                   <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-2 text-xs text-slate-300">
@@ -1255,12 +1357,16 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
                       <button
                         type="button"
                         onClick={() => {
-                          setFormPermissions(createFullPermissions());
+                          if (isRestrictedTenant && currentTenant?.allowedModules) {
+                            setFormPermissions(buildPermissionsForAllowedModules(currentTenant.allowedModules));
+                          } else {
+                            setFormPermissions(createFullPermissions());
+                          }
                           setFormRole('super_admin');
                         }}
                         className="px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs font-bold transition"
                       >
-                        تفعيل الكل (سوبر أدمن)
+                        {isRestrictedTenant ? 'تفعيل كافة واجهات الشبكة المتاحة' : 'تفعيل الكل (سوبر أدمن)'}
                       </button>
                       <button
                         type="button"
@@ -1277,7 +1383,7 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
 
                   {/* Modules Accordion */}
                   <div className="space-y-3">
-                    {PERMISSION_MODULES_CONFIG.map((modConfig) => {
+                    {visibleModulesConfig.map((modConfig) => {
                       const modPerms = formPermissions[modConfig.moduleId] as Record<string, boolean> | undefined;
                       const isModuleViewEnabled = Boolean(modPerms?.view);
                       const isExpanded = expandedModules[modConfig.moduleId] ?? true;

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Database,
   Download,
@@ -28,6 +28,13 @@ import {
   Sparkles,
   ShoppingBag,
   History,
+  Cloud,
+  CloudUpload,
+  CloudDownload,
+  Trash2,
+  ExternalLink,
+  LogOut,
+  Globe,
 } from 'lucide-react';
 import {
   NetworkTenant,
@@ -48,6 +55,19 @@ import {
   SystemDatabaseBackupData,
 } from '../types';
 import { exportToJSON, downloadFile } from '../utils/storage';
+import {
+  initGoogleDriveAuth,
+  signInWithGoogle,
+  signOutGoogle,
+  uploadBackupToGoogleDrive,
+  listGoogleDriveBackups,
+  downloadBackupFromGoogleDrive,
+  deleteFileFromGoogleDrive,
+  GoogleDriveBackupFile,
+  getCurrentGoogleUser,
+  getDriveAccessToken,
+} from '../services/googleDriveService';
+import type { User as FirebaseUser } from 'firebase/auth';
 
 interface DatabaseBackupModalProps {
   activeUser?: AppUser;
@@ -96,7 +116,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
   onClose,
   onLogActivity,
 }) => {
-  const [activeTab, setActiveTab] = useState<'export' | 'import'>('export');
+  const [activeTab, setActiveTab] = useState<'export' | 'import' | 'gdrive'>('export');
   const [exportScope, setExportScope] = useState<'full' | 'current'>(
     activeUser?.role === 'system_owner' && selectedTenantFilter === 'all' ? 'full' : 'current'
   );
@@ -112,7 +132,188 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreSuccess, setRestoreSuccess] = useState(false);
 
+  // Google Drive State
+  const [gDriveUser, setGDriveUser] = useState<FirebaseUser | null>(getCurrentGoogleUser());
+  const [isGDriveSignedIn, setIsGDriveSignedIn] = useState<boolean>(Boolean(getDriveAccessToken()));
+  const [isSigningInGDrive, setIsSigningInGDrive] = useState<boolean>(false);
+  const [gDriveFiles, setGDriveFiles] = useState<GoogleDriveBackupFile[]>([]);
+  const [isLoadingGDriveFiles, setIsLoadingGDriveFiles] = useState<boolean>(false);
+  const [isUploadingToGDrive, setIsUploadingToGDrive] = useState<boolean>(false);
+  const [downloadingDriveFileId, setDownloadingDriveFileId] = useState<string | null>(null);
+  const [deletingDriveFileId, setDeletingDriveFileId] = useState<string | null>(null);
+  const [deleteConfirmDriveFileId, setDeleteConfirmDriveFileId] = useState<string | null>(null);
+  const [gDriveFeedback, setGDriveFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Initialize Drive Auth Listener
+  useEffect(() => {
+    const unsubscribe = initGoogleDriveAuth(
+      (user) => {
+        setGDriveUser(user);
+        setIsGDriveSignedIn(true);
+        loadGDriveFiles();
+      },
+      () => {
+        setGDriveUser(null);
+        setIsGDriveSignedIn(false);
+        setGDriveFiles([]);
+      }
+    );
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  const handleSignInGoogleDrive = async () => {
+    setIsSigningInGDrive(true);
+    setGDriveFeedback(null);
+    try {
+      const { user } = await signInWithGoogle();
+      setGDriveUser(user);
+      setIsGDriveSignedIn(true);
+      setGDriveFeedback({ type: 'success', message: `تم الاتصال بحساب Google بنجاح (${user.email})` });
+      await loadGDriveFiles();
+    } catch (err: any) {
+      console.error('Google sign in error:', err);
+      setGDriveFeedback({
+        type: 'error',
+        message: err?.message || 'فشل تسجيل الدخول باستخدام حساب Google. تأكد من السماح بالنوافذ المنبثقة.',
+      });
+    } finally {
+      setIsSigningInGDrive(false);
+    }
+  };
+
+  const handleSignOutGoogleDrive = async () => {
+    await signOutGoogle();
+    setGDriveUser(null);
+    setIsGDriveSignedIn(false);
+    setGDriveFiles([]);
+    setGDriveFeedback({ type: 'success', message: 'تم قطع الاتصال بـ Google Drive.' });
+  };
+
+  const loadGDriveFiles = async () => {
+    if (!getDriveAccessToken()) return;
+    setIsLoadingGDriveFiles(true);
+    try {
+      const files = await listGoogleDriveBackups();
+      setGDriveFiles(files);
+    } catch (err: any) {
+      console.warn('Error listing drive files:', err);
+    } finally {
+      setIsLoadingGDriveFiles(false);
+    }
+  };
+
+  const handleUploadToGoogleDrive = async () => {
+    if (!getDriveAccessToken()) {
+      try {
+        setIsSigningInGDrive(true);
+        const { user } = await signInWithGoogle();
+        setGDriveUser(user);
+        setIsGDriveSignedIn(true);
+      } catch (err: any) {
+        setGDriveFeedback({ type: 'error', message: 'يرجى تسجيل الدخول إلى Google Drive للمتابعة.' });
+        return;
+      } finally {
+        setIsSigningInGDrive(false);
+      }
+    }
+
+    setIsUploadingToGDrive(true);
+    setGDriveFeedback(null);
+    try {
+      const backupObj = generateBackupPayload();
+      const jsonString = exportToJSON(backupObj);
+      const dateStr = new Date().toISOString().split('T')[0];
+      const timeStr = new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
+      const scopeTag = exportScope === 'full' ? 'FULL_SAAS' : (currentTenant?.name?.replace(/\s+/g, '_') || 'NETWORK');
+      const fileName = `MicroSys_Backup_${scopeTag}_${dateStr}_${timeStr}.json`;
+      const description = `MicroSys Cloud WiFi Database Backup - ${scopeTag} - Exported by ${activeUser?.name || 'Admin'} on ${dateStr}`;
+
+      await uploadBackupToGoogleDrive(fileName, jsonString, description);
+
+      setGDriveFeedback({
+        type: 'success',
+        message: `تم رفع النسخة الاحتياطية بنجاح إلى Google Drive (${fileName})`,
+      });
+
+      if (onLogActivity) {
+        onLogActivity(
+          'نسخ احتياطي سحابي',
+          'رفع قاعدة البيانات إلى Google Drive',
+          `تم حفظ نسخة احتياطية سحابية باسم ${fileName} في Google Drive`,
+          'info'
+        );
+      }
+
+      await loadGDriveFiles();
+    } catch (err: any) {
+      console.error('Upload to Drive error:', err);
+      setGDriveFeedback({
+        type: 'error',
+        message: err.message || 'تعذر رفع النسخة إلى Google Drive.',
+      });
+    } finally {
+      setIsUploadingToGDrive(false);
+    }
+  };
+
+  const handleRestoreFromDriveFile = async (file: GoogleDriveBackupFile) => {
+    setDownloadingDriveFileId(file.id);
+    setGDriveFeedback(null);
+    try {
+      const rawContent = await downloadBackupFromGoogleDrive(file.id);
+      setImportedJsonString(rawContent);
+      validateAndParseJson(rawContent);
+      setActiveTab('import');
+      setGDriveFeedback({
+        type: 'success',
+        message: `تم تحميل ملف النسخة (${file.name}) من Google Drive بنجاح، يمكنك الآن تأكيد الاستعادة أدناه.`,
+      });
+    } catch (err: any) {
+      console.error('Download drive file error:', err);
+      setGDriveFeedback({
+        type: 'error',
+        message: err.message || 'تعذر تنزيل ملف النسخة من Google Drive.',
+      });
+    } finally {
+      setDownloadingDriveFileId(null);
+    }
+  };
+
+  const handleDownloadLocalFromDriveFile = async (file: GoogleDriveBackupFile) => {
+    setDownloadingDriveFileId(file.id);
+    try {
+      const rawContent = await downloadBackupFromGoogleDrive(file.id);
+      downloadFile(rawContent, file.name, 'application/json');
+    } catch (err: any) {
+      setGDriveFeedback({ type: 'error', message: err.message || 'تعذر تنزيل الملف.' });
+    } finally {
+      setDownloadingDriveFileId(null);
+    }
+  };
+
+  const handleDeleteDriveFile = async (fileId: string, fileName: string) => {
+    setDeletingDriveFileId(fileId);
+    try {
+      await deleteFileFromGoogleDrive(fileId);
+      setGDriveFiles((prev) => prev.filter((f) => f.id !== fileId));
+      setDeleteConfirmDriveFileId(null);
+      setGDriveFeedback({
+        type: 'success',
+        message: `تم حذف النسخة (${fileName}) من Google Drive بنجاح.`,
+      });
+    } catch (err: any) {
+      setGDriveFeedback({
+        type: 'error',
+        message: err.message || 'تعذر حذف الملف من Google Drive.',
+      });
+    } finally {
+      setDeletingDriveFileId(null);
+    }
+  };
 
   // Determine current network info
   const isMasterUser = activeUser?.role === 'system_owner';
@@ -480,31 +681,54 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
         </div>
 
         {/* Tab Switcher */}
-        <div className="px-5 pt-4 pb-2 border-b border-slate-800 bg-slate-900/90 flex gap-2">
+        <div className="px-5 pt-4 pb-2 border-b border-slate-800 bg-slate-900/90 flex flex-wrap sm:flex-nowrap gap-2">
           <button
             type="button"
             onClick={() => setActiveTab('export')}
-            className={`flex-1 py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition ${
+            className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition ${
               activeTab === 'export'
                 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
                 : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
             }`}
           >
             <Download className="w-4 h-4" />
-            <span>تصدير نسخة احتياطية (Export JSON)</span>
+            <span>تصدير نسخة (Export JSON)</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('import')}
-            className={`flex-1 py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition ${
+            className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition ${
               activeTab === 'import'
                 ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
                 : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
             }`}
           >
             <Upload className="w-4 h-4" />
-            <span>استيراد واستعادة البيانات (Restore JSON)</span>
+            <span>استيراد واستعادة (Restore)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('gdrive');
+              if (getDriveAccessToken()) {
+                loadGDriveFiles();
+              }
+            }}
+            className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition ${
+              activeTab === 'gdrive'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            <Cloud className="w-4 h-4 text-blue-300" />
+            <span>سحابة Google Drive</span>
+            {gDriveFiles.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-blue-500/30 text-white font-mono">
+                {gDriveFiles.length}
+              </span>
+            )}
           </button>
         </div>
 
@@ -688,7 +912,53 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
                     </>
                   )}
                 </button>
+
+                <button
+                  type="button"
+                  onClick={handleUploadToGoogleDrive}
+                  disabled={isUploadingToGDrive}
+                  className="sm:col-span-2 py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 transition disabled:opacity-50 active:scale-98"
+                >
+                  {isUploadingToGDrive ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>جارٍ رفع النسخة الاحتياطية إلى Google Drive...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CloudUpload className="w-4 h-4" />
+                      <span>حفظ ورفع نسخة سحابية مباشرة إلى Google Drive</span>
+                    </>
+                  )}
+                </button>
               </div>
+
+              {/* Google Drive Status Alert if any */}
+              {gDriveFeedback && (
+                <div
+                  className={`p-3 rounded-xl border flex items-center justify-between gap-2 text-xs ${
+                    gDriveFeedback.type === 'success'
+                      ? 'bg-emerald-950/50 border-emerald-800 text-emerald-300'
+                      : 'bg-rose-950/50 border-rose-800 text-rose-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {gDriveFeedback.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                    )}
+                    <span>{gDriveFeedback.message}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setGDriveFeedback(null)}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
 
               <div className="p-3 bg-indigo-950/30 border border-indigo-900/40 rounded-xl flex items-start gap-2 text-xs text-indigo-300">
                 <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-indigo-400" />
@@ -702,6 +972,24 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
           {/* TAB 2: IMPORT / RESTORE */}
           {activeTab === 'import' && (
             <div className="space-y-5 animate-in fade-in duration-150">
+              {/* Shortcut to Google Drive */}
+              <div className="p-3 bg-blue-950/40 border border-blue-800/60 rounded-xl flex items-center justify-between gap-2 text-xs text-blue-200">
+                <div className="flex items-center gap-2">
+                  <Cloud className="w-4 h-4 text-blue-400 shrink-0" />
+                  <span>هل قمت بحفظ نسخ احتياطية على Google Drive من قبل؟</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('gdrive');
+                    if (getDriveAccessToken()) loadGDriveFiles();
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold transition text-xs shrink-0 flex items-center gap-1.5"
+                >
+                  <Cloud className="w-3.5 h-3.5" />
+                  <span>استعراض نسخ Google Drive</span>
+                </button>
+              </div>
               
               {/* File Drag & Drop Zone */}
               <div
@@ -890,6 +1178,309 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB 3: GOOGLE DRIVE CLOUD BACKUPS */}
+          {activeTab === 'gdrive' && (
+            <div className="space-y-5 animate-in fade-in duration-150">
+              {/* Account Connection Header */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0 shadow-lg shadow-blue-500/10">
+                    <Cloud className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-white text-sm sm:text-base">الربط السحابي مع Google Drive</h4>
+                      {isGDriveSignedIn ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>متصل</span>
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                          غير متصل
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {isGDriveSignedIn && gDriveUser
+                        ? `حساب Google المرتبط: ${gDriveUser.email}`
+                        : 'احفظ واسترجع نسخ قاعدة بيانات المايكروتك ونقاط البيع تلقائياً على حساب Google الخاص بك.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  {isGDriveSignedIn ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={loadGDriveFiles}
+                        disabled={isLoadingGDriveFiles}
+                        className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 flex items-center gap-1.5 transition disabled:opacity-50"
+                        title="تحديث قائمة الملفات من Google Drive"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isLoadingGDriveFiles ? 'animate-spin' : ''}`} />
+                        <span>تحديث</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleSignOutGoogleDrive}
+                        className="px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-bold flex items-center gap-1.5 transition"
+                        title="تسجيل الخروج وقطع الاتصال"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>قطع الاتصال</span>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleSignInGoogleDrive}
+                      disabled={isSigningInGDrive}
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition disabled:opacity-50"
+                    >
+                      {isSigningInGDrive ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>جارٍ فتح تسجيل الدخول...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Cloud className="w-4 h-4" />
+                          <span>تسجيل الدخول باستخدام Google</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Feedback Banner */}
+              {gDriveFeedback && (
+                <div
+                  className={`p-3.5 rounded-xl border flex items-center justify-between gap-2 text-xs ${
+                    gDriveFeedback.type === 'success'
+                      ? 'bg-emerald-950/50 border-emerald-800 text-emerald-300'
+                      : 'bg-rose-950/50 border-rose-800 text-rose-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {gDriveFeedback.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                    )}
+                    <span>{gDriveFeedback.message}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setGDriveFeedback(null)}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {/* Upload to Drive Section */}
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <CloudUpload className="w-4 h-4 text-indigo-400" />
+                    <span>رفع نسخة احتياطية جديدة لقاعدة البيانات</span>
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-1">
+                    سيتم تجميع بيانات النظام ({totalExportRecords} سجلاً) وتصديرها بصيغة JSON ورفعها مباشرة لمساحة Google Drive.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleUploadToGoogleDrive}
+                  disabled={isUploadingToGDrive}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition disabled:opacity-50 shrink-0"
+                >
+                  {isUploadingToGDrive ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>جارٍ الرفع السحابي...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CloudUpload className="w-4 h-4" />
+                      <span>رفع نسخة احتياطية الآن</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Files List Section */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-300 flex items-center gap-2">
+                    <FolderArchive className="w-4 h-4 text-blue-400" />
+                    <span>ملفات النسخ الاحتياطي المحفوظة في Google Drive ({gDriveFiles.length})</span>
+                  </h4>
+                  {isLoadingGDriveFiles && (
+                    <span className="text-xs text-slate-400 flex items-center gap-1">
+                      <RefreshCw className="w-3 h-3 animate-spin text-blue-400" />
+                      <span>جارٍ فحص الملفات...</span>
+                    </span>
+                  )}
+                </div>
+
+                {!isGDriveSignedIn ? (
+                  <div className="p-8 border border-dashed border-slate-800 rounded-2xl text-center bg-slate-950/40 space-y-3">
+                    <div className="w-12 h-12 mx-auto rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                      <Cloud className="w-6 h-6" />
+                    </div>
+                    <h5 className="font-bold text-white text-sm">سجل الدخول لاستعراض النسخ المحفوظة على Google Drive</h5>
+                    <p className="text-xs text-slate-400 max-w-md mx-auto">
+                      انقر على زر "تسجيل الدخول باستخدام Google" بالأعلى لتفويض التطبيق بمزامنة وحفظ النسخ الاحتياطية في مجلدك السحابي.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleSignInGoogleDrive}
+                      disabled={isSigningInGDrive}
+                      className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-lg shadow-blue-600/20 inline-flex items-center gap-2"
+                    >
+                      <Cloud className="w-4 h-4" />
+                      <span>ربط حساب Google Drive الآن</span>
+                    </button>
+                  </div>
+                ) : gDriveFiles.length === 0 && !isLoadingGDriveFiles ? (
+                  <div className="p-8 border border-dashed border-slate-800 rounded-2xl text-center bg-slate-950/40 space-y-2">
+                    <CheckCircle2 className="w-8 h-8 mx-auto text-slate-600" />
+                    <h5 className="font-bold text-white text-sm">لا توجد نسخ احتياطية محفوظة حتى الآن في حساب Google Drive</h5>
+                    <p className="text-xs text-slate-400 max-w-md mx-auto">
+                      يمكنك النقر على "رفع نسخة احتياطية الآن" بالأعلى لحفظ أول نسخة احتياطية من قاعدة البيانات على Drive.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {gDriveFiles.map((file) => {
+                      const isDownloading = downloadingDriveFileId === file.id;
+                      const isDeleting = deletingDriveFileId === file.id;
+                      const isConfirmingDelete = deleteConfirmDriveFileId === file.id;
+
+                      const formattedDate = file.createdTime
+                        ? new Date(file.createdTime).toLocaleString('ar-EG', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : 'غير محدد';
+
+                      return (
+                        <div
+                          key={file.id}
+                          className="bg-slate-900/80 border border-slate-800 hover:border-slate-700 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 transition"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+                              <FileJson className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-white font-mono dir-ltr text-right line-clamp-1">
+                                {file.name}
+                              </p>
+                              <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-0.5">
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="w-3 h-3 text-slate-500" />
+                                  <span>{formattedDate}</span>
+                                </span>
+                                {file.size && (
+                                  <span className="font-mono text-slate-500">
+                                    {(Number(file.size) / 1024).toFixed(1)} KB
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                            {/* Restore Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleRestoreFromDriveFile(file)}
+                              disabled={isDownloading}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50"
+                              title="استعادة قاعدة البيانات من هذه النسخة السحابية"
+                            >
+                              {isDownloading ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Upload className="w-3.5 h-3.5" />
+                              )}
+                              <span>استعادة من Drive</span>
+                            </button>
+
+                            {/* Download local copy */}
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadLocalFromDriveFile(file)}
+                              disabled={isDownloading}
+                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                              title="تنزيل الملف على جهازك"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* External link to Google Drive */}
+                            {file.webViewLink && (
+                              <a
+                                href={file.webViewLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-blue-400 border border-slate-700 transition"
+                                title="فتح في Google Drive"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+
+                            {/* Delete File */}
+                            {isConfirmingDelete ? (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteDriveFile(file.id, file.name)}
+                                  disabled={isDeleting}
+                                  className="px-2 py-1 rounded-lg bg-red-600 text-white text-[10px] font-bold hover:bg-red-500 transition disabled:opacity-50"
+                                >
+                                  {isDeleting ? 'جاري الحذف...' : 'تأكيد الحذف'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteConfirmDriveFileId(null)}
+                                  className="px-1.5 py-1 rounded-lg bg-slate-800 text-slate-400 text-[10px] hover:text-white"
+                                >
+                                  إلغاء
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setDeleteConfirmDriveFileId(file.id)}
+                                className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 transition"
+                                title="حذف النسخة من Google Drive"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

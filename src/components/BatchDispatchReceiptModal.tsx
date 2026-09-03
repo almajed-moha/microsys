@@ -190,7 +190,7 @@ export const BatchDispatchReceiptModal: React.FC<BatchDispatchReceiptModalProps>
 📌 *رقم السند:* #${dispatchCode}
 🏪 *المستلم:* ${pos?.name || 'نقطة البيع'} (${pos?.managerName || ''})
 📱 *الهاتف:* ${pos?.phone || ''}
-🗓️ *التاريخ:* ${dispatch.date}
+🗓️ *التاريخ:* ${dispatch.date} ${dispatch.time ? `- ${dispatch.time}` : ''}
 🏷️ *الفئة المسلمة:* ${cat?.name || 'فئة كروت'}
 📦 *الكمية:* ${dispatch.quantity} كارت
 💵 *سعر الجملة للكارت:* ${(unitWholesale || 0).toLocaleString()} ${settings.currencySymbol}
@@ -344,7 +344,7 @@ ${dispatch.serialStart ? `🔢 *النطاق التسلسلي:* من ${dispatch.
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                المستلم: <strong className="text-slate-200">{pos?.name || 'نقطة البيع'}</strong> • {dispatch.date}
+                المستلم: <strong className="text-slate-200">{pos?.name || 'نقطة البيع'}</strong> • {dispatch.date} {dispatch.time ? ` - ${dispatch.time}` : ''}
               </p>
             </div>
           </div>
@@ -502,7 +502,7 @@ ${dispatch.serialStart ? `🔢 *النطاق التسلسلي:* من ${dispatch.
                     </div>
                     <div className="text-[11px] text-slate-500 font-mono flex items-center justify-end gap-1">
                       <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                      <span>{dispatch.date}</span>
+                      <span>{dispatch.date} {dispatch.time ? ` - ${dispatch.time}` : ''}</span>
                     </div>
                     <div className="mt-1">
                       <Barcode value={dispatchCode} width={1.4} height={32} fontSize={9} margin={0} />
@@ -672,7 +672,7 @@ ${dispatch.serialStart ? `🔢 *النطاق التسلسلي:* من ${dispatch.
                   <span className="font-black">#{dispatchCode}</span>
                 </div>
                 <div className="flex justify-between items-center text-[10px] text-slate-800">
-                  <span>التاريخ: {dispatch.date}</span>
+                  <span>التاريخ: {dispatch.date} {dispatch.time ? ` - ${dispatch.time}` : ''}</span>
                   <span>الوقت: {new Date().toLocaleTimeString('ar-YE', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               </div>

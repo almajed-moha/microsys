@@ -404,6 +404,13 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
           </div>
 
           <button
+            onClick={() => onOpenStatement('', 'a4')}
+            className="flex items-center gap-1.5 py-2 px-3 bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
+          >
+            <FileText className="w-4 h-4 text-emerald-400" />
+            <span>كشف حساب عام</span>
+          </button>
+          <button
             onClick={handleExportPdf}
             disabled={isExportingPdf}
             className="flex items-center gap-1.5 py-2 px-3 bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition disabled:opacity-50 cursor-pointer"
@@ -1440,9 +1447,8 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
                     سقف المديونية المسموح به ({settings.currencySymbol}):
                   </label>
                   <input
-                    type="number"
-                    min="0"
-                    step="1000"
+                    type="text" inputMode="decimal"                    
+                    
                     placeholder="50000"
                     value={formData.maxDebtLimit}
                     onChange={(e) => setFormData({ ...formData, maxDebtLimit: Number(e.target.value) })}

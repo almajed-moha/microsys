@@ -48,6 +48,7 @@ import {
   UserActivityLog,
   CardOrder,
   NetworkTenant,
+  CardTemplate,
 } from './types';
 import {
   loadData,
@@ -101,6 +102,15 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Core Data States
+  const [templates, setTemplates] = useState<CardTemplate[]>(() => {
+    const saved = localStorage.getItem('mikrotik_templates');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('mikrotik_templates', JSON.stringify(templates));
+  }, [templates]);
+
   const [categories, setCategories] = useState<CardCategory[]>(() =>
     loadData<CardCategory[]>(STORAGE_KEYS.CATEGORIES, mockCategories)
   );
@@ -1789,9 +1799,14 @@ export default function App() {
 
   // User & RBAC Management Handlers
   const handleAddUser = (newUserData: Omit<AppUser, 'id' | 'createdAt'>) => {
+    // Non-system owners can ONLY create users within their own network environment
+    const enforcedNetworkId = activeUser?.role === 'system_owner'
+      ? (newUserData.networkId || currentTenantId)
+      : (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : currentTenantId);
+
     const rawUser: AppUser = {
       ...newUserData,
-      networkId: newUserData.networkId || currentTenantId,
+      networkId: enforcedNetworkId,
       id: `user-${Date.now()}`,
       createdAt: new Date().toISOString().split('T')[0],
       lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -1799,7 +1814,7 @@ export default function App() {
     const newUser = applyCreationAudit(rawUser, activeUser, {
       actionTitle: 'إنشاء حساب مستخدم وصلاحيات جديدة',
       actionType: 'security',
-      details: `إنشاء المستخدم ${rawUser.name} (@${rawUser.username}) بالدور (${rawUser.customRoleName || rawUser.role})`,
+      details: `إنشاء المستخدم ${rawUser.name} (@${rawUser.username}) بالدور (${rawUser.customRoleName || rawUser.role}) للشبكة (${enforcedNetworkId})`,
     });
 
     setUsers((prev) => [...prev, newUser]);
@@ -1807,7 +1822,7 @@ export default function App() {
       'إضافة مستخدم جديد',
       'users',
       'المستخدمين والصلاحيات',
-      `إنشاء حساب مستخدم جديد: ${newUser.name} (@${newUser.username})`,
+      `إنشاء حساب مستخدم جديد: ${newUser.name} (@${newUser.username}) للشبكة (${enforcedNetworkId})`,
       `الدور الوظيفي: ${newUser.customRoleName || newUser.role} - الحالة: ${newUser.status === 'active' ? 'نشط' : 'معطل'}`,
       'security'
     );
@@ -1815,10 +1830,22 @@ export default function App() {
 
   const handleUpdateUser = (updatedUserData: AppUser) => {
     const existing = users.find((u) => u.id === updatedUserData.id) || updatedUserData;
-    const updatedUser = applyUpdateAudit(existing, updatedUserData, activeUser, {
+
+    // Security check: non-system owners cannot edit users outside their network
+    if (activeUser?.role !== 'system_owner' && existing.networkId && activeUser?.networkId && existing.networkId !== activeUser.networkId) {
+      alert('غير مصرح لك بتعديل مستخدم خارج شبكتك الخاصة.');
+      return;
+    }
+
+    const safeUserData: AppUser = {
+      ...updatedUserData,
+      networkId: activeUser?.role === 'system_owner' ? (updatedUserData.networkId || existing.networkId) : existing.networkId,
+    };
+
+    const updatedUser = applyUpdateAudit(existing, safeUserData, activeUser, {
       actionTitle: 'تعديل بيانات وصلاحيات المستخدم',
       actionType: 'security',
-      details: `تحديث بيانات المستخدم (${updatedUserData.name}) بواسطة ${activeUser?.name || 'المدير'}`,
+      details: `تحديث بيانات المستخدم (${safeUserData.name}) بواسطة ${activeUser?.name || 'المدير'}`,
     });
 
     setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
@@ -1865,6 +1892,13 @@ export default function App() {
     if (userId === 'user-system-owner') return; // protect master owner
     const targetUser = users.find((u) => u.id === userId);
     if (targetUser?.username === 'master') return;
+
+    // Security check: non-system owners cannot delete users outside their network
+    if (activeUser?.role !== 'system_owner' && targetUser?.networkId && activeUser?.networkId && targetUser.networkId !== activeUser.networkId) {
+      alert('غير مصرح لك بحذف مستخدم خارج شبكتك الخاصة.');
+      return;
+    }
+
     setUsers((prev) => prev.filter((u) => u.id !== userId));
     if (activeUserId === userId) {
       setActiveUserId('user-system-owner');
@@ -2322,6 +2356,10 @@ export default function App() {
                   settings={settings}
                   onCreateOrder={handleCreateOrder}
                   onCancelOrder={handleCancelOrder}
+                  onOpenStatementModal={(pos) => {
+                    setStatementPaperMode('a4');
+                    setStatementPOSId(pos.id);
+                  }}
                 />
               )}
 
@@ -2429,6 +2467,14 @@ export default function App() {
 
               {activeView === 'mikrotik' && (
                 <MikrotikLiveView
+                  templates={templates}
+                  posPoints={scopedPOSPoints}
+                  onSaveTemplate={(t) => {
+                    const exists = templates.find((x) => x.id === t.id);
+                    if (exists) setTemplates(templates.map((x) => (x.id === t.id ? t : x)));
+                    else setTemplates([...templates, t]);
+                  }}
+                  onDeleteTemplate={(id) => setTemplates(templates.filter((x) => x.id !== id))}
                   settings={settings}
                   categories={scopedCategories}
                   onUpdateSettings={(newSettings) => setSettings(newSettings)}
@@ -2520,18 +2566,21 @@ export default function App() {
       )}
 
       {/* 3. POS Account Statement Modal */}
-      {statementPOS && (
+      {statementPOSId !== null && (
         <POSAccountStatementModal
-          posPoint={statementPOS}
+          posPoint={statementPOSId === '' ? null : statementPOS}
+          posPoints={scopedPOSPoints}
           categories={scopedCategories}
           sales={scopedSales}
           payments={scopedPayments}
           dispatches={scopedDispatches}
+          invoices={scopedInvoices}
           settings={settings}
           initialPaperFormat={statementPaperMode}
           onClose={() => setStatementPOSId(null)}
           onViewPaymentReceipt={(payment) => setSelectedPaymentForReceipt(payment)}
           onPrintSaleReceipt={(sale) => setSelectedSaleForReceipt(sale)}
+          onViewInvoiceReceipt={(inv) => setSelectedInvoiceForReceipt(inv)}
         />
       )}
 

@@ -411,6 +411,25 @@ export async function saveUserManagerProfileAndLimitation(
   }
 }
 
+// 19.1 Delete Profile from User Manager
+export async function deleteUserManagerProfile(
+  config: Partial<MikroTikConfig>,
+  profileIdOrName: string
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/mikrotik/um/delete-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, profileId: profileIdOrName, profileName: profileIdOrName }),
+    });
+    const data = await res.json();
+    return Boolean(data.success);
+  } catch (error) {
+    console.warn('deleteUserManagerProfile notice:', error);
+    return false;
+  }
+}
+
 // 20. Delete User from User Manager
 export async function deleteUserManagerUser(config: Partial<MikroTikConfig>, userId: string): Promise<boolean> {
   try {
@@ -461,11 +480,13 @@ export function generateUserManagerBatchRscScript(
 
   if (version === 'v7') {
     cards.forEach((c) => {
-      script += `/user-manager user add name="${c.username}" password="${c.pin || c.username}" profile="${profileName}" comment="POS UM Batch"\n`;
+      const passParam = c.pin ? `password="${c.pin}" ` : '';
+      script += `/user-manager user add name="${c.username}" ${passParam}profile="${profileName}" comment="POS UM Batch"\n`;
     });
   } else {
     cards.forEach((c) => {
-      script += `/tool user-manager user add customer="${customer}" username="${c.username}" password="${c.pin || c.username}" comment="POS UM Batch"\n`;
+      const passParam = c.pin ? `password="${c.pin}"` : `password=""`;
+      script += `/tool user-manager user add customer="${customer}" username="${c.username}" ${passParam} comment="POS UM Batch"\n`;
       script += `/tool user-manager user create-and-activate-profile numbers="${c.username}" profile="${profileName}" customer="${customer}"\n`;
     });
   }

@@ -12,6 +12,8 @@ import {
   MikrotikPermissions,
   UsersAndPermissionsModulePermissions,
   SettingsPermissions,
+  TenantAllowedModule,
+  NetworkTenant,
 } from '../types';
 
 // ========================================================
@@ -1062,20 +1064,311 @@ export const PERMISSION_MODULES_CONFIG: PermissionModuleMeta[] = [
 ];
 
 // ========================================================
+// Tenant Allowed Modules & Owner Customization Config
+// ========================================================
+
+export interface TenantModuleMeta {
+  id: TenantAllowedModule;
+  title: string;
+  category: 'core' | 'operations' | 'technical' | 'management';
+  description: string;
+  iconName: string; // Lucide icon reference
+  color: string;
+  bgLight: string;
+  borderColor: string;
+}
+
+export const ALL_TENANT_MODULES: TenantAllowedModule[] = [
+  'dashboard',
+  'invoices',
+  'orders',
+  'expenses',
+  'payments',
+  'pos',
+  'categories',
+  'mikrotik',
+  'users',
+  'pos_portal',
+  'settings',
+  'backup',
+  'ai_assistant',
+];
+
+export const TENANT_AVAILABLE_MODULES: TenantModuleMeta[] = [
+  {
+    id: 'dashboard',
+    title: 'لوحة التحكم والتقارير المالية',
+    category: 'core',
+    description: 'المؤشرات المالية، إجمالي المبيعات، صافي الأرباح، والرسم البياني',
+    iconName: 'LayoutDashboard',
+    color: 'text-indigo-400',
+    bgLight: 'bg-indigo-500/10',
+    borderColor: 'border-indigo-500/30',
+  },
+  {
+    id: 'invoices',
+    title: 'الفواتير والمبيعات والمرتجع',
+    category: 'operations',
+    description: 'إصدار فواتير بيع الكروت، فواتير المرتجع، وسجل المبيعات اليومي',
+    iconName: 'FileText',
+    color: 'text-blue-400',
+    bgLight: 'bg-blue-500/10',
+    borderColor: 'border-blue-500/30',
+  },
+  {
+    id: 'orders',
+    title: 'طلبات الكروت الواردة من الموزعين',
+    category: 'operations',
+    description: 'استقبال طلبات نقاط البيع، اعتماد أو رفض الطلبات، وتسليم الكروت',
+    iconName: 'ShoppingBag',
+    color: 'text-amber-400',
+    bgLight: 'bg-amber-500/10',
+    borderColor: 'border-amber-500/30',
+  },
+  {
+    id: 'expenses',
+    title: 'المصروفات والتكاليف التشغيلية',
+    category: 'operations',
+    description: 'تسجيل سندات الصرف، تصنيفات المصاريف، وتتبع التكاليف',
+    iconName: 'Receipt',
+    color: 'text-rose-400',
+    bgLight: 'bg-rose-500/10',
+    borderColor: 'border-rose-500/30',
+  },
+  {
+    id: 'payments',
+    title: 'سندات القبض والدفعات النقدية',
+    category: 'operations',
+    description: 'قبض الدفعات من الموزعين، تسوية الأرصدة، وطباعة السندات',
+    iconName: 'DollarSign',
+    color: 'text-emerald-400',
+    bgLight: 'bg-emerald-500/10',
+    borderColor: 'border-emerald-500/30',
+  },
+  {
+    id: 'pos',
+    title: 'نقاط التوزيع وشبكة الموزعين',
+    category: 'operations',
+    description: 'إدارة الوكلاء ونقاط البيع، سقوف المديونية، وكشوف الحسابات',
+    iconName: 'Store',
+    color: 'text-cyan-400',
+    bgLight: 'bg-cyan-500/10',
+    borderColor: 'border-cyan-500/30',
+  },
+  {
+    id: 'categories',
+    title: 'فئات الكروت والطباعة وتوليد الكروت',
+    category: 'core',
+    description: 'إدارة الفئات، توليد وطباعة الكروت A4 وحراري، وتصميم القوالب',
+    iconName: 'Layers',
+    color: 'text-violet-400',
+    bgLight: 'bg-violet-500/10',
+    borderColor: 'border-violet-500/30',
+  },
+  {
+    id: 'mikrotik',
+    title: 'مركز المايكروتك واليوزر مانجر',
+    category: 'technical',
+    description: 'مراقبة الراوتر المباشرة، فحص الاتصال، وتوليد سكربتات وبروفايلات اليوزر مانجر',
+    iconName: 'Activity',
+    color: 'text-sky-400',
+    bgLight: 'bg-sky-500/10',
+    borderColor: 'border-sky-500/30',
+  },
+  {
+    id: 'users',
+    title: 'إدارة المستخدمين والصلاحيات للشبكة',
+    category: 'management',
+    description: 'إضافة موظفي ومحاسبي الشبكة وتوزيع الصلاحيات الدقيقة وسجل التدقيق',
+    iconName: 'ShieldCheck',
+    color: 'text-purple-400',
+    bgLight: 'bg-purple-500/10',
+    borderColor: 'border-purple-500/30',
+  },
+  {
+    id: 'pos_portal',
+    title: 'بوابة نقطة البيع للموزعين (طلب كروت)',
+    category: 'operations',
+    description: 'واجهة خاصة يدخل بها الموزع لطلب كروت ومتابعة رصيده وديونه',
+    iconName: 'ExternalLink',
+    color: 'text-teal-400',
+    bgLight: 'bg-teal-500/10',
+    borderColor: 'border-teal-500/30',
+  },
+  {
+    id: 'settings',
+    title: 'إعدادات وهوية الشبكة',
+    category: 'management',
+    description: 'تخصيص اسم وشعار الشبكة، العملة، أرقام الدعم، وهوية الهوتسبوت',
+    iconName: 'Settings',
+    color: 'text-slate-300',
+    bgLight: 'bg-slate-700/20',
+    borderColor: 'border-slate-600/30',
+  },
+  {
+    id: 'backup',
+    title: 'النسخ الاحتياطي واستعادة البيانات',
+    category: 'management',
+    description: 'تصدير نسخة كاملة من قاعدة بيانات الشبكة واستعادتها بأمان',
+    iconName: 'Database',
+    color: 'text-indigo-400',
+    bgLight: 'bg-indigo-500/10',
+    borderColor: 'border-indigo-500/30',
+  },
+  {
+    id: 'ai_assistant',
+    title: 'المستشار الذكي بالذكاء الاصطناعي (AI)',
+    category: 'management',
+    description: 'تحليلات ذكية للمبيعات والأرباح وتقديم التوصيات والتقارير التنفيذية',
+    iconName: 'Sparkles',
+    color: 'text-yellow-400',
+    bgLight: 'bg-yellow-500/10',
+    borderColor: 'border-yellow-500/30',
+  },
+];
+
+export interface TenantPresetPackage {
+  id: string;
+  name: string;
+  badge: string;
+  description: string;
+  modules: TenantAllowedModule[];
+}
+
+export const TENANT_PRESET_PACKAGES: TenantPresetPackage[] = [
+  {
+    id: 'full',
+    name: '🌟 شامل كافة القوائم والواجهات',
+    badge: '13 قائمة',
+    description: 'وصول مطلق لكافة الميزات المحاسبية والتوليد والمايكروتك والذكاء الاصطناعي',
+    modules: [...ALL_TENANT_MODULES],
+  },
+  {
+    id: 'vouchers_pos',
+    name: '🖨️ طباعة وتوزيع الكروت فقط',
+    badge: '7 قوائم',
+    description: 'مخصص للموزعين وشبكات الكروت الورقية (فئات، فواتير، نقاط بيع، سندات، طلبات)',
+    modules: ['categories', 'pos', 'invoices', 'payments', 'orders', 'pos_portal', 'settings'],
+  },
+  {
+    id: 'mikrotik_core',
+    name: '📡 إدارة الشبكة والمايكروتك',
+    badge: '6 قوائم',
+    description: 'مركز المايكروتك ومراقبة الراوتر وتوليد الكروت واليوزر مانجر والإعدادات',
+    modules: ['mikrotik', 'categories', 'dashboard', 'settings', 'users', 'backup'],
+  },
+  {
+    id: 'pos_accounting',
+    name: '💰 تجاري ومحاسبي متكامل',
+    badge: '10 قوائم',
+    description: 'لوحة التحكم، الفواتير، المصروفات، سندات القبض، نقاط التوزيع، والطلبات',
+    modules: [
+      'dashboard',
+      'invoices',
+      'expenses',
+      'payments',
+      'pos',
+      'orders',
+      'categories',
+      'users',
+      'settings',
+      'backup',
+    ],
+  },
+];
+
+/**
+ * Builds a granular UserPermissions object for a Network Manager (super_admin)
+ * based strictly on the allowed modules configured by the System Owner.
+ */
+export function buildPermissionsForAllowedModules(allowed: TenantAllowedModule[]): UserPermissions {
+  const allowedSet = new Set(allowed);
+  const full = createFullPermissions();
+  const empty = createEmptyPermissions();
+
+  const perms: UserPermissions = {
+    dashboard: allowedSet.has('dashboard') ? { ...full.dashboard } : { ...empty.dashboard },
+    invoices: allowedSet.has('invoices') ? { ...full.invoices } : { ...empty.invoices },
+    orders: allowedSet.has('orders') || allowedSet.has('pos_portal') ? { ...full.orders } : { ...empty.orders },
+    expenses: allowedSet.has('expenses') ? { ...full.expenses } : { ...empty.expenses },
+    payments: allowedSet.has('payments') ? { ...full.payments } : { ...empty.payments },
+    pos: allowedSet.has('pos') ? { ...full.pos } : { ...empty.pos },
+    categories: allowedSet.has('categories') ? { ...full.categories } : { ...empty.categories },
+    mikrotik: allowedSet.has('mikrotik') ? { ...full.mikrotik } : { ...empty.mikrotik },
+    usersAndPermissions: allowedSet.has('users') ? { ...full.usersAndPermissions } : { ...empty.usersAndPermissions },
+    settings: {
+      view: allowedSet.has('settings') || allowedSet.has('backup') || allowedSet.has('ai_assistant'),
+      editNetworkProfile: allowedSet.has('settings'),
+      backupAndRestore: allowedSet.has('backup'),
+      useAIAssistant: allowedSet.has('ai_assistant'),
+      resetDatabase: false,
+    },
+    systemTenants: {
+      view: false,
+      manage: false,
+    },
+  };
+
+  return perms;
+}
+
+// ========================================================
 // Helper Functions for Permission Check & Count
 // ========================================================
 
 export function hasPermission(
   user: AppUser | null | undefined,
   module: keyof UserPermissions,
-  action?: string
+  action?: string,
+  activeTenant?: NetworkTenant | null
 ): boolean {
   if (!user) return false;
+  // System Owner has unconstrained root access
   if (user.role === 'system_owner') return true;
-  if (user.role === 'super_admin' && module !== 'systemTenants') return true;
+
+  // systemTenants is strictly reserved for system_owner
+  if (module === 'systemTenants') return false;
+
+  // Tenant-level module restriction check
+  if (activeTenant && activeTenant.accessMode === 'custom' && activeTenant.allowedModules) {
+    let requiredTenantModule: TenantAllowedModule = module === 'usersAndPermissions' ? 'users' : (module as TenantAllowedModule);
+
+    if (module === 'settings') {
+      if (action === 'useAIAssistant') {
+        requiredTenantModule = 'ai_assistant';
+      } else if (action === 'backupAndRestore') {
+        requiredTenantModule = 'backup';
+      }
+    }
+
+    if (!activeTenant.allowedModules.includes(requiredTenantModule)) {
+      // Special case: if action is view on settings, allow if settings OR backup OR ai_assistant is enabled
+      if (module === 'settings' && (!action || action === 'view')) {
+        const hasAnySettingsModule = activeTenant.allowedModules.some((m) => ['settings', 'backup', 'ai_assistant'].includes(m));
+        if (!hasAnySettingsModule) return false;
+      } else {
+        return false;
+      }
+    }
+  }
 
   const modulePerms = user.permissions?.[module];
+
+  // Super Admin (Tenant Admin): Respect custom module constraints
+  if (user.role === 'super_admin') {
+    if (modulePerms) {
+      if (modulePerms.view === false) {
+        return false;
+      }
+      if (action && (modulePerms as any)[action] === false) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   if (!modulePerms) return false;
+  if (!modulePerms.view) return false;
 
   if (!action) {
     return Boolean((modulePerms as any).view);
@@ -1109,19 +1402,31 @@ export function countPermissions(permissions: UserPermissions | undefined): {
 }
 
 /**
- * Determine the best default landing view for a user based on their role and granted permissions.
+ * Determine the best default landing view for a user based on their role, granted permissions, and tenant modules.
  */
-export function getDefaultLandingViewForUser(user: AppUser | null | undefined): 'dashboard' | 'orders' | 'pos_portal' | 'invoices' | 'expenses' | 'payments' | 'pos' | 'categories' | 'mikrotik' | 'users' {
+export function getDefaultLandingViewForUser(
+  user: AppUser | null | undefined,
+  tenant?: NetworkTenant | null
+): 'dashboard' | 'orders' | 'pos_portal' | 'invoices' | 'expenses' | 'payments' | 'pos' | 'categories' | 'mikrotik' | 'users' {
   if (!user) return 'invoices';
-
-  // Super admin defaults to dashboard
-  if (user.role === 'super_admin') {
-    return 'dashboard';
-  }
 
   // POS Agent defaults to POS portal
   if (user.role === 'pos_agent') {
     return 'pos_portal';
+  }
+
+  // Super admin defaults to dashboard if permitted, or first permitted module
+  if (user.role === 'super_admin') {
+    if (hasPermission(user, 'dashboard', 'view')) return 'dashboard';
+    if (hasPermission(user, 'categories', 'view')) return 'categories';
+    if (hasPermission(user, 'invoices', 'view')) return 'invoices';
+    if (hasPermission(user, 'pos', 'view')) return 'pos';
+    if (hasPermission(user, 'orders', 'view')) return 'orders';
+    if (hasPermission(user, 'mikrotik', 'view')) return 'mikrotik';
+    if (hasPermission(user, 'payments', 'view')) return 'payments';
+    if (hasPermission(user, 'expenses', 'view')) return 'expenses';
+    if (hasPermission(user, 'usersAndPermissions', 'view')) return 'users';
+    return 'categories';
   }
 
   // Accountant: prefers dashboard if permitted, or invoices

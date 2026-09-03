@@ -111,6 +111,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
   const [formInvoiceNumber, setFormInvoiceNumber] = useState<string>('');
   const [formPOSId, setFormPOSId] = useState<string>(posPoints[0]?.id || '');
   const [formDate, setFormDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [formTime, setFormTime] = useState<string>(new Date().toISOString().split('T')[1].substring(0, 5));
   const [formPaymentType, setFormPaymentType] = useState<'credit' | 'cash'>('credit');
   const [formDeliveredBy, setFormDeliveredBy] = useState<string>('مندوب التوزيع');
   const [formReceivedBy, setFormReceivedBy] = useState<string>('');
@@ -160,6 +161,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     setFormPOSId(initialPos?.id || '');
     setFormReceivedBy(initialPos?.managerName || initialPos?.name || '');
     setFormDate(todayStr);
+    setFormTime(new Date().toISOString().split('T')[1].substring(0, 5));
     setFormPaymentType('credit');
     setFormDeliveredBy(type === 'sale' ? 'مندوب التوزيع' : 'أمين المستودع');
     setFormReasonForReturn(type === 'return' ? 'طلب استبدال فئات' : '');
@@ -190,6 +192,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     setFormPOSId(inv.posPointId);
     setFormReceivedBy(inv.receivedBy || '');
     setFormDate(inv.date);
+    setFormTime(inv.time || new Date().toISOString().split('T')[1].substring(0, 5));
     setFormPaymentType(inv.paymentType);
     setFormDeliveredBy(inv.deliveredBy || '');
     setFormReasonForReturn(inv.reasonForReturn || '');
@@ -373,6 +376,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
         invoiceNumber: finalInvoiceNumber,
         type: createInvoiceType,
         date: formDate,
+        time: formTime,
         posPointId: formPOSId,
         posPointName,
         items: processedItems,
@@ -394,6 +398,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
         invoiceNumber: finalInvoiceNumber,
         type: createInvoiceType,
         date: formDate,
+        time: formTime,
         posPointId: formPOSId,
         posPointName,
         items: processedItems,
@@ -887,7 +892,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                         </span>
                       </td>
                       <td className="py-3 px-4 text-slate-300 font-mono">
-                        {inv.date}
+                        {inv.date} {inv.time ? ` - ${inv.time}` : ''}
                       </td>
                       <td className="py-3 px-4 font-bold text-white">
                         {inv.posPointName}
@@ -1102,27 +1107,37 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                   </select>
                 </div>
 
-                {/* Date */}
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">تاريخ الفاتورة *</label>
-                  <input
-                    type="date"
-                    value={formDate}
-                    onChange={(e) => {
-                      const newDate = e.target.value;
-                      setFormDate(newDate);
-                      // If invoice number is still default format, update sequence year
-                      if (!editingInvoice) {
-                        setFormInvoiceNumber(
-                          generateNextInvoiceNumber(invoices, createInvoiceType, newDate)
-                        );
-                      }
-                    }}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
-                    required
-                  />
+                {/* Date and Time */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-slate-400 font-bold mb-1">تاريخ الفاتورة *</label>
+                    <input
+                      type="date"
+                      value={formDate}
+                      onChange={(e) => {
+                        const newDate = e.target.value;
+                        setFormDate(newDate);
+                        if (!editingInvoice) {
+                          setFormInvoiceNumber(
+                            generateNextInvoiceNumber(invoices, createInvoiceType, newDate)
+                          );
+                        }
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 font-bold mb-1">الوقت *</label>
+                    <input
+                      type="time"
+                      value={formTime}
+                      onChange={(e) => setFormTime(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                      required
+                    />
+                  </div>
                 </div>
-
                 {/* Payment Method */}
                 <div>
                   <label className="block text-slate-400 font-bold mb-1">طريقة السداد *</label>
@@ -1204,8 +1219,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                             {/* Quantity */}
                             <td className="py-2.5 px-3 text-center">
                               <input
-                                type="number"
-                                min="1"
+                                type="text" inputMode="decimal"
+                                
                                 value={item.quantity}
                                 onChange={(e) =>
                                   handleItemRowChange(index, 'quantity', e.target.value === '' ? '' : Number(e.target.value))
@@ -1217,9 +1232,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                             {/* Unit Wholesale Price */}
                             <td className="py-2.5 px-3 text-center">
                               <input
-                                type="number"
-                                min="0"
-                                step="any"
+                                type="text" inputMode="decimal"                                
+                                
                                 value={item.unitWholesalePrice}
                                 onChange={(e) =>
                                   handleItemRowChange(index, 'unitWholesalePrice', e.target.value === '' ? '' : Number(e.target.value))
@@ -1433,7 +1447,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                             {inv.type === 'return' ? 'مرتجع' : 'مبيعات'}
                           </span>
                         </td>
-                        <td className="p-2 font-mono text-slate-700">{inv.date}</td>
+                        <td className="p-2 font-mono text-slate-700">{inv.date} {inv.time ? ` - ${inv.time}` : ''}</td>
                         <td className="p-2 font-bold text-slate-800">{inv.posPointName}</td>
                         <td className="p-2 text-center font-mono font-bold text-slate-900">{inv.totalQuantity}</td>
                         <td className="p-2 text-center font-medium text-slate-700">

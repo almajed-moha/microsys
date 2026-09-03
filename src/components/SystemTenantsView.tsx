@@ -1,5 +1,17 @@
 import React, { useState } from 'react';
-import { Server, Plus, Network, CheckCircle, ShieldAlert, Trash2, LogIn, Users } from 'lucide-react';
+import {
+  Server,
+  Plus,
+  Network,
+  CheckCircle,
+  ShieldAlert,
+  Trash2,
+  LogIn,
+  Users,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+} from 'lucide-react';
 import { NetworkTenant, AppUser, POSPoint } from '../types';
 import { SystemTenantModal } from './SystemTenantModal';
 
@@ -22,10 +34,12 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<NetworkTenant | null>(null);
+  const [modalInitialTab, setModalInitialTab] = useState<'info' | 'permissions' | 'settings'>('info');
   const [deleteConfirmTenant, setDeleteConfirmTenant] = useState<NetworkTenant | null>(null);
 
-  const handleOpenModal = (tenant: NetworkTenant | null = null) => {
+  const handleOpenModal = (tenant: NetworkTenant | null = null, tab: 'info' | 'permissions' | 'settings' = 'info') => {
     setEditingTenant(tenant);
+    setModalInitialTab(tab);
     setIsModalOpen(true);
   };
 
@@ -41,11 +55,17 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
     handleCloseModal();
   };
 
+  const fullAccessTenantsCount = tenants.filter(
+    (t) => t.accessMode === 'all' || !t.allowedModules || t.allowedModules.length >= 13
+  ).length;
+  const customAccessTenantsCount = tenants.length - fullAccessTenantsCount;
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       {isModalOpen && (
         <SystemTenantModal
           tenant={editingTenant}
+          initialTab={modalInitialTab}
           allUsers={users}
           allPosPoints={posPoints}
           allTenants={tenants}
@@ -98,76 +118,84 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
-            <Server className="w-7 h-7 text-indigo-400" />
-            <span>إدارة الشبكات (Tenants)</span>
-            <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 text-xs font-bold border border-indigo-500/30">
-              SaaS Admin
-            </span>
+          <h2 className="text-2xl font-black text-white flex items-center gap-3">
+            <Server className="w-8 h-8 text-indigo-400" />
+            <span>إدارة شبكات النظام (SaaS Multi-Tenancy)</span>
           </h2>
-          <p className="text-sm text-slate-400 mt-1">
-            إدارة كافة الشبكات المشتركة في النظام السحابي ومراقبة نشاطها.
+          <p className="text-slate-400 text-sm mt-1">
+            إضافة الشبكات، تعيين المدراء، وتخصيص الصلاحيات والقوائم لكل شبكة ومستخدميها في بيئة مستقلة 100%
           </p>
         </div>
-        <button 
-          onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition shadow-lg shadow-indigo-600/20"
+        <button
+          onClick={() => handleOpenModal(null, 'info')}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition shadow-lg shadow-indigo-600/20"
         >
           <Plus className="w-5 h-5" />
           <span>إضافة شبكة جديدة</span>
         </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+          <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400">
             <Network className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-slate-400 text-xs font-bold mb-1">إجمالي الشبكات</p>
+            <p className="text-slate-400 text-xs font-bold mb-1">إجمالي الشبكات المسجلة</p>
             <p className="text-2xl font-black text-white">{tenants.length}</p>
           </div>
         </div>
+
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400">
-            <CheckCircle className="w-6 h-6" />
+          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+            <Sparkles className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-slate-400 text-xs font-bold mb-1">الشبكات النشطة</p>
-            <p className="text-2xl font-black text-white">
-              {tenants.filter(t => t.status === 'active').length}
-            </p>
+            <p className="text-slate-400 text-xs font-bold mb-1">شبكات بكامل القوائم (شامل)</p>
+            <p className="text-2xl font-black text-emerald-400">{fullAccessTenantsCount}</p>
           </div>
         </div>
+
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400">
-            <ShieldAlert className="w-6 h-6" />
+            <SlidersHorizontal className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-slate-400 text-xs font-bold mb-1">إجمالي المستخدمين (كل الشبكات)</p>
+            <p className="text-slate-400 text-xs font-bold mb-1">شبكات بقوائم مخصصة</p>
+            <p className="text-2xl font-black text-amber-400">{customAccessTenantsCount}</p>
+          </div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400">
+            <Users className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-slate-400 text-xs font-bold mb-1">إجمالي المستخدمين (كل البيئات)</p>
             <p className="text-2xl font-black text-white">{users.length}</p>
           </div>
         </div>
       </div>
 
       {/* Tenants Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-right">
             <thead>
-              <tr className="bg-slate-800/50 text-slate-300 text-xs font-bold">
+              <tr className="bg-slate-800/60 text-slate-300 text-xs font-bold">
                 <th className="p-4">الشبكة</th>
                 <th className="p-4">مدير الشبكة</th>
-                <th className="p-4">المستخدمين المرتبطين</th>
+                <th className="p-4">القوائم والواجهات المعتمدة</th>
+                <th className="p-4">طاقم المستخدمين</th>
                 <th className="p-4">الاشتراك والمدة</th>
                 <th className="p-4">الحالة</th>
                 <th className="p-4">إجراءات والوصول</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
-              {tenants.map(tenant => {
-                const tenantUsersCount = users.filter(u => (u.networkId || 'net-microsys') === tenant.id).length;
+              {tenants.map((tenant) => {
+                const tenantUsersCount = users.filter((u) => (u.networkId || 'net-microsys') === tenant.id).length;
                 
                 // Calculate subscription status
                 let subscriptionText = '';
@@ -176,7 +204,7 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
                 
                 if (tenant.subscriptionPlan === 'lifetime') {
                   subscriptionText = 'مدى الحياة';
-                  subscriptionColor = 'text-indigo-400';
+                  subscriptionColor = 'text-indigo-400 font-bold';
                 } else if (tenant.subscriptionEndDate) {
                   const endDate = new Date(tenant.subscriptionEndDate);
                   const now = new Date();
@@ -198,6 +226,9 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
                   subscriptionText = 'غير محدد';
                 }
 
+                const isFullAccess = tenant.accessMode === 'all' || !tenant.allowedModules || tenant.allowedModules.length >= 13;
+                const allowedCount = tenant.allowedModules?.length || 13;
+
                 return (
                   <tr key={tenant.id} className={`hover:bg-slate-800/30 transition text-sm ${isExpired ? 'bg-rose-950/10' : ''}`}>
                     <td className="p-4">
@@ -217,6 +248,26 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
                       <div className="text-xs text-slate-400 font-mono mt-0.5">{tenant.id}</div>
                     </td>
                     <td className="p-4 font-mono text-indigo-400">@{tenant.adminUsername}</td>
+                    
+                    {/* Allowed Menus & Permissions Column */}
+                    <td className="p-4">
+                      {isFullAccess ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-300 text-xs font-bold border border-emerald-500/25">
+                            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>جميع القوائم (شامل 13)</span>
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 text-xs font-bold border border-amber-500/25">
+                            <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+                            <span>قوائم مخصصة ({allowedCount} من 13)</span>
+                          </span>
+                        </div>
+                      )}
+                    </td>
+
                     <td className="p-4">
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold border border-slate-700">
                         <Users className="w-3.5 h-3.5 text-indigo-400" />
@@ -228,6 +279,7 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
                         <span className="text-sm text-slate-300">
                           {tenant.subscriptionPlan === 'yearly' ? 'سنوي' : 
                            tenant.subscriptionPlan === 'monthly' ? 'شهري' : 
+                           tenant.subscriptionPlan === 'lifetime' ? 'مدى الحياة' :
                            tenant.subscriptionPlan === 'custom' ? 'مخصص' : 'تلقائي'}
                         </span>
                         <span className={`text-xs ${subscriptionColor}`}>
@@ -253,11 +305,19 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
                             title={`الدخول مباشرة بحساب مدير شبكة ${tenant.name}`}
                           >
                             <LogIn className="w-3.5 h-3.5" />
-                            <span>دخول للشبكة</span>
+                            <span>دخول</span>
                           </button>
                         )}
+                        <button
+                          onClick={() => handleOpenModal(tenant, 'permissions')}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 hover:text-white text-xs font-bold transition border border-indigo-500/25"
+                          title="تعديل صلاحيات وقوائم مدير الشبكة"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>الصلاحيات</span>
+                        </button>
                         <button 
-                          onClick={() => handleOpenModal(tenant)}
+                          onClick={() => handleOpenModal(tenant, 'info')}
                           className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition border border-slate-700"
                         >
                           إدارة
@@ -276,17 +336,17 @@ export const SystemTenantsView: React.FC<SystemTenantsViewProps> = ({
               })}
               {tenants.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-12 text-center">
+                  <td colSpan={7} className="p-12 text-center">
                     <div className="max-w-md mx-auto flex flex-col items-center justify-center text-center">
                       <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-4">
                         <Server className="w-8 h-8" />
                       </div>
                       <h4 className="text-lg font-bold text-white mb-2">النظام جاهز ونظيف - لا توجد شبكات حالياً</h4>
                       <p className="text-sm text-slate-400 mb-6 leading-relaxed">
-                        تم تصفير كافة الشبكات بنجاح وأنت الآن مسجل كـ <strong>الماستر (Master)</strong>. يمكنك الآن البدء بإضافة الشبكات وتعيين مدير (Super Admin) لكل شبكة ليباشر إدارة نقاط البيع والبطاقات الخاصة به.
+                        أنت الآن مسجل كـ <strong>الماستر (مالك النظام)</strong>. يمكنك البدء بإضافة الشبكات وتحديد الصلاحيات والقوائم لكل مدير شبكة حسب طلبه، ليعمل كل مدير ومستخدميه في بيئتهم المعزولة الخاصة.
                       </p>
                       <button
-                        onClick={() => handleOpenModal()}
+                        onClick={() => handleOpenModal(null, 'info')}
                         className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition shadow-lg shadow-indigo-600/25"
                       >
                         <Plus className="w-5 h-5" />

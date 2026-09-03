@@ -408,6 +408,20 @@ app.post("/api/mikrotik/um/save-profile", async (req, res) => {
   }
 });
 
+// Delete UM Profile
+app.post("/api/mikrotik/um/delete-profile", async (req, res) => {
+  try {
+    const { options, profileId, profileName } = req.body;
+    if (!options?.host || (!profileId && !profileName)) {
+      return res.status(400).json({ success: false, error: "معرّف البروفايل والاتصال مطلوبان" });
+    }
+    const ok = await MikroTikService.deleteUserManagerProfile(options, profileId || profileName);
+    res.json({ success: ok });
+  } catch (error: any) {
+    res.json({ success: false, error: error.message || "تعذر حذف البروفايل من User Manager" });
+  }
+});
+
 // 19. Delete UM User
 app.post("/api/mikrotik/um/delete-user", async (req, res) => {
   try {
