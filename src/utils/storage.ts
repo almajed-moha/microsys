@@ -79,6 +79,13 @@ export const loadData = loadFromStorage;
 export function saveToStorage<T>(key: string, value: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    
+    // Fire and forget cloud sync if value is an array
+    if (Array.isArray(value)) {
+      import('../services/cloudSync').then(({ syncArrayToFirestore }) => {
+        syncArrayToFirestore(key, value).catch(err => console.error('Cloud Sync Error:', err));
+      }).catch(err => console.error('Failed to import cloudSync:', err));
+    }
   } catch (error) {
     console.error(`Error saving key ${key} to storage:`, error);
   }

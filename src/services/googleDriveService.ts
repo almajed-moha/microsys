@@ -93,7 +93,10 @@ export const signOutGoogle = async (): Promise<void> => {
 /**
  * Get current cached access token.
  */
+import { getGoogleAccessToken } from '../firebase';
 export const getDriveAccessToken = (): string | null => {
+  return cachedAccessToken || getGoogleAccessToken();
+  // 
   return cachedAccessToken;
 };
 

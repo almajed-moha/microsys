@@ -39,7 +39,14 @@ import {
   Sparkles,
   Edit3,
   Grid,
-  Square
+  Square,
+  LayoutTemplate,
+  ChevronRight,
+  ChevronLeft,
+  Scissors,
+  Type,
+  Palette,
+  FileDown
 } from 'lucide-react';
 import {
   NetworkSettings,
@@ -148,6 +155,12 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
   const [sheetGridCols, setSheetGridCols] = useState<number | null>(null);
   const [sheetGridRows, setSheetGridRows] = useState<number | null>(null);
   const [sheetCornerStyle, setSheetCornerStyle] = useState<'rounded' | 'sharp' | null>(null);
+  const [sheetCardGapMm, setSheetCardGapMm] = useState<number | null>(null);
+  const [sheetPageMarginMm, setSheetPageMarginMm] = useState<number | null>(null);
+  const [activePreviewPage, setActivePreviewPage] = useState<number>(0);
+  const [previewPageMode, setPreviewPageMode] = useState<'single_page' | 'all_pages'>('single_page');
+  const [selectedElementKey, setSelectedElementKey] = useState<string>('userCode');
+  const [isExportingSinglePdf, setIsExportingSinglePdf] = useState(false);
 
   const printAreaRef = useRef<HTMLDivElement>(null);
 
@@ -353,17 +366,21 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
   const activeBatchTemplate = useMemo(() => {
     const base = templates.find((t) => t.id === batchTemplateId) || templates[0];
     if (!base) return base;
-    const cols = sheetGridCols ?? base.gridCols ?? 3;
-    const rows = sheetGridRows ?? base.gridRows ?? 6;
+    const cols = sheetGridCols ?? base.gridCols ?? 4;
+    const rows = sheetGridRows ?? base.gridRows ?? 5;
     const cornerStyle = sheetCornerStyle ?? base.cardCornerStyle ?? 'rounded';
+    const cardGapMm = sheetCardGapMm ?? (base.cardGapMm !== undefined ? base.cardGapMm : 1);
+    const pageMarginMm = sheetPageMarginMm ?? (base.pageMarginMm !== undefined ? base.pageMarginMm : 4);
     return {
       ...base,
       gridCols: cols,
       gridRows: rows,
       cardsPerPage: cols * rows,
       cardCornerStyle: cornerStyle,
+      cardGapMm,
+      pageMarginMm,
     };
-  }, [batchTemplateId, templates, sheetGridCols, sheetGridRows, sheetCornerStyle]);
+  }, [batchTemplateId, templates, sheetGridCols, sheetGridRows, sheetCornerStyle, sheetCardGapMm, sheetPageMarginMm]);
 
   // Direct automatic calculation of cards in sheet when rows/cols are adjusted
   const handleGridDimensionChange = (newCols: number, newRows: number) => {
@@ -376,8 +393,23 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     setBatchCount(totalCardsInSheet);
   };
 
+  const handleApplyPreset = (cols: number, rows: number, gapMm: number = 1) => {
+    setSheetGridCols(cols);
+    setSheetGridRows(rows);
+    setSheetCardGapMm(gapMm);
+    setBatchCount(cols * rows);
+  };
+
   const handleCornerStyleChange = (style: 'rounded' | 'sharp') => {
     setSheetCornerStyle(style);
+  };
+
+  const handleGapChange = (gapMm: number) => {
+    setSheetCardGapMm(Math.max(0, Math.min(10, gapMm)));
+  };
+
+  const handleMarginChange = (marginMm: number) => {
+    setSheetPageMarginMm(Math.max(0, Math.min(15, marginMm)));
   };
 
   const handleSaveSheetSettingsToTemplate = () => {
@@ -385,7 +417,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     onSaveTemplate(activeBatchTemplate);
     setActionFeedback({
       success: true,
-      message: 'تم حفظ إعدادات التقسيم ونمط الإطار في القالب بنجاح!',
+      message: 'تم حفظ إعدادات التقسيم والفراغات ونمط الإطار في القالب بنجاح!',
     });
     setTimeout(() => setActionFeedback(null), 3000);
   };
@@ -405,6 +437,63 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
         ...(activeBatchTemplate.elementPositions || {}),
         [elementKey]: pos,
       },
+    };
+    onSaveTemplate(updated);
+  };
+
+  const handleUpdateElementStyle = (
+    elementKey: string,
+    styleUpdate: {
+      fontSize?: number | string;
+      color?: string;
+      fontWeight?: 'normal' | 'semibold' | 'bold' | 'black';
+      backgroundColor?: string;
+    }
+  ) => {
+    if (!activeBatchTemplate || !onSaveTemplate) return;
+    const currentStyles = activeBatchTemplate.elementStyles || {};
+    const targetStyle = currentStyles[elementKey] || {};
+    const updated: CardTemplate = {
+      ...activeBatchTemplate,
+      elementStyles: {
+        ...currentStyles,
+        [elementKey]: {
+          ...targetStyle,
+          ...styleUpdate,
+        },
+      },
+    };
+    onSaveTemplate(updated);
+  };
+
+  const handleUpdateCodeBoxStyle = (
+    boxStyle: 'clean-border' | 'solid-bg' | 'transparent' | 'rounded-white',
+    backgroundColor?: string
+  ) => {
+    if (!activeBatchTemplate || !onSaveTemplate) return;
+    const currentStyles = activeBatchTemplate.elementStyles || {};
+    const userCodeStyle = currentStyles['userCode'] || {};
+    const updated: CardTemplate = {
+      ...activeBatchTemplate,
+      codeBoxStyle: boxStyle,
+      elementStyles: {
+        ...currentStyles,
+        userCode: {
+          ...userCodeStyle,
+          backgroundColor: backgroundColor !== undefined ? backgroundColor : userCodeStyle.backgroundColor,
+        },
+      },
+    };
+    onSaveTemplate(updated);
+  };
+
+  const handleResetElementPosition = (elementKey: string) => {
+    if (!activeBatchTemplate || !onSaveTemplate) return;
+    const currentPositions = { ...(activeBatchTemplate.elementPositions || {}) };
+    delete currentPositions[elementKey];
+    const updated: CardTemplate = {
+      ...activeBatchTemplate,
+      elementPositions: currentPositions,
     };
     onSaveTemplate(updated);
   };
@@ -469,6 +558,25 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     return list;
   }, [batchCount, batchPrefix, batchDigitsLength, batchProfile, batchPasswordMode, batchSerialStart, profiles]);
 
+  // Split previewBatchCards into discrete printable pages
+  const cardsPerPage = (activeBatchTemplate?.gridCols || 4) * (activeBatchTemplate?.gridRows || 5);
+  const previewPages = useMemo(() => {
+    if (!previewBatchCards || previewBatchCards.length === 0) return [[]];
+    const pages: (typeof previewBatchCards)[] = [];
+    for (let i = 0; i < previewBatchCards.length; i += cardsPerPage) {
+      pages.push(previewBatchCards.slice(i, i + cardsPerPage));
+    }
+    return pages.length > 0 ? pages : [[]];
+  }, [previewBatchCards, cardsPerPage]);
+
+  const totalPages = Math.max(1, previewPages.length);
+
+  useEffect(() => {
+    if (activePreviewPage >= totalPages) {
+      setActivePreviewPage(Math.max(0, totalPages - 1));
+    }
+  }, [totalPages, activePreviewPage]);
+
   // Sync Generated Batch directly to User Manager
   const handleSyncBatchToRouter = async () => {
     setIsSyncingBatch(true);
@@ -520,19 +628,39 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  // Export Printable PDF Card Sheet
-  const handleExportPdf = async () => {
-    setIsExportingPdf(true);
+  // Export Printable PDF Card Sheet (single page preview or full batch)
+  const handleExportPdf = async (singlePageOnly: boolean = false) => {
+    if (singlePageOnly) {
+      setIsExportingSinglePdf(true);
+    } else {
+      setIsExportingPdf(true);
+    }
+    const previousMode = previewPageMode;
     try {
+      if (singlePageOnly) {
+        setPreviewPageMode('single_page');
+      } else {
+        setPreviewPageMode('all_pages');
+      }
+      // Wait for layout rendering
+      await new Promise((r) => setTimeout(r, 160));
+
+      const filename = singlePageOnly
+        ? `معاينة_ورقة_${activePreviewPage + 1}_(${batchProfile || 'كروت'}).pdf`
+        : `دفعة_كروت_${batchProfile || 'UM'}_(${previewBatchCards.length}كارت).pdf`;
+
       await exportElementToPdf('um-print-sheet', {
-        filename: `كروت_يوزر_مانجر_${batchProfile || 'cards'}_${previewBatchCards.length}.pdf`,
+        filename,
         orientation: 'portrait',
         format: 'a4',
+        scale: 2.2,
       });
     } catch (err) {
       console.error('PDF export error:', err);
     } finally {
+      setPreviewPageMode(previousMode);
       setIsExportingPdf(false);
+      setIsExportingSinglePdf(false);
     }
   };
 
@@ -715,7 +843,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
               : "bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800"
           }`}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" className="text-cyan-400"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+          <LayoutTemplate className="w-4 h-4 text-cyan-400" />
           <span>إدارة القوالب</span>
         </button>
 
@@ -1414,22 +1542,33 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
 
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={handleExportPdf}
-                  disabled={isExportingPdf}
-                  className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700 transition"
+                  onClick={() => handleExportPdf(true)}
+                  disabled={isExportingSinglePdf || isExportingPdf}
+                  className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700 transition disabled:opacity-50"
+                  title="تحميل الورقة الحالية فقط بصيغة A4 PDF لمعرفة كيف ستبدو الطباعة"
                 >
-                  <Printer className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>{isExportingPdf ? 'جارِ التحميل...' : 'تحميل ورقة المعاينة للطباعة (A4 PDF)'}</span>
+                  <FileDown className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>{isExportingSinglePdf ? 'جارِ التحميل...' : 'تحميل ورقة المعاينة (A4 PDF)'}</span>
                 </button>
 
                 <button
-                  onClick={handleDownloadBatchRsc}
-                  className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700 transition"
+                  onClick={() => handleExportPdf(false)}
+                  disabled={isExportingPdf || isExportingSinglePdf}
+                  className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700 transition disabled:opacity-50"
+                  title="تحميل كامل الدفعة في ملف PDF متعدد الصفحات"
                 >
-                  <FileCode className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>تحميل سكربت (.rsc)</span>
+                  <Printer className="w-3.5 h-3.5 text-purple-400" />
+                  <span>{isExportingPdf ? 'جارِ التحميل...' : `تحميل كل الدفعة (${totalPages} أوراق)`}</span>
                 </button>
               </div>
+
+              <button
+                onClick={handleDownloadBatchRsc}
+                className="w-full py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700/80 transition"
+              >
+                <FileCode className="w-3.5 h-3.5 text-emerald-400" />
+                <span>تحميل سكربت MikroTik (.rsc)</span>
+              </button>
             </div>
 
             {batchOutcome && (
@@ -1448,206 +1587,614 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
           {/* Printable Sheet Preview */}
           <div className="lg:col-span-7 bg-slate-900/90 p-5 rounded-3xl border border-slate-800 flex flex-col overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3 border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Printer className="w-4 h-4 text-purple-400" />
                 <span className="font-bold text-white text-xs">
                   معاينة ورقة طباعة كروت اليوزر مانجر ({previewBatchCards.length} كارت)
                 </span>
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-950/60 text-purple-300 border border-purple-800/40 font-mono font-bold">
-                  {activeBatchTemplate?.cardsPerPage || 18} كارت بالورقة ({activeBatchTemplate?.gridCols || 3} أعمدة × {activeBatchTemplate?.gridRows || 6} أسطر)
+                  {activeBatchTemplate?.cardsPerPage || 20} كارت بالورقة ({activeBatchTemplate?.gridCols || 4} أعمدة × {activeBatchTemplate?.gridRows || 5} أسطر)
                 </span>
-              </div>
-
-              {/* Interactive Drag & Drop Toggle */}
-              <button
-                type="button"
-                onClick={() => setIsInteractivePreview(!isInteractivePreview)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${
-                  isInteractivePreview
-                    ? 'bg-purple-600 border-purple-400 text-white shadow-lg shadow-purple-600/30'
-                    : 'bg-slate-800 border-slate-700 hover:bg-slate-750 text-slate-300'
-                }`}
-                title="تفعيل سحب وتعديل مواضع العناصر في الكارت بالماوس"
-              >
-                <Move className="w-3.5 h-3.5" />
-                <span>{isInteractivePreview ? 'إنهاء نمط السحب' : 'تفعيل السحب والتعديل المباشر'}</span>
-              </button>
-            </div>
-
-            {/* Live Sheet Grid & Corner Tuning Bar */}
-            <div className="mb-3 p-3 bg-slate-950/80 rounded-2xl border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
-              {/* Columns and Rows with Direct Automatic Cards Count Update */}
-              <div className="flex items-center gap-3 flex-wrap">
-                <div className="flex items-center gap-1.5">
-                  <Grid className="w-3.5 h-3.5 text-indigo-400" />
-                  <span className="text-slate-300 font-semibold">الأعمدة:</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="8"
-                    value={activeBatchTemplate?.gridCols || 3}
-                    onChange={(e) => {
-                      const c = parseInt(e.target.value) || 1;
-                      handleGridDimensionChange(c, activeBatchTemplate?.gridRows || 6);
-                    }}
-                    className="w-14 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white font-mono font-bold text-center"
-                    title="عدد أعمدة الكروت في الورقة"
-                  />
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  <span className="text-slate-400 font-bold">×</span>
-                  <span className="text-slate-300 font-semibold">الأسطر:</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="15"
-                    value={activeBatchTemplate?.gridRows || 6}
-                    onChange={(e) => {
-                      const r = parseInt(e.target.value) || 1;
-                      handleGridDimensionChange(activeBatchTemplate?.gridCols || 3, r);
-                    }}
-                    className="w-14 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white font-mono font-bold text-center"
-                    title="عدد أسطر الكروت في الورقة"
-                  />
-                </div>
-
-                <span className="text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20 font-bold font-mono">
-                  = {activeBatchTemplate?.cardsPerPage || 18} كارت/ورقة تلقائياً
-                </span>
-              </div>
-
-              {/* Corner Style (Rounded vs Sharp) */}
-              <div className="flex items-center gap-2">
-                <span className="text-slate-300 font-semibold">إطار الكارت:</span>
-                <div className="flex items-center bg-slate-900 p-0.5 rounded-xl border border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => handleCornerStyleChange('rounded')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
-                      (activeBatchTemplate?.cardCornerStyle || 'rounded') === 'rounded'
-                        ? 'bg-purple-600 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <span>مستدير</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleCornerStyleChange('sharp')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
-                      activeBatchTemplate?.cardCornerStyle === 'sharp'
-                        ? 'bg-purple-600 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Square className="w-3 h-3" />
-                    <span>مركن (90°)</span>
-                  </button>
-                </div>
-
-                {onSaveTemplate && (
-                  <button
-                    type="button"
-                    onClick={handleSaveSheetSettingsToTemplate}
-                    className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold border border-slate-700 transition"
-                    title="حفظ تقسيم الأعمدة والأسطر ونمط الإطار في القالب الحالي"
-                  >
-                    حفظ بالقالب
-                  </button>
+                {totalPages > 1 && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-cyan-950/60 text-cyan-300 border border-cyan-800/40 font-bold">
+                    إجمالي: {totalPages} أوراق A4
+                  </span>
                 )}
               </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Download preview page button in header */}
+                <button
+                  type="button"
+                  onClick={() => handleExportPdf(true)}
+                  disabled={isExportingSinglePdf || isExportingPdf}
+                  className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 transition flex items-center gap-1.5"
+                  title="تحميل الورقة الحالية A4 PDF لمعاينة مظهر الطباعة الدقيق"
+                >
+                  <FileDown className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>{isExportingSinglePdf ? 'جارِ التصدير...' : 'تحميل ورقة المعاينة'}</span>
+                </button>
+
+                {/* Interactive Drag & Drop Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setIsInteractivePreview(!isInteractivePreview)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${
+                    isInteractivePreview
+                      ? 'bg-purple-600 border-purple-400 text-white shadow-lg shadow-purple-600/30'
+                      : 'bg-slate-800 border-slate-700 hover:bg-slate-750 text-slate-300'
+                  }`}
+                  title="تفعيل سحب وتعديل مواضع وألوان وأحجام خطوط العناصر في الكارت"
+                >
+                  <Move className="w-3.5 h-3.5" />
+                  <span>{isInteractivePreview ? 'إنهاء التعديل المباشر' : 'تفعيل السحب والتعديل المباشر'}</span>
+                </button>
+              </div>
             </div>
 
-            {isInteractivePreview && (
-              <div className="mb-3 p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-xs text-purple-200 flex items-center gap-2 animate-in fade-in">
-                <Sparkles className="w-4 h-4 text-purple-400 flex-shrink-0" />
-                <span>
-                  <strong>نمط السحب والتعديل المباشر:</strong> يمكنك سحب أي عنصر (الشعار، كود الكارت، الباركود، الفئة) بالماوس لتعديل موضعه على الكارت، وتُحفظ التعديلات في القالب فوراً!
-                </span>
+            {/* Live Sheet Grid & Tuning Bar */}
+            <div className="mb-3 p-3 bg-slate-950/80 rounded-2xl border border-slate-800 space-y-2.5 text-xs">
+              {/* Row 1: Presets & Grid dimensions */}
+              <div className="flex flex-wrap items-center justify-between gap-2.5">
+                {/* Presets Chips */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-slate-400 text-[11px] font-bold">توزيع سريع:</span>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset(4, 5, 1)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                      activeBatchTemplate?.gridCols === 4 && activeBatchTemplate?.gridRows === 5
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                    }`}
+                  >
+                    4×5 (20 كارت - جلوبل نت)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset(4, 6, 1)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                      activeBatchTemplate?.gridCols === 4 && activeBatchTemplate?.gridRows === 6
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                    }`}
+                  >
+                    4×6 (24 كارت)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset(3, 6, 1)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                      activeBatchTemplate?.gridCols === 3 && activeBatchTemplate?.gridRows === 6
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                    }`}
+                  >
+                    3×6 (18 كارت)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset(4, 7, 0.8)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                      activeBatchTemplate?.gridCols === 4 && activeBatchTemplate?.gridRows === 7
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                    }`}
+                  >
+                    4×7 (28 كارت)
+                  </button>
+                </div>
+
+                {/* Direct Numeric Cols x Rows */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1">
+                    <Grid className="w-3.5 h-3.5 text-indigo-400" />
+                    <span className="text-slate-300 font-semibold">الأعمدة:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="8"
+                      value={activeBatchTemplate?.gridCols || 4}
+                      onChange={(e) => {
+                        const c = parseInt(e.target.value) || 1;
+                        handleGridDimensionChange(c, activeBatchTemplate?.gridRows || 5);
+                      }}
+                      className="w-12 bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-1 text-white font-mono font-bold text-center text-xs"
+                      title="عدد أعمدة الكروت في الورقة"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <span className="text-slate-500 font-bold">×</span>
+                    <span className="text-slate-300 font-semibold">الأسطر:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="15"
+                      value={activeBatchTemplate?.gridRows || 5}
+                      onChange={(e) => {
+                        const r = parseInt(e.target.value) || 1;
+                        handleGridDimensionChange(activeBatchTemplate?.gridCols || 4, r);
+                      }}
+                      className="w-12 bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-1 text-white font-mono font-bold text-center text-xs"
+                      title="عدد أسطر الكروت في الورقة"
+                    />
+                  </div>
+
+                  <span className="text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20 font-bold font-mono">
+                    = {activeBatchTemplate?.cardsPerPage || 20} كارت/ورقة
+                  </span>
+                </div>
+              </div>
+
+              {/* Row 2: Cutting Gap, Margins, Corner Style, and Save */}
+              <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-900">
+                {/* Cutting Gap */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-slate-300 font-semibold flex items-center gap-1">
+                    <Scissors className="w-3.5 h-3.5 text-amber-400" />
+                    <span>فراغ القص:</span>
+                  </span>
+                  <div className="flex items-center gap-1">
+                    {[
+                      { label: '0 مم (متلاصقة)', val: 0 },
+                      { label: '0.5 مم (بسيط)', val: 0.5 },
+                      { label: '1 مم (دقيق)', val: 1 },
+                      { label: '2 مم', val: 2 },
+                    ].map((g) => (
+                      <button
+                        key={g.val}
+                        type="button"
+                        onClick={() => handleGapChange(g.val)}
+                        className={`px-2 py-0.5 rounded-md text-[11px] font-bold transition ${
+                          (activeBatchTemplate?.cardGapMm ?? 1) === g.val
+                            ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                            : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                        }`}
+                      >
+                        {g.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Corner Style & Page Margin */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  {/* Page Margin */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400 text-[11px]">الهامش:</span>
+                    {[
+                      { label: '3 مم', val: 3 },
+                      { label: '4 مم', val: 4 },
+                      { label: '5 مم', val: 5 },
+                    ].map((m) => (
+                      <button
+                        key={m.val}
+                        type="button"
+                        onClick={() => handleMarginChange(m.val)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition ${
+                          (activeBatchTemplate?.pageMarginMm ?? 4) === m.val
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Corner Style */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-slate-400 text-[11px]">الإطار:</span>
+                    <div className="flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => handleCornerStyleChange('rounded')}
+                        className={`px-2 py-0.5 rounded text-[11px] font-bold transition ${
+                          (activeBatchTemplate?.cardCornerStyle || 'rounded') === 'rounded'
+                            ? 'bg-purple-600 text-white'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        مستدير
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCornerStyleChange('sharp')}
+                        className={`px-2 py-0.5 rounded text-[11px] font-bold transition ${
+                          activeBatchTemplate?.cardCornerStyle === 'sharp'
+                            ? 'bg-purple-600 text-white'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        مركن (90°)
+                      </button>
+                    </div>
+                  </div>
+
+                  {onSaveTemplate && (
+                    <button
+                      type="button"
+                      onClick={handleSaveSheetSettingsToTemplate}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold border border-slate-700 transition"
+                      title="حفظ تقسيم الأعمدة والأسطر وفراغ القص بالقالب"
+                    >
+                      حفظ بالقالب
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Multi-Page Navigation Bar if cards exceed single sheet */}
+            {totalPages > 1 && (
+              <div className="mb-3 p-2 bg-slate-950/90 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 text-[11px]">طريقة العرض:</span>
+                  <div className="flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewPageMode('single_page')}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
+                        previewPageMode === 'single_page'
+                          ? 'bg-purple-600 text-white'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      ورقة مفردة
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewPageMode('all_pages')}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
+                        previewPageMode === 'all_pages'
+                          ? 'bg-purple-600 text-white'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      عرض كافة الأوراق ({totalPages})
+                    </button>
+                  </div>
+                </div>
+
+                {previewPageMode === 'single_page' && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={activePreviewPage === 0}
+                      onClick={() => setActivePreviewPage((prev) => Math.max(0, prev - 1))}
+                      className="p-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:opacity-30"
+                      title="الورقة السابقة"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalPages }).map((_, pIdx) => (
+                        <button
+                          key={pIdx}
+                          type="button"
+                          onClick={() => setActivePreviewPage(pIdx)}
+                          className={`px-2 py-0.5 rounded text-[11px] font-bold font-mono transition ${
+                            activePreviewPage === pIdx
+                              ? 'bg-purple-600 text-white font-black'
+                              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                          }`}
+                        >
+                          ورقة {pIdx + 1}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={activePreviewPage >= totalPages - 1}
+                      onClick={() => setActivePreviewPage((prev) => Math.min(totalPages - 1, prev + 1))}
+                      className="p-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:opacity-30"
+                      title="الورقة التالية"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
+            {isInteractivePreview && (
+              <div className="mb-3 p-3.5 bg-slate-950 rounded-2xl border border-purple-500/40 shadow-xl space-y-3 animate-in fade-in">
+                {/* Header row with Element Selector */}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-purple-300 font-bold text-xs flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                      <span>تخصيص العنصر المحدد:</span>
+                    </span>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {[
+                        { key: 'userCode', label: 'كود المستخدم / الدخول' },
+                        { key: 'networkName', label: 'اسم الشبكة' },
+                        { key: 'category', label: 'الفئة / الباقة' },
+                        { key: 'price', label: 'السعر' },
+                        { key: 'validity', label: 'الصلاحية' },
+                        { key: 'supportPhone', label: 'هاتف الدعم' },
+                        { key: 'networkSlogan', label: 'الرابط / الشعار' },
+                      ].map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => setSelectedElementKey(item.key)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                            selectedElementKey === item.key
+                              ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20'
+                              : 'bg-slate-900 text-slate-300 hover:text-white border border-slate-800'
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleResetElementPosition(selectedElementKey)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold border border-slate-700 transition flex items-center gap-1"
+                      title="إعادة ضبط موضع العنصر المحدد إلى مكانه التلقائي"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>إعادة ضبط الموضع</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Property Controls: Font Size, Color, Weight, Code Box */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                  {/* Font Size (Exact Number in px) */}
+                  <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-300 font-bold flex items-center gap-1">
+                        <Type className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>حجم الخط:</span>
+                      </span>
+                      <span className="text-[11px] font-mono font-bold text-indigo-300">
+                        {((activeBatchTemplate?.elementStyles?.[selectedElementKey]?.fontSize as number) ||
+                          (selectedElementKey === 'price' ? 15 : selectedElementKey === 'userCode' ? 14 : selectedElementKey === 'networkName' ? 13 : selectedElementKey === 'category' ? 12 : 10))} px
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="8"
+                        max="48"
+                        value={
+                          (activeBatchTemplate?.elementStyles?.[selectedElementKey]?.fontSize as number) ||
+                          (selectedElementKey === 'price' ? 15 : selectedElementKey === 'userCode' ? 14 : selectedElementKey === 'networkName' ? 13 : selectedElementKey === 'category' ? 12 : 10)
+                        }
+                        onChange={(e) => {
+                          const size = parseInt(e.target.value) || 12;
+                          handleUpdateElementStyle(selectedElementKey, { fontSize: size });
+                        }}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white font-mono font-bold text-center text-xs"
+                      />
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur = (activeBatchTemplate?.elementStyles?.[selectedElementKey]?.fontSize as number) || 14;
+                            handleUpdateElementStyle(selectedElementKey, { fontSize: Math.max(8, cur - 1) });
+                          }}
+                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 font-bold"
+                        >
+                          -
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur = (activeBatchTemplate?.elementStyles?.[selectedElementKey]?.fontSize as number) || 14;
+                            handleUpdateElementStyle(selectedElementKey, { fontSize: Math.min(48, cur + 1) });
+                          }}
+                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 font-bold"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Font Color */}
+                  <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 space-y-1.5">
+                    <span className="text-slate-300 font-bold flex items-center gap-1">
+                      <Palette className="w-3.5 h-3.5 text-pink-400" />
+                      <span>لون الخط:</span>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={
+                          activeBatchTemplate?.elementStyles?.[selectedElementKey]?.color ||
+                          (selectedElementKey === 'networkName' ? '#1d4ed8' : selectedElementKey === 'category' ? '#0f172a' : '#020617')
+                        }
+                        onChange={(e) => handleUpdateElementStyle(selectedElementKey, { color: e.target.value })}
+                        className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border border-slate-700"
+                        title="اختر لون الخط"
+                      />
+                      <input
+                        type="text"
+                        value={
+                          activeBatchTemplate?.elementStyles?.[selectedElementKey]?.color ||
+                          (selectedElementKey === 'networkName' ? '#1d4ed8' : selectedElementKey === 'category' ? '#0f172a' : '#020617')
+                        }
+                        onChange={(e) => handleUpdateElementStyle(selectedElementKey, { color: e.target.value })}
+                        className="w-20 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white font-mono text-center text-xs"
+                      />
+                      {/* Color presets */}
+                      <div className="flex items-center gap-1">
+                        {['#020617', '#dc2626', '#1d4ed8', '#047857', '#7c3aed'].map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => handleUpdateElementStyle(selectedElementKey, { color: c })}
+                            className="w-4 h-4 rounded-full border border-slate-600 transition hover:scale-110"
+                            style={{ backgroundColor: c }}
+                            title={c}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Font Weight */}
+                  <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 space-y-1.5">
+                    <span className="text-slate-300 font-bold block">سمك الخط:</span>
+                    <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800">
+                      {[
+                        { label: 'عادي', val: 'normal' },
+                        { label: 'عريض', val: 'bold' },
+                        { label: 'عريض جداً', val: 'black' },
+                      ].map((w) => (
+                        <button
+                          key={w.val}
+                          type="button"
+                          onClick={() => handleUpdateElementStyle(selectedElementKey, { fontWeight: w.val as any })}
+                          className={`flex-1 py-1 rounded text-[11px] font-bold transition ${
+                            (activeBatchTemplate?.elementStyles?.[selectedElementKey]?.fontWeight || 'bold') === w.val
+                              ? 'bg-purple-600 text-white'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          {w.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Code Box Special Options (when userCode is active) */}
+                  {selectedElementKey === 'userCode' ? (
+                    <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 space-y-1.5">
+                      <span className="text-slate-300 font-bold block">إطار وخلفية الكود:</span>
+                      <div className="flex flex-col gap-1">
+                        <select
+                          value={activeBatchTemplate?.codeBoxStyle || 'clean-border'}
+                          onChange={(e) => handleUpdateCodeBoxStyle(e.target.value as any)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white text-xs font-bold"
+                        >
+                          <option value="transparent">بدون إطار وبدون خلفية (رقم فقط)</option>
+                          <option value="clean-border">إطار بيضاوي أنيق (ملون)</option>
+                          <option value="solid-bg">خلفية بيضاء مع إطار خفيف</option>
+                          <option value="rounded-white">بيضاوي أبيض ناصع</option>
+                        </select>
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
+                          <span>الخلفية:</span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateCodeBoxStyle(activeBatchTemplate?.codeBoxStyle || 'clean-border', 'transparent')}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                activeBatchTemplate?.elementStyles?.userCode?.backgroundColor === 'transparent' || activeBatchTemplate?.codeBoxStyle === 'transparent'
+                                  ? 'bg-amber-500 text-slate-950 font-black'
+                                  : 'bg-slate-800 text-slate-300'
+                              }`}
+                            >
+                              شفاف
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateCodeBoxStyle(activeBatchTemplate?.codeBoxStyle || 'clean-border', '#ffffff')}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                activeBatchTemplate?.elementStyles?.userCode?.backgroundColor === '#ffffff' && activeBatchTemplate?.codeBoxStyle !== 'transparent'
+                                  ? 'bg-indigo-600 text-white'
+                                  : 'bg-slate-800 text-slate-300'
+                              }`}
+                            >
+                              أبيض
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 flex flex-col justify-center">
+                      <span className="text-slate-400 text-[11px] block mb-1">تلميح السحب المباشر:</span>
+                      <span className="text-[11px] text-slate-300 leading-tight">
+                        اسحب <strong>الكارت رقم 1</strong> بالماوس يمنة ويسرة لتغيير مكان هذا العنصر بحرية!
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Printable Sheet Viewport */}
             <div className="bg-slate-800 rounded-2xl overflow-hidden shadow-inner flex justify-center p-4">
               <div
                 className="overflow-y-auto max-h-[70vh] w-full flex justify-center custom-scrollbar"
                 style={{ direction: 'rtl' }}
               >
-                <div
-                  id="um-print-sheet"
-                  ref={printAreaRef}
-                  className="bg-white text-slate-900"
-                  style={{
-                    width: '210mm', // Standard A4 width
-                    minHeight: '297mm', // Standard A4 height
-                    padding: `${activeBatchTemplate?.pageMarginMm || 5}mm`,
-                    direction: 'rtl',
-                    display: 'grid',
-                    gridTemplateColumns: `repeat(${activeBatchTemplate?.gridCols || 3}, minmax(0, 1fr))`,
-                    gridTemplateRows: `repeat(${activeBatchTemplate?.gridRows || 6}, minmax(0, 1fr))`,
-                    gap: `${activeBatchTemplate?.cardGapMm || 3}mm`,
-                    justifyItems: 'stretch',
-                    alignItems: 'stretch',
-                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                  }}
-                >
-                  {previewBatchCards.map((card, idx) => {
-                const activeTemplate = activeBatchTemplate;
-                if (activeTemplate) {
-                  return (
-                    <PrintableCard
-                      key={idx}
-                      template={activeTemplate}
-                      networkName={settings.networkName || 'شبكة الواي فاي'}
-                      networkSlogan={settings.networkSlogan}
-                      username={card.username}
-                      password={card.pin}
-                      profileName={card.profile}
-                      serial={card.serial}
-                      price={profiles.find(p => p.name === card.profile)?.price}
-                      currency={settings.currencySymbol}
-                      supportPhone={settings.supportPhone}
-                      posPointName={chosenPosName}
-                      interactive={isInteractivePreview}
-                      onUpdatePosition={handleUpdateTemplatePosition}
-                    />
-                  );
-                }
-                // Fallback rendering
-                return (
-                  <div
-                    key={idx}
-                    className="w-[85mm] h-[55mm] border-2 border-dashed border-slate-400 rounded-xl p-3 flex flex-col justify-between bg-white"
-                  >
-                    <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 mb-1.5">
-                      <span className="font-black text-[12px] text-purple-900 truncate">
-                        {settings.networkName || 'شبكة الواي فاي'}
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800">
-                        {card.profile}
-                      </span>
-                    </div>
-                    <div className="space-y-1.5 my-auto">
-                      <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 text-center">
-                        <span className="text-[9px] text-slate-500 block">اسم المستخدم</span>
-                        <strong className="text-lg font-mono tracking-widest text-slate-900">{card.username}</strong>
-                      </div>
-                      {card.username !== card.pin && (
-                        <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 text-center">
-                          <span className="text-[9px] text-slate-500 block">كلمة المرور</span>
-                          <strong className="text-lg font-mono tracking-widest text-slate-900">{card.pin}</strong>
+                <div id="um-print-sheet" ref={printAreaRef} className="flex flex-col items-center gap-6">
+                  {(previewPageMode === 'single_page'
+                    ? [previewPages[activePreviewPage] || []]
+                    : previewPages
+                  ).map((pageCards, pageIdx) => {
+                    const pageDisplayNumber = previewPageMode === 'single_page' ? activePreviewPage + 1 : pageIdx + 1;
+                    return (
+                      <div key={pageIdx} className="flex flex-col items-center gap-2 w-full">
+                        {totalPages > 1 && (
+                          <div className="text-[11px] font-bold text-slate-400 bg-slate-900/90 px-3 py-1 rounded-full border border-slate-700 flex items-center gap-2 print:hidden select-none">
+                            <span>ورقة A4 رقم {pageDisplayNumber} من {totalPages}</span>
+                            <span className="text-purple-400">({pageCards.length} كارت)</span>
+                          </div>
+                        )}
+
+                        <div
+                          className="a4-print-page bg-white text-slate-900 shadow-xl relative select-none"
+                          style={{
+                            width: '210mm',
+                            height: '297mm',
+                            maxHeight: '297mm',
+                            padding: `${activeBatchTemplate?.pageMarginMm ?? 4}mm`,
+                            boxSizing: 'border-box',
+                            display: 'grid',
+                            gridTemplateColumns: `repeat(${activeBatchTemplate?.gridCols || 4}, minmax(0, 1fr))`,
+                            gridTemplateRows: `repeat(${activeBatchTemplate?.gridRows || 5}, minmax(0, 1fr))`,
+                            gap: `${activeBatchTemplate?.cardGapMm ?? 1}mm`,
+                            justifyItems: 'stretch',
+                            alignItems: 'stretch',
+                            direction: 'rtl',
+                            overflow: 'hidden',
+                            pageBreakAfter: 'always',
+                          }}
+                        >
+                          {pageCards.map((card, cIdx) => (
+                            <div key={cIdx} className="w-full h-full min-h-0 min-w-0 overflow-hidden relative">
+                              {isInteractivePreview && pageIdx === 0 && cIdx === 0 && (
+                                <div className="absolute top-1 left-1 z-30 pointer-events-none bg-purple-600/90 text-white font-black text-[8px] px-1.5 py-0.5 rounded shadow-xs">
+                                  كارت التعديل الحي
+                                </div>
+                              )}
+                              <PrintableCard
+                                template={activeBatchTemplate}
+                                networkName={settings.networkName || 'شبكة جلوبل نت'}
+                                networkSlogan={settings.networkSlogan}
+                                username={card.username}
+                                password={card.pin}
+                                profileName={card.profile}
+                                serial={card.serial}
+                                price={profiles.find((p) => p.name === card.profile)?.price}
+                                currency={settings.currencySymbol}
+                                supportPhone={settings.supportPhone}
+                                posPointName={chosenPosName}
+                                interactive={isInteractivePreview && pageIdx === 0 && cIdx === 0}
+                                selectedElementKey={selectedElementKey}
+                                onSelectElement={setSelectedElementKey}
+                                onUpdatePosition={handleUpdateTemplatePosition}
+                                validity={activeBatchTemplate?.validityText}
+                                hotspotDns={settings.hotspotDns}
+                              />
+                            </div>
+                          ))}
                         </div>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between mt-1.5 border-t border-slate-200 pt-1.5">
-                      <span className="text-[9px] text-slate-400 font-mono">SN: {card.serial}</span>
-                      <span className="text-[9px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">
-                        {profiles.find(p => p.name === card.profile)?.price || 0} {settings.currencySymbol}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>

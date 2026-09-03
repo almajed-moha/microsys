@@ -76,7 +76,9 @@ import {
   mockTenants,
   mockCardOrders,
   defaultNetworkSettings,
+  initialTemplates,
 } from './mockData';
+import { loadTenantDataFromFirestore } from './services/cloudSync';
 import { initialActivityLogs, buildActivityLog } from './utils/auditLogger';
 import { applyCreationAudit, applyUpdateAudit } from './utils/auditTrigger';
 import {
@@ -87,6 +89,10 @@ import {
   getRoleDefaultPermissions,
 } from './utils/permissions';
 import { CheckCircle2, LogIn, Sparkles, X, ShieldAlert, Network, Phone, LogOut } from 'lucide-react';
+import { logout as firebaseLogout } from './firebase';
+import { getDriveAccessToken, uploadBackupToGoogleDrive } from './services/googleDriveService';
+import { generateSystemBackup } from './utils/backupGenerator';
+import { exportToJSON } from './utils/storage';
 
 // Wipe any previous stale demo data once to ensure pristine master-only state as requested
 const MASTER_ONLY_RESET_FLAG = 'mikrotik_v4_master_only_clean_reset';
@@ -104,7 +110,18 @@ export default function App() {
   // Core Data States
   const [templates, setTemplates] = useState<CardTemplate[]>(() => {
     const saved = localStorage.getItem('mikrotik_templates');
-    return saved ? JSON.parse(saved) : [];
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as CardTemplate[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasNew = parsed.some((t) => t.id === 'tpl-network-voucher-20');
+          return hasNew ? parsed : [initialTemplates[0], ...parsed];
+        }
+      } catch (e) {
+        console.error('Error parsing templates:', e);
+      }
+    }
+    return initialTemplates;
   });
 
   useEffect(() => {
@@ -1922,14 +1939,42 @@ export default function App() {
   };
 
   // Successful login handler with automatic RBAC redirection
-  const handleLoginSuccess = (user: AppUser, targetView: NavView) => {
-    const updatedUsers = users.map((u) =>
-      u.id === user.id
-        ? { ...u, lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16) }
-        : u
-    );
-    setUsers(updatedUsers);
-    saveData(STORAGE_KEYS.USERS, updatedUsers);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState('');
+
+  const handleLoginSuccess = async (user: AppUser, targetView: NavView) => {
+    if (user.networkId && user.networkId !== 'system') {
+      setIsSyncing(true);
+      try {
+        const results = await loadTenantDataFromFirestore(user.networkId, setSyncMessage);
+        if (results) {
+          if (results[STORAGE_KEYS.USERS]) { setUsers(results[STORAGE_KEYS.USERS]); saveData(STORAGE_KEYS.USERS, results[STORAGE_KEYS.USERS]); }
+          if (results[STORAGE_KEYS.CATEGORIES]) { setCategories(results[STORAGE_KEYS.CATEGORIES]); saveData(STORAGE_KEYS.CATEGORIES, results[STORAGE_KEYS.CATEGORIES]); }
+          if (results[STORAGE_KEYS.POS_POINTS]) { setPosPoints(results[STORAGE_KEYS.POS_POINTS]); saveData(STORAGE_KEYS.POS_POINTS, results[STORAGE_KEYS.POS_POINTS]); }
+          if (results[STORAGE_KEYS.INVOICES]) { setInvoices(results[STORAGE_KEYS.INVOICES]); saveData(STORAGE_KEYS.INVOICES, results[STORAGE_KEYS.INVOICES]); }
+          if (results[STORAGE_KEYS.PAYMENTS]) { setPayments(results[STORAGE_KEYS.PAYMENTS]); saveData(STORAGE_KEYS.PAYMENTS, results[STORAGE_KEYS.PAYMENTS]); }
+          if (results[STORAGE_KEYS.EXPENSES]) { setExpenses(results[STORAGE_KEYS.EXPENSES]); saveData(STORAGE_KEYS.EXPENSES, results[STORAGE_KEYS.EXPENSES]); }
+          if (results[STORAGE_KEYS.ORDERS]) { setOrders(results[STORAGE_KEYS.ORDERS]); saveData(STORAGE_KEYS.ORDERS, results[STORAGE_KEYS.ORDERS]); }
+          if (results[STORAGE_KEYS.TENANTS]) { setTenants(results[STORAGE_KEYS.TENANTS]); saveData(STORAGE_KEYS.TENANTS, results[STORAGE_KEYS.TENANTS]); }
+        }
+      } catch (err) {
+        console.error("Failed to sync from cloud", err);
+      }
+      setIsSyncing(false);
+    }
+    
+    // We update the local instance of the user after syncing from cloud 
+    // to ensure lastLogin is updated on top of cloud data
+    setUsers((currentUsers) => {
+      const updatedUsers = currentUsers.map((u) =>
+        u.id === user.id
+          ? { ...u, lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16) }
+          : u
+      );
+      saveData(STORAGE_KEYS.USERS, updatedUsers);
+      return updatedUsers;
+    });
+
     setActiveUserId(user.id);
     saveData(STORAGE_KEYS.ACTIVE_USER_ID, user.id);
     setIsLoggedIn(true);
@@ -1957,10 +2002,69 @@ export default function App() {
     }, 4500);
   };
 
-  // Logout handler
-  const handleLogout = () => {
+  
+  // Auto Backup to Google Drive
+  useEffect(() => {
+    let interval: any;
+    if (isLoggedIn && activeUser && settings.autoBackupToDrive && getDriveAccessToken()) {
+      const intervalMs = (settings.autoBackupIntervalHours || 1) * 60 * 60 * 1000;
+      interval = setInterval(async () => {
+        try {
+          console.log('[AutoBackup] Starting scheduled backup to Google Drive...');
+          const isMasterUser = activeUser.role === 'system_owner' && activeUser.networkId === 'net-microsys';
+          
+          const backupObj = generateSystemBackup({
+            activeUser,
+            isMasterUser,
+            exportScope: (activeUser.role === 'system_owner' && selectedTenantFilter === 'all') ? 'full' : 'current',
+            effectiveNetworkId: currentTenantId || '',
+            networkDisplayName: currentTenant?.name || 'My Network',
+            includeAuditLogs: true,
+            tenants,
+            users,
+            categories,
+            posPoints,
+            invoices,
+            expenses,
+            expenseCategories,
+            dispatches,
+            sales,
+            payments,
+            orders,
+            settings: settings,
+            templates: initialTemplates,
+            activityLogs: activityLogs || []
+          });
+
+          const jsonString = exportToJSON(backupObj);
+          const dateStr = new Date().toISOString().split('T')[0];
+          const timeStr = new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
+          const scopeTag = backupObj.backupType === 'full_system' ? 'FULL_SAAS' : (currentTenant?.name?.replace(/\s+/g, '_') || 'NETWORK');
+          const fileName = `MicroSys_AutoBackup_${scopeTag}_${dateStr}_${timeStr}.json`;
+          const description = `MicroSys Cloud Auto Backup - ${scopeTag} - Generated at ${dateStr} ${timeStr}`;
+          
+          await uploadBackupToGoogleDrive(fileName, jsonString, description);
+          console.log('[AutoBackup] Successfully uploaded:', fileName);
+        } catch (err) {
+          console.error('[AutoBackup] Failed to auto-backup:', err);
+        }
+      }, intervalMs);
+    }
+    return () => clearInterval(interval);
+  }, [isLoggedIn, activeUser, settings, currentTenantId, currentTenant, tenants, users, categories, posPoints, invoices, expenses, expenseCategories, dispatches, sales, payments, orders, activityLogs, selectedTenantFilter]);
+
+// Logout handler
+  const handleLogout = async () => {
+    try {
+      await firebaseLogout();
+    } catch (e) {
+      console.error("Firebase logout failed", e);
+    }
+    
     setIsLoggedIn(false);
     setIsLoginModalOpen(false);
+    setActiveUserId('');
+    localStorage.removeItem('ACTIVE_USER_ID');
   };
 
   // Fast switch handler with auto-redirect
@@ -2652,7 +2756,9 @@ export default function App() {
           settings={settings}
           activityLogs={activityLogs}
           selectedTenantFilter={selectedTenantFilter}
+          onSaveSettings={handleSaveSettings}
           onRestoreDatabase={handleRestoreDatabase}
+          onUpdateUser={handleUpdateUser}
           onClose={() => setIsDatabaseBackupOpen(false)}
           onLogActivity={(action, title, details, status) => {
             logUserActivity(action, 'backup', 'قاعدة البيانات والنسخ الاحتياطي', title, details, 'system');

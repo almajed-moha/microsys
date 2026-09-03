@@ -1,0 +1,180 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasNetworkAccess(networkId) {
+      let user = getUserData();
+      return user.networkId == networkId || user.role == 'system_owner';
+    }
+
+    // Validation Helpers
+    function isValidUser(data) {
+      return data.keys().hasAll(['name', 'username', 'role', 'status']) &&
+             data.name is string && data.name.size() <= 100 &&
+             data.username is string && data.username.size() <= 50 &&
+             data.role is string && data.role.size() <= 20 &&
+             data.status is string && data.status.size() <= 20 &&
+             (data.networkId == null || (data.networkId is string && data.networkId.size() <= 128)) &&
+             (data.email == null || (data.email is string && data.email.size() <= 150));
+    }
+
+    function isValidTenant(data) {
+      return data.keys().hasAll(['name', 'adminUsername', 'status']) &&
+             data.name is string && data.name.size() <= 100 &&
+             data.adminUsername is string && data.adminUsername.size() <= 50 &&
+             data.status is string && data.status.size() <= 20;
+    }
+
+    function isValidCategory(data) {
+      return data.keys().hasAll(['networkId', 'name', 'code', 'retailPrice', 'wholesalePrice']) &&
+             data.networkId is string && data.networkId.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.code is string && data.code.size() <= 50 &&
+             data.retailPrice is number &&
+             data.wholesalePrice is number;
+    }
+
+    function isValidPOSPoint(data) {
+      return data.keys().hasAll(['networkId', 'name', 'phone', 'status']) &&
+             data.networkId is string && data.networkId.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.phone is string && data.phone.size() <= 20 &&
+             data.status is string && data.status.size() <= 20;
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['networkId', 'posPointId', 'status']) &&
+             data.networkId is string && data.networkId.size() <= 128 &&
+             data.posPointId is string && data.posPointId.size() <= 128 &&
+             data.status is string && data.status.size() <= 20;
+    }
+
+    function isValidInvoice(data) {
+      return data.keys().hasAll(['networkId', 'invoiceNumber', 'posPointId', 'status']) &&
+             data.networkId is string && data.networkId.size() <= 128 &&
+             data.invoiceNumber is string && data.invoiceNumber.size() <= 50 &&
+             data.posPointId is string && data.posPointId.size() <= 128 &&
+             data.status is string && data.status.size() <= 20;
+    }
+
+    function isValidPayment(data) {
+      return data.keys().hasAll(['networkId', 'posPointId', 'amount']) &&
+             data.networkId is string && data.networkId.size() <= 128 &&
+             data.posPointId is string && data.posPointId.size() <= 128 &&
+             data.amount is number;
+    }
+
+    function isValidExpense(data) {
+      return data.keys().hasAll(['networkId', 'amount']) &&
+             data.networkId is string && data.networkId.size() <= 128 &&
+             data.amount is number;
+    }
+
+    // Rules
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (userId == request.auth.uid || hasNetworkAccess(existing().networkId));
+      allow list: if isSignedIn() && hasNetworkAccess(existing().networkId);
+      allow create: if isSignedIn() && isValidId(userId) && userId == request.auth.uid && isValidUser(incoming()) && (incoming().keys().size() >= 4 && incoming().keys().size() <= 6);
+      
+      allow update: if isSignedIn() && isValidId(userId) && isValidUser(incoming()) && (
+        (userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'username'])) ||
+        (hasNetworkAccess(existing().networkId) && getUserData().role in ['super_admin', 'system_owner'] && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'username', 'role', 'status', 'networkId']))
+      ) && incoming().networkId == existing().networkId; // Don't let users change their own networkId implicitly or explicitly
+      
+      allow delete: if false;
+    }
+
+    match /tenants/{tenantId} {
+      allow get: if isSignedIn() && isValidId(tenantId) && hasNetworkAccess(tenantId);
+      allow list: if isSignedIn() && hasNetworkAccess(tenantId);
+      allow create: if isSignedIn() && isValidId(tenantId) && isValidTenant(incoming()) && incoming().keys().size() == 3 && getUserData().role == 'system_owner';
+      
+      allow update: if isSignedIn() && isValidId(tenantId) && isValidTenant(incoming()) && hasNetworkAccess(tenantId) && getUserData().role in ['system_owner', 'super_admin'] && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'adminUsername', 'status']);
+      
+      allow delete: if false;
+    }
+
+    match /categories/{categoryId} {
+      allow get: if isSignedIn() && isValidId(categoryId) && hasNetworkAccess(existing().networkId);
+      allow list: if isSignedIn() && hasNetworkAccess(existing().networkId);
+      allow create: if isSignedIn() && isValidId(categoryId) && isValidCategory(incoming()) && incoming().keys().size() == 5 && hasNetworkAccess(incoming().networkId);
+      
+      allow update: if isSignedIn() && isValidId(categoryId) && isValidCategory(incoming()) && hasNetworkAccess(existing().networkId) && incoming().networkId == existing().networkId && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'code', 'retailPrice', 'wholesalePrice']);
+      
+      allow delete: if false;
+    }
+
+    match /posPoints/{posPointId} {
+      allow get: if isSignedIn() && isValidId(posPointId) && hasNetworkAccess(existing().networkId);
+      allow list: if isSignedIn() && hasNetworkAccess(existing().networkId);
+      allow create: if isSignedIn() && isValidId(posPointId) && isValidPOSPoint(incoming()) && incoming().keys().size() == 4 && hasNetworkAccess(incoming().networkId);
+      
+      allow update: if isSignedIn() && isValidId(posPointId) && isValidPOSPoint(incoming()) && hasNetworkAccess(existing().networkId) && incoming().networkId == existing().networkId && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'status']);
+      
+      allow delete: if false;
+    }
+
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && isValidId(orderId) && hasNetworkAccess(existing().networkId);
+      allow list: if isSignedIn() && hasNetworkAccess(existing().networkId);
+      allow create: if isSignedIn() && isValidId(orderId) && isValidOrder(incoming()) && incoming().keys().size() == 3 && hasNetworkAccess(incoming().networkId);
+      
+      allow update: if isSignedIn() && isValidId(orderId) && isValidOrder(incoming()) && hasNetworkAccess(existing().networkId) && incoming().networkId == existing().networkId && incoming().diff(existing()).affectedKeys().hasOnly(['posPointId', 'status']);
+      
+      allow delete: if false;
+    }
+
+    match /invoices/{invoiceId} {
+      allow get: if isSignedIn() && isValidId(invoiceId) && hasNetworkAccess(existing().networkId);
+      allow list: if isSignedIn() && hasNetworkAccess(existing().networkId);
+      allow create: if isSignedIn() && isValidId(invoiceId) && isValidInvoice(incoming()) && incoming().keys().size() == 4 && hasNetworkAccess(incoming().networkId);
+      
+      allow update: if isSignedIn() && isValidId(invoiceId) && isValidInvoice(incoming()) && hasNetworkAccess(existing().networkId) && incoming().networkId == existing().networkId && incoming().diff(existing()).affectedKeys().hasOnly(['invoiceNumber', 'posPointId', 'status']);
+      
+      allow delete: if false;
+    }
+
+    match /payments/{paymentId} {
+      allow get: if isSignedIn() && isValidId(paymentId) && hasNetworkAccess(existing().networkId);
+      allow list: if isSignedIn() && hasNetworkAccess(existing().networkId);
+      allow create: if isSignedIn() && isValidId(paymentId) && isValidPayment(incoming()) && incoming().keys().size() == 3 && hasNetworkAccess(incoming().networkId);
+      
+      allow update: if isSignedIn() && isValidId(paymentId) && isValidPayment(incoming()) && hasNetworkAccess(existing().networkId) && incoming().networkId == existing().networkId && incoming().diff(existing()).affectedKeys().hasOnly(['posPointId', 'amount']);
+      
+      allow delete: if false;
+    }
+
+    match /expenses/{expenseId} {
+      allow get: if isSignedIn() && isValidId(expenseId) && hasNetworkAccess(existing().networkId);
+      allow list: if isSignedIn() && hasNetworkAccess(existing().networkId);
+      allow create: if isSignedIn() && isValidId(expenseId) && isValidExpense(incoming()) && incoming().keys().size() == 2 && hasNetworkAccess(incoming().networkId);
+      
+      allow update: if isSignedIn() && isValidId(expenseId) && isValidExpense(incoming()) && hasNetworkAccess(existing().networkId) && incoming().networkId == existing().networkId && incoming().diff(existing()).affectedKeys().hasOnly(['amount']);
+      
+      allow delete: if false;
+    }
+  }
+}

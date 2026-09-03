@@ -1,0 +1,125 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Application users and roles",
+      "type": "object",
+      "properties": {
+        "networkId": { "type": "string" },
+        "name": { "type": "string" },
+        "username": { "type": "string" },
+        "role": { "type": "string" },
+        "email": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "inactive", "suspended"] }
+      },
+      "required": ["name", "username", "role", "status"]
+    },
+    "Tenant": {
+      "title": "Tenant",
+      "description": "Network tenants (SaaS)",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "adminUsername": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Card category definitions",
+      "type": "object",
+      "properties": {
+        "networkId": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "retailPrice": { "type": "number" },
+        "wholesalePrice": { "type": "number" }
+      }
+    },
+    "POSPoint": {
+      "title": "POSPoint",
+      "description": "Point of sale / Agents",
+      "type": "object",
+      "properties": {
+        "networkId": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Card order from POS",
+      "type": "object",
+      "properties": {
+        "networkId": { "type": "string" },
+        "posPointId": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "Sales or Return Invoice",
+      "type": "object",
+      "properties": {
+        "networkId": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "posPointId": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Payment records",
+      "type": "object",
+      "properties": {
+        "networkId": { "type": "string" },
+        "posPointId": { "type": "string" },
+        "amount": { "type": "number" }
+      }
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Expense records",
+      "type": "object",
+      "properties": {
+        "networkId": { "type": "string" },
+        "amount": { "type": "number" }
+      }
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles"
+    },
+    "tenants/{tenantId}": {
+      "schema": { "$ref": "#/entities/Tenant" },
+      "description": "Tenants"
+    },
+    "categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Card categories"
+    },
+    "posPoints/{posPointId}": {
+      "schema": { "$ref": "#/entities/POSPoint" },
+      "description": "Points of sale"
+    },
+    "orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Orders"
+    },
+    "invoices/{invoiceId}": {
+      "schema": { "$ref": "#/entities/Invoice" },
+      "description": "Invoices"
+    },
+    "payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/Payment" },
+      "description": "Payments"
+    },
+    "expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Expenses"
+    }
+  }
+}

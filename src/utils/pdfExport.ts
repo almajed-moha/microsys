@@ -137,6 +137,45 @@ export async function generatePdfInstance(
     // 3. Wait for DOM layout calculations
     await new Promise((r) => setTimeout(r, 80));
 
+    // Check if the container contains discrete A4 page sheets or is an A4 page itself
+    let a4PageNodes = Array.from(clone.querySelectorAll<HTMLElement>('.a4-print-page, .a4-print-sheet, [data-pdf-page]'));
+    if (a4PageNodes.length === 0 && (clone.classList.contains('a4-print-page') || clone.classList.contains('a4-print-sheet') || clone.hasAttribute('data-pdf-page'))) {
+      a4PageNodes = [clone];
+    }
+    if (a4PageNodes.length > 0 && !isThermal) {
+      const pdf = new jsPDF({
+        orientation: orientation,
+        unit: 'mm',
+        format: format,
+        compress: true,
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      for (let p = 0; p < a4PageNodes.length; p++) {
+        if (p > 0) {
+          pdf.addPage();
+        }
+        const pageEl = a4PageNodes[p];
+        pageEl.style.margin = '0';
+        pageEl.style.boxShadow = 'none';
+
+        const pageCanvas = await toCanvas(pageEl, {
+          pixelRatio: Math.max(scale, 2.0),
+          backgroundColor: '#ffffff',
+          skipFonts: true,
+          cacheBust: false,
+        });
+
+        const pageImgData = pageCanvas.toDataURL('image/jpeg', 0.98);
+        pdf.addImage(pageImgData, 'JPEG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
+      }
+
+      const finalName = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
+      return { pdf, filename: finalName };
+    }
+
     // 4. Capture complete high-resolution canvas
     const canvas = await toCanvas(clone, {
       pixelRatio: scale,

@@ -267,6 +267,14 @@ export interface CardTemplate extends EntityAuditMetadata {
   cardCornerStyle?: 'rounded' | 'sharp';
   cardBorderRadius?: number; // in px, e.g. 14 for rounded, 0 for sharp
 
+  // Design Archetype Style
+  designStyle?: 'voucher_badge' | 'standard' | 'modern';
+  badgeColor?: string; // Color of the side badge (default #dc2626)
+  priceCircleBg?: string; // Color of circle inside badge (default #ffffff)
+  priceTextColor?: string; // Color of price text inside circle (default #dc2626)
+  websiteUrl?: string; // Login / check balance URL (e.g. www.j.net)
+  validityText?: string; // e.g. "٤ أيام"
+
   // A4 Printing & Grid Setup
   cardsPerPage: number; // calculated gridCols * gridRows
   gridCols: number; // Columns count (e.g. 1, 2, 3, 4, 5)
@@ -588,6 +596,8 @@ export interface MaintenanceSettings {
 }
 
 export interface NetworkSettings {
+  autoBackupToDrive?: boolean;
+  autoBackupIntervalHours?: number;
   networkName: string; // اسم الشبكة الرئيسي
   networkSlogan: string;
   logoUrl?: string; // رابط الشعار (اختياري)

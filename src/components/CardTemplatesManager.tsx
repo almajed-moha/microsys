@@ -48,6 +48,7 @@ export const CardTemplatesManager: React.FC<CardTemplatesManagerProps> = ({
   const [activeTab, setActiveTab] = useState<'design' | 'layout' | 'styling' | 'fields'>('design');
   const [selectedElementKey, setSelectedElementKey] = useState<string>('userCode');
   const [previewMode, setPreviewMode] = useState<'single' | 'sheet'>('single');
+  const [templateToDelete, setTemplateToDelete] = useState<string | null>(null);
 
   const customizableElements = [
     { id: 'userCode', label: 'كود الكارت (المستخدم)', icon: '🔑' },
@@ -1498,17 +1499,34 @@ export const CardTemplatesManager: React.FC<CardTemplatesManagerProps> = ({
                   <Edit className="w-3.5 h-3.5" />
                   <span>تعديل وسحب</span>
                 </button>
-                <button
-                  onClick={() => {
-                    if (confirm(`هل أنت متأكد من حذف قالب "${tpl.name}"؟`)) {
-                      onDeleteTemplate(tpl.id);
-                    }
-                  }}
-                  className="p-1.5 text-slate-400 hover:text-rose-400 bg-slate-800 hover:bg-rose-500/10 rounded-xl transition"
-                  title="حذف القالب"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {templateToDelete === tpl.id ? (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-rose-400 font-bold px-1">متأكد؟</span>
+                    <button
+                      onClick={() => {
+                        onDeleteTemplate(tpl.id);
+                        setTemplateToDelete(null);
+                      }}
+                      className="px-2 py-1 text-[10px] font-bold text-white bg-rose-600 hover:bg-rose-500 rounded-lg transition"
+                    >
+                      نعم
+                    </button>
+                    <button
+                      onClick={() => setTemplateToDelete(null)}
+                      className="px-2 py-1 text-[10px] font-bold text-slate-300 bg-slate-700 hover:bg-slate-600 rounded-lg transition"
+                    >
+                      لا
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setTemplateToDelete(tpl.id)}
+                    className="p-1.5 text-slate-400 hover:text-rose-400 bg-slate-800 hover:bg-rose-500/10 rounded-xl transition"
+                    title="حذف القالب"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
           </div>

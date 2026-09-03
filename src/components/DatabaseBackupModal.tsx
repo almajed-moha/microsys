@@ -55,6 +55,7 @@ import {
   SystemDatabaseBackupData,
 } from '../types';
 import { exportToJSON, downloadFile } from '../utils/storage';
+import { generateSystemBackup } from '../utils/backupGenerator';
 import {
   initGoogleDriveAuth,
   signInWithGoogle,
@@ -86,6 +87,7 @@ interface DatabaseBackupModalProps {
   templates?: CardTemplate[];
   activityLogs?: UserActivityLog[];
   selectedTenantFilter?: string;
+  onSaveSettings?: (settings: NetworkSettings) => void;
   onRestoreDatabase: (
     backupData: SystemDatabaseBackupData,
     mode: 'overwrite' | 'merge',
@@ -93,6 +95,7 @@ interface DatabaseBackupModalProps {
   ) => void;
   onClose: () => void;
   onLogActivity?: (action: string, title: string, details: string, status?: 'success' | 'warning' | 'danger' | 'info') => void;
+  onUpdateUser?: (user: AppUser) => void;
 }
 
 export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
@@ -112,14 +115,14 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
   templates = [],
   activityLogs = [],
   selectedTenantFilter = 'all',
+  onSaveSettings,
   onRestoreDatabase,
   onClose,
   onLogActivity,
+  onUpdateUser,
 }) => {
   const [activeTab, setActiveTab] = useState<'export' | 'import' | 'gdrive'>('export');
-  const [exportScope, setExportScope] = useState<'full' | 'current'>(
-    activeUser?.role === 'system_owner' && selectedTenantFilter === 'all' ? 'full' : 'current'
-  );
+  const [selectedExportNetworkId, setSelectedExportNetworkId] = useState<string>('all');
   const [includeAuditLogs, setIncludeAuditLogs] = useState<boolean>(true);
   const [isCopied, setIsCopied] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -143,6 +146,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
   const [deletingDriveFileId, setDeletingDriveFileId] = useState<string | null>(null);
   const [deleteConfirmDriveFileId, setDeleteConfirmDriveFileId] = useState<string | null>(null);
   const [gDriveFeedback, setGDriveFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [pendingGoogleUser, setPendingGoogleUser] = useState<FirebaseUser | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -170,10 +174,23 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
     setGDriveFeedback(null);
     try {
       const { user } = await signInWithGoogle();
-      setGDriveUser(user);
-      setIsGDriveSignedIn(true);
-      setGDriveFeedback({ type: 'success', message: `تم الاتصال بحساب Google بنجاح (${user.email})` });
-      await loadGDriveFiles();
+      
+      if (!activeUser?.email) {
+        if (onUpdateUser && activeUser) {
+          onUpdateUser({ ...activeUser, email: user.email || '' });
+        }
+        setGDriveUser(user);
+        setIsGDriveSignedIn(true);
+        setGDriveFeedback({ type: 'success', message: `تم الاتصال بحساب Google بنجاح وتم تسجيل البريد (${user.email}) في بياناتك` });
+        await loadGDriveFiles();
+      } else if (activeUser.email.toLowerCase() !== user.email?.toLowerCase()) {
+        setPendingGoogleUser(user);
+      } else {
+        setGDriveUser(user);
+        setIsGDriveSignedIn(true);
+        setGDriveFeedback({ type: 'success', message: `تم الاتصال بحساب Google بنجاح (${user.email})` });
+        await loadGDriveFiles();
+      }
     } catch (err: any) {
       console.error('Google sign in error:', err);
       setGDriveFeedback({
@@ -228,7 +245,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
       const jsonString = exportToJSON(backupObj);
       const dateStr = new Date().toISOString().split('T')[0];
       const timeStr = new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
-      const scopeTag = exportScope === 'full' ? 'FULL_SAAS' : (currentTenant?.name?.replace(/\s+/g, '_') || 'NETWORK');
+      const scopeTag = selectedExportNetworkId === 'all' ? 'FULL_SAAS' : (currentTenant?.name?.replace(/\s+/g, '_') || 'NETWORK');
       const fileName = `MicroSys_Backup_${scopeTag}_${dateStr}_${timeStr}.json`;
       const description = `MicroSys Cloud WiFi Database Backup - ${scopeTag} - Exported by ${activeUser?.name || 'Admin'} on ${dateStr}`;
 
@@ -324,52 +341,52 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
   const networkDisplayName = currentTenant?.name || settings.networkName || 'الشبكة الحالية';
 
   // Calculate filtered records if current scope
-  const targetCategories = exportScope === 'full'
+  const targetCategories = selectedExportNetworkId === 'all'
     ? categories
     : categories.filter((c) => !c.networkId || c.networkId === effectiveNetworkId || c.networkId === 'net-microsys');
 
-  const targetPOSPoints = exportScope === 'full'
+  const targetPOSPoints = selectedExportNetworkId === 'all'
     ? posPoints
     : posPoints.filter((p) => !p.networkId || p.networkId === effectiveNetworkId || p.networkId === 'net-microsys');
 
-  const targetInvoices = exportScope === 'full'
+  const targetInvoices = selectedExportNetworkId === 'all'
     ? invoices
     : invoices.filter((i) => !i.networkId || i.networkId === effectiveNetworkId || i.networkId === 'net-microsys');
 
-  const targetExpenses = exportScope === 'full'
+  const targetExpenses = selectedExportNetworkId === 'all'
     ? expenses
     : expenses.filter((e) => !e.networkId || e.networkId === effectiveNetworkId || e.networkId === 'net-microsys');
 
-  const targetExpenseCategories = exportScope === 'full'
+  const targetExpenseCategories = selectedExportNetworkId === 'all'
     ? expenseCategories
     : expenseCategories.filter((ec) => !ec.networkId || ec.networkId === effectiveNetworkId || ec.networkId === 'net-microsys');
 
-  const targetDispatches = exportScope === 'full'
+  const targetDispatches = selectedExportNetworkId === 'all'
     ? dispatches
     : dispatches.filter((d) => !d.networkId || d.networkId === effectiveNetworkId || d.networkId === 'net-microsys');
 
-  const targetSales = exportScope === 'full'
+  const targetSales = selectedExportNetworkId === 'all'
     ? sales
     : sales.filter((s) => !s.networkId || s.networkId === effectiveNetworkId || s.networkId === 'net-microsys');
 
-  const targetPayments = exportScope === 'full'
+  const targetPayments = selectedExportNetworkId === 'all'
     ? payments
     : payments.filter((p) => !p.networkId || p.networkId === effectiveNetworkId || p.networkId === 'net-microsys');
 
-  const targetOrders = exportScope === 'full'
+  const targetOrders = selectedExportNetworkId === 'all'
     ? orders
     : orders.filter((o) => !o.networkId || o.networkId === effectiveNetworkId || o.networkId === 'net-microsys');
 
-  const targetUsers = exportScope === 'full'
+  const targetUsers = selectedExportNetworkId === 'all'
     ? users
     : users.filter((u) => u.networkId === effectiveNetworkId || (u.role === 'system_owner' && isMasterUser));
 
-  const targetTenants = exportScope === 'full'
+  const targetTenants = selectedExportNetworkId === 'all'
     ? tenants
     : (currentTenant ? [currentTenant] : []);
 
   const targetLogs = includeAuditLogs
-    ? (exportScope === 'full'
+    ? (selectedExportNetworkId === 'all'
         ? activityLogs
         : activityLogs.filter((l) => !l.networkId || l.networkId === effectiveNetworkId))
     : [];
@@ -378,7 +395,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
   const generateBackupPayload = (): SystemDatabaseBackup => {
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
-    const isFull = exportScope === 'full';
+    const isFull = selectedExportNetworkId === 'all';
 
     return {
       version: '4.0.0',
@@ -435,7 +452,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
     const jsonString = exportToJSON(backupObj);
     const dateStr = new Date().toISOString().split('T')[0];
     const timeStr = new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
-    const scopeName = exportScope === 'full' ? 'full_system' : `network_${effectiveNetworkId || 'main'}`;
+    const scopeName = selectedExportNetworkId === 'all' ? 'full_system' : `network_${effectiveNetworkId || 'main'}`;
     const filename = `microsys_database_${scopeName}_${dateStr}_${timeStr}.json`;
 
     downloadFile(jsonString, filename, 'application/json');
@@ -444,7 +461,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
       onLogActivity(
         'تصدير نسخة احتياطية',
         'تصدير قاعدة بيانات النظام JSON',
-        `تم تصدير نسخة احتياطية (${exportScope === 'full' ? 'شاملة لكافة الشبكات' : `خاصة بـ ${networkDisplayName}`}) بإجمالي ${Object.values(backupObj.counts).reduce((a, b) => (a || 0) + (b || 0), 0)} سجلاً`,
+        `تم تصدير نسخة احتياطية (${selectedExportNetworkId === 'all' ? 'شاملة لكافة الشبكات' : `خاصة بـ ${networkDisplayName}`}) بإجمالي ${Object.values(backupObj.counts).reduce((a, b) => (a || 0) + (b || 0), 0)} سجلاً`,
         'success'
       );
     }
@@ -740,49 +757,31 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
             <div className="space-y-5 animate-in fade-in duration-150">
               
               {/* Scope Selector */}
-              {isMasterUser && (
-                <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
-                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+              {isMasterUser ? (
+                <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+                  <label className="block text-xs font-bold text-slate-300 mb-2 flex items-center gap-1.5">
                     <Server className="w-4 h-4 text-indigo-400" />
-                    <span>نطاق التصدير للنسخة الاحتياطية:</span>
+                    <span>نطاق النسخ الاحتياطي:</span>
                   </label>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setExportScope('full')}
-                      className={`p-3 rounded-xl border text-right transition flex items-start gap-2.5 ${
-                        exportScope === 'full'
-                          ? 'bg-indigo-950/60 border-indigo-500/80 text-white'
-                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className={`w-4 h-4 rounded-full border mt-0.5 shrink-0 flex items-center justify-center ${exportScope === 'full' ? 'border-indigo-400 bg-indigo-600' : 'border-slate-600'}`}>
-                        {exportScope === 'full' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-white">قاعدة بيانات النظام بالكامل (SaaS Master)</p>
-                        <p className="text-[11px] text-slate-400 mt-0.5">يشمل كافة الشبكات، المستخدمين، نقاط البيع، الفواتير والحسابات</p>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setExportScope('current')}
-                      className={`p-3 rounded-xl border text-right transition flex items-start gap-2.5 ${
-                        exportScope === 'current'
-                          ? 'bg-indigo-950/60 border-indigo-500/80 text-white'
-                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className={`w-4 h-4 rounded-full border mt-0.5 shrink-0 flex items-center justify-center ${exportScope === 'current' ? 'border-indigo-400 bg-indigo-600' : 'border-slate-600'}`}>
-                        {exportScope === 'current' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-white">الشبكة الحالية فقط ({networkDisplayName})</p>
-                        <p className="text-[11px] text-slate-400 mt-0.5">تصدير مخصص للبيانات المرتبطة بهذه الشبكة فقط</p>
-                      </div>
-                    </button>
+                  <select
+                    value={selectedExportNetworkId}
+                    onChange={(e) => setSelectedExportNetworkId(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+                  >
+                    <option value="all">قاعدة بيانات النظام بالكامل (الافتراضي)</option>
+                    {tenants.map(t => (
+                      <option key={t.id} value={t.id}>شبكة مخصصة: {t.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="bg-indigo-900/20 border border-indigo-500/20 rounded-xl p-4 flex items-start gap-3">
+                  <div className="mt-0.5"><Database className="w-5 h-5 text-indigo-400" /></div>
+                  <div>
+                    <h4 className="text-indigo-300 font-bold text-sm">نسخ احتياطي للشبكة</h4>
+                    <p className="text-xs text-indigo-200/70 mt-1">
+                      سيتم إنشاء نسخة احتياطية آمنة تحتوي على كافة بيانات شبكتك الحالية ({currentTenant?.name || settings.networkName}) فقط.
+                    </p>
                   </div>
                 </div>
               )}
@@ -800,7 +799,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-right">
-                  {exportScope === 'full' && (
+                  {selectedExportNetworkId === 'all' && (
                     <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800/80">
                       <div className="flex items-center justify-between text-slate-400 mb-1">
                         <Server className="w-3.5 h-3.5 text-fuchsia-400" />
@@ -1484,6 +1483,55 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
             </div>
           )}
         </div>
+
+        
+      {/* Pending Google User Confirmation Modal */}
+      {pendingGoogleUser && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 p-6 rounded-2xl max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 mb-4 text-amber-400">
+              <AlertTriangle className="w-8 h-8" />
+              <h3 className="font-bold text-lg">تحذير: اختلاف البريد الإلكتروني</h3>
+            </div>
+            <p className="text-sm text-slate-300 mb-4 leading-relaxed">
+              حساب Google الذي قمت بتسجيل الدخول به (<span className="font-bold text-white dir-ltr inline-block">{pendingGoogleUser.email}</span>) 
+              يختلف عن البريد الإلكتروني المسجل في بياناتك (<span className="font-bold text-white dir-ltr inline-block">{activeUser?.email}</span>).
+            </p>
+            <p className="text-sm text-slate-300 mb-6">
+              هل تريد المتابعة وتحديث بريدك الإلكتروني المسجل ليكون مطابقاً لهذا الحساب؟ سيتم إضافة هذا البريد إلى بياناتك.
+            </p>
+            <div className="flex flex-col sm:flex-row items-center gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  signOutGoogle();
+                  setPendingGoogleUser(null);
+                  setGDriveFeedback({ type: 'error', message: 'تم إلغاء عملية الربط لاختلاف البريد الإلكتروني.' });
+                }}
+                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white font-bold transition text-sm"
+              >
+                إلغاء الأمر
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (onUpdateUser && activeUser) {
+                    onUpdateUser({ ...activeUser, email: pendingGoogleUser.email || '' });
+                  }
+                  setGDriveUser(pendingGoogleUser);
+                  setIsGDriveSignedIn(true);
+                  setGDriveFeedback({ type: 'success', message: `تم الاتصال بحساب Google وتحديث بريدك بنجاح (${pendingGoogleUser.email})` });
+                  setPendingGoogleUser(null);
+                  await loadGDriveFiles();
+                }}
+                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold transition text-sm shadow-lg shadow-amber-600/20"
+              >
+                المتابعة والتحديث
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
         {/* Modal Footer */}
         <div className="sticky bottom-0 z-20 p-4 border-t border-slate-800 bg-slate-950/95 backdrop-blur-md flex items-center justify-between text-xs text-slate-400">
