@@ -134,6 +134,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
   users,
   settings,
   activeUser,
+  activeTenant,
 }) => {
   const [query, setQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<SearchCategory>('all');
@@ -162,44 +163,44 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
     const isSuperAdmin = activeUser?.role === 'super_admin';
 
     // Granular RBAC Permissions Check
-    const canViewDashboard = hasPermission(activeUser, 'dashboard', 'view');
-    const canViewFinancialMetrics = hasPermission(activeUser, 'dashboard', 'viewFinancialMetrics');
-    const canViewProfits = hasPermission(activeUser, 'dashboard', 'viewProfits');
-    const canViewDebtsSummary = hasPermission(activeUser, 'dashboard', 'viewDebtsSummary');
+    const canViewDashboard = hasPermission(activeUser, 'dashboard', 'view', activeTenant);
+    const canViewFinancialMetrics = hasPermission(activeUser, 'dashboard', 'viewFinancialMetrics', activeTenant);
+    const canViewProfits = hasPermission(activeUser, 'dashboard', 'viewProfits', activeTenant);
+    const canViewDebtsSummary = hasPermission(activeUser, 'dashboard', 'viewDebtsSummary', activeTenant);
     const canViewIncomeStatement =
-      hasPermission(activeUser, 'expenses', 'viewIncomeStatement') ||
-      hasPermission(activeUser, 'dashboard', 'viewIncomeStatement');
+      hasPermission(activeUser, 'expenses', 'viewIncomeStatement', activeTenant) ||
+      hasPermission(activeUser, 'dashboard', 'viewIncomeStatement', activeTenant);
     const canExportReports =
-      hasPermission(activeUser, 'dashboard', 'exportReports') ||
-      hasPermission(activeUser, 'invoices', 'exportInvoices') ||
-      hasPermission(activeUser, 'payments', 'exportPayments') ||
-      hasPermission(activeUser, 'pos', 'exportPOSData');
+      hasPermission(activeUser, 'dashboard', 'exportReports', activeTenant) ||
+      hasPermission(activeUser, 'invoices', 'exportInvoices', activeTenant) ||
+      hasPermission(activeUser, 'payments', 'exportPayments', activeTenant) ||
+      hasPermission(activeUser, 'pos', 'exportPOSData', activeTenant);
 
-    const canViewInvoices = hasPermission(activeUser, 'invoices', 'view');
-    const canCreateSaleInvoice = hasPermission(activeUser, 'invoices', 'createSaleInvoice');
-    const canPrintInvoice = hasPermission(activeUser, 'invoices', 'printInvoice');
+    const canViewInvoices = hasPermission(activeUser, 'invoices', 'view', activeTenant);
+    const canCreateSaleInvoice = hasPermission(activeUser, 'invoices', 'createSaleInvoice', activeTenant);
+    const canPrintInvoice = hasPermission(activeUser, 'invoices', 'printInvoice', activeTenant);
 
-    const canViewExpenses = hasPermission(activeUser, 'expenses', 'view');
-    const canAddExpense = hasPermission(activeUser, 'expenses', 'addExpense');
-    const canPrintExpense = hasPermission(activeUser, 'expenses', 'printReceipt');
+    const canViewExpenses = hasPermission(activeUser, 'expenses', 'view', activeTenant);
+    const canAddExpense = hasPermission(activeUser, 'expenses', 'addExpense', activeTenant);
+    const canPrintExpense = hasPermission(activeUser, 'expenses', 'printReceipt', activeTenant);
 
-    const canViewPayments = hasPermission(activeUser, 'payments', 'view');
-    const canAddPayment = hasPermission(activeUser, 'payments', 'addPayment');
-    const canPrintPayment = hasPermission(activeUser, 'payments', 'printReceipt');
+    const canViewPayments = hasPermission(activeUser, 'payments', 'view', activeTenant);
+    const canAddPayment = hasPermission(activeUser, 'payments', 'addPayment', activeTenant);
+    const canPrintPayment = hasPermission(activeUser, 'payments', 'printReceipt', activeTenant);
 
-    const canViewPOS = hasPermission(activeUser, 'pos', 'view');
+    const canViewPOS = hasPermission(activeUser, 'pos', 'view', activeTenant);
     const canViewPOSStatement =
-      hasPermission(activeUser, 'pos', 'viewAccountStatement') ||
-      hasPermission(activeUser, 'payments', 'printPOSStatement');
+      hasPermission(activeUser, 'pos', 'viewAccountStatement', activeTenant) ||
+      hasPermission(activeUser, 'payments', 'printPOSStatement', activeTenant);
 
-    const canViewCategories = hasPermission(activeUser, 'categories', 'view');
-    const canGenerateVouchers = hasPermission(activeUser, 'categories', 'generateVouchers');
+    const canViewCategories = hasPermission(activeUser, 'categories', 'view', activeTenant);
+    const canGenerateVouchers = hasPermission(activeUser, 'categories', 'generateVouchers', activeTenant);
 
-    const canViewMikrotik = hasPermission(activeUser, 'mikrotik', 'view');
-    const canViewUsers = hasPermission(activeUser, 'usersAndPermissions', 'view');
-    const canSwitchUser = hasPermission(activeUser, 'usersAndPermissions', 'switchActiveUser') || isSuperAdmin;
-    const canViewSettings = hasPermission(activeUser, 'settings', 'view');
-    const canUseAI = hasPermission(activeUser, 'settings', 'useAIAssistant');
+    const canViewMikrotik = hasPermission(activeUser, 'mikrotik', 'view', activeTenant);
+    const canViewUsers = hasPermission(activeUser, 'usersAndPermissions', 'view', activeTenant);
+    const canSwitchUser = hasPermission(activeUser, 'usersAndPermissions', 'switchActiveUser', activeTenant) || isSuperAdmin;
+    const canViewSettings = hasPermission(activeUser, 'settings', 'view', activeTenant);
+    const canUseAI = hasPermission(activeUser, 'settings', 'useAIAssistant', activeTenant);
 
     // Assigned POS branch filtering (e.g. for sales agents restricted to assigned stores)
     const assignedPOSIds =
@@ -208,7 +209,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
         : null;
 
     // 1. Navigation views & tabs (Filtered by user screen permissions)
-    const canViewOrders = !activeUser || hasPermission(activeUser, 'orders', 'view');
+    const canViewOrders = !activeUser || hasPermission(activeUser, 'orders', 'view', activeTenant);
 
     const navViews: {
       id: NavView;
@@ -746,6 +747,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
     dispatches,
     currencySymbol,
     activeUser,
+  activeTenant,
     onNavigate,
     onOpenInvoiceReceipt,
     onOpenPaymentReceipt,
@@ -868,11 +870,11 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
   if (!isOpen) return null;
 
   // Build filter tabs dynamically based on user permissions & available results
-  const canViewInvoices = hasPermission(activeUser, 'invoices', 'view');
-  const canViewPOS = hasPermission(activeUser, 'pos', 'view');
-  const canViewCategories = hasPermission(activeUser, 'categories', 'view');
-  const canViewPayments = hasPermission(activeUser, 'payments', 'view');
-  const canViewExpenses = hasPermission(activeUser, 'expenses', 'view');
+  const canViewInvoices = hasPermission(activeUser, 'invoices', 'view', activeTenant);
+  const canViewPOS = hasPermission(activeUser, 'pos', 'view', activeTenant);
+  const canViewCategories = hasPermission(activeUser, 'categories', 'view', activeTenant);
+  const canViewPayments = hasPermission(activeUser, 'payments', 'view', activeTenant);
+  const canViewExpenses = hasPermission(activeUser, 'expenses', 'view', activeTenant);
   const canViewDispatches = canViewPOS || canViewCategories || canViewInvoices;
 
   const filterTabs: { id: SearchCategory; label: string; icon: React.ReactNode }[] = [

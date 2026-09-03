@@ -84,6 +84,14 @@ export const Header: React.FC<HeaderProps> = ({
   totalDebt = 0,
   totalSalesToday = 0,
 }) => {
+  const activeTenant = React.useMemo(() => {
+    const targetId = activeUser?.role === 'system_owner'
+      ? (selectedTenantFilter !== 'all' ? selectedTenantFilter : null)
+      : (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : (tenants[0]?.id || null));
+    if (!targetId) return null;
+    return tenants.find((t) => t.id === targetId) || null;
+  }, [tenants, activeUser, selectedTenantFilter]);
+
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isQuickToolsOpen, setIsQuickToolsOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -193,7 +201,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Left Side (RTL End): Responsive Toolbar & Actions */}
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {/* 1. Global Search Button */}
-            {onOpenGlobalSearch && hasPermission(activeUser, 'dashboard', 'view') && (
+            {onOpenGlobalSearch && hasPermission(activeUser, 'dashboard', 'view', activeTenant) && (
               <button
                 onClick={onOpenGlobalSearch}
                 className="flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1.5 md:px-3 md:py-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 hover:border-indigo-500/50 shadow-xs transition group"
@@ -210,7 +218,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* 2. Quick Financial Metrics (Large Desktop Only) */}
-            {hasPermission(activeUser, 'dashboard', 'viewFinancialMetrics') && (
+            {hasPermission(activeUser, 'dashboard', 'viewFinancialMetrics', activeTenant) && (
               <div className="hidden 2xl:flex items-center gap-3 bg-slate-950/60 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
                 <div className="flex items-center gap-1.5 text-slate-300">
                   <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
@@ -251,7 +259,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* 4. Pending Orders Alert Pill */}
-            {pendingOrdersCount > 0 && hasPermission(activeUser, 'orders', 'view') && (
+            {pendingOrdersCount > 0 && hasPermission(activeUser, 'orders', 'view', activeTenant) && (
               <button
                 onClick={() => setCurrentTab('orders')}
                 className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 text-xs font-bold transition shadow-xs shrink-0 animate-bounce"
@@ -265,7 +273,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* 5. Quick Payment Button (Desktop & Tablet) */}
-            {onOpenQuickPayment && hasPermission(activeUser, 'payments', 'addPayment') && (
+            {onOpenQuickPayment && hasPermission(activeUser, 'payments', 'addPayment', activeTenant) && (
               <button
                 onClick={onOpenQuickPayment}
                 className="hidden sm:flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1.5 md:px-3 md:py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition shadow-xs shrink-0"
@@ -277,7 +285,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* 6. Quick Sale Button (High Priority - Always visible or compact) */}
-            {onOpenQuickSale && hasPermission(activeUser, 'invoices', 'createSaleInvoice') && (
+            {onOpenQuickSale && hasPermission(activeUser, 'invoices', 'createSaleInvoice', activeTenant) && (
               <button
                 onClick={onOpenQuickSale}
                 className="flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1.5 md:px-3 md:py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition shrink-0"
@@ -289,7 +297,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* 7. AI Assistant Button (Tablet & Desktop) */}
-            {hasPermission(activeUser, 'settings', 'useAIAssistant') && (
+            {hasPermission(activeUser, 'settings', 'useAIAssistant', activeTenant) && (
               <button
                 onClick={onOpenAI}
                 className="hidden sm:flex p-1.5 sm:p-2 md:px-2.5 md:py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-xs shadow-md shadow-purple-600/20 transition ring-1 ring-purple-400/40 items-center gap-1.5 shrink-0"
@@ -317,7 +325,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* 9. Database & Backup Button (Desktop) */}
-            {onOpenBackup && hasPermission(activeUser, 'settings', 'backupAndRestore') && (
+            {onOpenBackup && hasPermission(activeUser, 'settings', 'backupAndRestore', activeTenant) && (
               <button
                 onClick={onOpenBackup}
                 className="hidden lg:flex p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-indigo-200 border border-slate-700 transition shrink-0"
@@ -328,7 +336,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* 10. Settings Button (Desktop) */}
-            {hasPermission(activeUser, 'settings', 'view') && (
+            {hasPermission(activeUser, 'settings', 'view', activeTenant) && (
               <button
                 onClick={onOpenSettings}
                 className="hidden md:flex p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition shrink-0"
@@ -373,7 +381,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
 
                   {/* Financial Stats Summary inside Mobile Menu */}
-                  {hasPermission(activeUser, 'dashboard', 'viewFinancialMetrics') && (
+                  {hasPermission(activeUser, 'dashboard', 'viewFinancialMetrics', activeTenant) && (
                     <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 mb-2 space-y-1.5 text-xs">
                       <div className="flex items-center justify-between text-slate-300">
                         <span className="flex items-center gap-1">
@@ -424,7 +432,7 @@ export const Header: React.FC<HeaderProps> = ({
                   {/* Quick Action Items Grid / List */}
                   <div className="space-y-1">
                     {/* Quick Payment */}
-                    {onOpenQuickPayment && hasPermission(activeUser, 'payments', 'addPayment') && (
+                    {onOpenQuickPayment && hasPermission(activeUser, 'payments', 'addPayment', activeTenant) && (
                       <button
                         onClick={() => {
                           setIsQuickToolsOpen(false);
@@ -441,7 +449,7 @@ export const Header: React.FC<HeaderProps> = ({
                     )}
 
                     {/* AI Advisor */}
-                    {hasPermission(activeUser, 'settings', 'useAIAssistant') && (
+                    {hasPermission(activeUser, 'settings', 'useAIAssistant', activeTenant) && (
                       <button
                         onClick={() => {
                           setIsQuickToolsOpen(false);
@@ -458,7 +466,7 @@ export const Header: React.FC<HeaderProps> = ({
                     )}
 
                     {/* Settings */}
-                    {hasPermission(activeUser, 'settings', 'view') && (
+                    {hasPermission(activeUser, 'settings', 'view', activeTenant) && (
                       <button
                         onClick={() => {
                           setIsQuickToolsOpen(false);
@@ -494,7 +502,7 @@ export const Header: React.FC<HeaderProps> = ({
                     )}
 
                     {/* Backup */}
-                    {onOpenBackup && hasPermission(activeUser, 'settings', 'backupAndRestore') && (
+                    {onOpenBackup && hasPermission(activeUser, 'settings', 'backupAndRestore', activeTenant) && (
                       <button
                         onClick={() => {
                           setIsQuickToolsOpen(false);
@@ -583,7 +591,7 @@ export const Header: React.FC<HeaderProps> = ({
                       )}
 
                       {/* Go to Users & Permissions (if permitted) */}
-                      {hasPermission(activeUser, 'usersAndPermissions', 'view') && (
+                      {hasPermission(activeUser, 'usersAndPermissions', 'view', activeTenant) && (
                         <button
                           onClick={() => {
                             setIsUserMenuOpen(false);
@@ -601,7 +609,7 @@ export const Header: React.FC<HeaderProps> = ({
                       )}
 
                       {/* Backup & Database (if permitted) */}
-                      {onOpenBackup && hasPermission(activeUser, 'settings', 'backupAndRestore') && (
+                      {onOpenBackup && hasPermission(activeUser, 'settings', 'backupAndRestore', activeTenant) && (
                         <button
                           onClick={() => {
                             setIsUserMenuOpen(false);

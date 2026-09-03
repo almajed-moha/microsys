@@ -2049,7 +2049,7 @@ export default function App() {
       dispatches: 'categories',
     };
     const mod = viewToModuleMap[view] || 'invoices';
-    return hasPermission(activeUser, mod, 'view');
+    return hasPermission(activeUser, mod, 'view', currentTenant);
   };
 
   // Reset Data
@@ -2225,6 +2225,7 @@ export default function App() {
         onLogout={handleLogout}
         tenantRemainingDays={tenantRemainingDays}
         tenantPlan={currentTenant?.subscriptionPlan}
+        activeTenant={currentTenant}
         counts={{
           posPoints: scopedPOSPoints.length,
           sales: scopedSales.length,
@@ -2341,7 +2342,7 @@ export default function App() {
                   onOpenAI={() => setIsAIModalOpen(true)}
                   onPrintSaleReceipt={(sale) => setSelectedSaleForReceipt(sale)}
                   onOpenIncomeStatement={() => setIsIncomeStatementOpen(true)}
-                  canViewIncomeStatement={hasPermission(activeUser, 'dashboard', 'viewIncomeStatement')}
+                  canViewIncomeStatement={hasPermission(activeUser, 'dashboard', 'viewIncomeStatement', currentTenant)}
                 />
               )}
 
@@ -2406,7 +2407,7 @@ export default function App() {
                   onDeleteCategory={handleDeleteExpenseCategory}
                   onViewReceipt={(exp) => setSelectedExpenseForReceipt(exp)}
                   onOpenIncomeStatement={() => setIsIncomeStatementOpen(true)}
-                  canViewIncomeStatement={hasPermission(activeUser, 'dashboard', 'viewIncomeStatement')}
+                  canViewIncomeStatement={hasPermission(activeUser, 'dashboard', 'viewIncomeStatement', currentTenant)}
                 />
               )}
 
@@ -2695,7 +2696,7 @@ export default function App() {
           sales={scopedSales}
           settings={settings}
           activeUser={activeUser}
-          canPrint={hasPermission(activeUser, 'dashboard', 'printIncomeStatement')}
+          canPrint={hasPermission(activeUser, 'dashboard', 'printIncomeStatement', currentTenant)}
           onClose={() => setIsIncomeStatementOpen(false)}
         />
       )}
@@ -2743,6 +2744,7 @@ export default function App() {
         users={scopedUsers}
         settings={settings}
         activeUser={activeUser}
+        activeTenant={currentTenant}
       />
 
       {/* Dedicated Change Password Modal */}

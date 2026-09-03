@@ -1404,10 +1404,8 @@ export function countPermissions(permissions: UserPermissions | undefined): {
 /**
  * Determine the best default landing view for a user based on their role, granted permissions, and tenant modules.
  */
-export function getDefaultLandingViewForUser(
-  user: AppUser | null | undefined,
-  tenant?: NetworkTenant | null
-): 'dashboard' | 'orders' | 'pos_portal' | 'invoices' | 'expenses' | 'payments' | 'pos' | 'categories' | 'mikrotik' | 'users' {
+export function getDefaultLandingViewForUser(user: AppUser | null | undefined, activeTenant?: NetworkTenant | null)
+: 'dashboard' | 'orders' | 'pos_portal' | 'invoices' | 'expenses' | 'payments' | 'pos' | 'categories' | 'mikrotik' | 'users' {
   if (!user) return 'invoices';
 
   // POS Agent defaults to POS portal
@@ -1417,55 +1415,55 @@ export function getDefaultLandingViewForUser(
 
   // Super admin defaults to dashboard if permitted, or first permitted module
   if (user.role === 'super_admin') {
-    if (hasPermission(user, 'dashboard', 'view')) return 'dashboard';
-    if (hasPermission(user, 'categories', 'view')) return 'categories';
-    if (hasPermission(user, 'invoices', 'view')) return 'invoices';
-    if (hasPermission(user, 'pos', 'view')) return 'pos';
-    if (hasPermission(user, 'orders', 'view')) return 'orders';
-    if (hasPermission(user, 'mikrotik', 'view')) return 'mikrotik';
-    if (hasPermission(user, 'payments', 'view')) return 'payments';
-    if (hasPermission(user, 'expenses', 'view')) return 'expenses';
-    if (hasPermission(user, 'usersAndPermissions', 'view')) return 'users';
+    if (hasPermission(user, 'dashboard', 'view', activeTenant)) return 'dashboard';
+    if (hasPermission(user, 'categories', 'view', activeTenant)) return 'categories';
+    if (hasPermission(user, 'invoices', 'view', activeTenant)) return 'invoices';
+    if (hasPermission(user, 'pos', 'view', activeTenant)) return 'pos';
+    if (hasPermission(user, 'orders', 'view', activeTenant)) return 'orders';
+    if (hasPermission(user, 'mikrotik', 'view', activeTenant)) return 'mikrotik';
+    if (hasPermission(user, 'payments', 'view', activeTenant)) return 'payments';
+    if (hasPermission(user, 'expenses', 'view', activeTenant)) return 'expenses';
+    if (hasPermission(user, 'usersAndPermissions', 'view', activeTenant)) return 'users';
     return 'categories';
   }
 
   // Accountant: prefers dashboard if permitted, or invoices
   if (user.role === 'accountant') {
-    if (hasPermission(user, 'dashboard', 'view')) return 'dashboard';
-    if (hasPermission(user, 'orders', 'view')) return 'orders';
-    if (hasPermission(user, 'invoices', 'view')) return 'invoices';
-    if (hasPermission(user, 'expenses', 'view')) return 'expenses';
-    if (hasPermission(user, 'payments', 'view')) return 'payments';
+    if (hasPermission(user, 'dashboard', 'view', activeTenant)) return 'dashboard';
+    if (hasPermission(user, 'orders', 'view', activeTenant)) return 'orders';
+    if (hasPermission(user, 'invoices', 'view', activeTenant)) return 'invoices';
+    if (hasPermission(user, 'expenses', 'view', activeTenant)) return 'expenses';
+    if (hasPermission(user, 'payments', 'view', activeTenant)) return 'payments';
   }
 
   // Sales Agent: prefers orders or pos points
   if (user.role === 'sales_agent') {
-    if (hasPermission(user, 'orders', 'view')) return 'orders';
-    if (hasPermission(user, 'invoices', 'view')) return 'invoices';
-    if (hasPermission(user, 'pos', 'view')) return 'pos';
-    if (hasPermission(user, 'payments', 'view')) return 'payments';
+    if (hasPermission(user, 'orders', 'view', activeTenant)) return 'orders';
+    if (hasPermission(user, 'invoices', 'view', activeTenant)) return 'invoices';
+    if (hasPermission(user, 'pos', 'view', activeTenant)) return 'pos';
+    if (hasPermission(user, 'payments', 'view', activeTenant)) return 'payments';
   }
 
   // Cashier: prefers invoices or payments
   if (user.role === 'cashier') {
-    if (hasPermission(user, 'invoices', 'view')) return 'invoices';
-    if (hasPermission(user, 'orders', 'view')) return 'orders';
-    if (hasPermission(user, 'payments', 'view')) return 'payments';
-    if (hasPermission(user, 'pos', 'view')) return 'pos';
+    if (hasPermission(user, 'invoices', 'view', activeTenant)) return 'invoices';
+    if (hasPermission(user, 'orders', 'view', activeTenant)) return 'orders';
+    if (hasPermission(user, 'payments', 'view', activeTenant)) return 'payments';
+    if (hasPermission(user, 'pos', 'view', activeTenant)) return 'pos';
   }
 
   // Network Admin: prefers mikrotik or categories
   if (user.role === 'network_admin') {
-    if (hasPermission(user, 'mikrotik', 'view')) return 'mikrotik';
-    if (hasPermission(user, 'categories', 'view')) return 'categories';
-    if (hasPermission(user, 'dashboard', 'view')) return 'dashboard';
+    if (hasPermission(user, 'mikrotik', 'view', activeTenant)) return 'mikrotik';
+    if (hasPermission(user, 'categories', 'view', activeTenant)) return 'categories';
+    if (hasPermission(user, 'dashboard', 'view', activeTenant)) return 'dashboard';
   }
 
   // Viewer: prefers dashboard or invoices
   if (user.role === 'viewer') {
-    if (hasPermission(user, 'dashboard', 'view')) return 'dashboard';
-    if (hasPermission(user, 'orders', 'view')) return 'orders';
-    if (hasPermission(user, 'invoices', 'view')) return 'invoices';
+    if (hasPermission(user, 'dashboard', 'view', activeTenant)) return 'dashboard';
+    if (hasPermission(user, 'orders', 'view', activeTenant)) return 'orders';
+    if (hasPermission(user, 'invoices', 'view', activeTenant)) return 'invoices';
   }
 
   // Priority check for any other role or custom permissions
@@ -1482,7 +1480,7 @@ export function getDefaultLandingViewForUser(
   ];
 
   for (const item of checkOrder) {
-    if (hasPermission(user, item.module, 'view')) {
+    if (hasPermission(user, item.module, 'view', activeTenant)) {
       return item.view;
     }
   }
