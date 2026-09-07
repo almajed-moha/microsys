@@ -258,7 +258,8 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
       }
     } catch (err) {
       console.error('WhatsApp Share Error:', err);
-      const waUrl = `https://wa.me/${(customer?.phone || posPoint?.phone) ? (posPoint.phone.startsWith('967') ? posPoint.phone : `967${posPoint.phone}`) : ''}?text=${encodeURIComponent(getWhatsAppMessage())}`;
+      const targetPhone = customer?.phone || posPoint?.phone || '';
+      const waUrl = `https://wa.me/${targetPhone ? (targetPhone.startsWith('967') ? targetPhone : `967${targetPhone}`) : ''}?text=${encodeURIComponent(getWhatsAppMessage())}`;
       window.open(waUrl, '_blank');
     } finally {
       setIsSharingWhatsApp(false);

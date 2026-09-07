@@ -17,7 +17,7 @@ import {
   FileText,
   Receipt
 } from 'lucide-react';
-import { PaymentRecord, POSPoint, NetworkSettings } from '../types';
+import { PaymentRecord, POSPoint, NetworkSettings, Customer } from '../types';
 import { Barcode } from './Barcode';
 import {
   exportElementToPdf,
@@ -28,6 +28,7 @@ import {
 interface OfficialPaymentReceiptModalProps {
   payment: PaymentRecord;
   posPoints: POSPoint[];
+  customers?: Customer[];
   settings: NetworkSettings;
   onClose: () => void;
 }
@@ -90,6 +91,7 @@ function numberToArabicWords(num: number, currency: string = 'ريال'): string
 export const OfficialPaymentReceiptModal: React.FC<OfficialPaymentReceiptModalProps> = ({
   payment,
   posPoints,
+  customers = [],
   settings,
   onClose,
 }) => {
@@ -100,6 +102,7 @@ export const OfficialPaymentReceiptModal: React.FC<OfficialPaymentReceiptModalPr
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
   const pos = posPoints.find((p) => p.id === payment.posPointId);
+  const customer = customers.find((c) => c.id === payment.customerId);
 
   const paymentMethodLabel = {
     cash: 'نقداً كاش',
@@ -118,8 +121,8 @@ export const OfficialPaymentReceiptModal: React.FC<OfficialPaymentReceiptModalPr
 ----------------------------------------
 📄 رقم السند: *${payment.referenceNumber || payment.id}*
 📅 التاريخ: ${payment.date} ${payment.time ? `- ${payment.time}` : ''}
-👤 استلمنا من الأخ/الموزع: *${pos ? pos.name : 'نقطة البيع'}*
-🏢 المسؤول: ${pos?.managerName || ''} (${pos?.phone || ''})
+👤 استلمنا من الأخ/الجهة: *${customer?.name || pos?.name || 'مباشر'}*
+🏢 الهاتف: ${customer?.phone || pos?.phone || ''}
 💵 المبلغ المسدد: *${(payment.amount ?? 0).toLocaleString()} ${settings.currencySymbol}*
 📝 فقط: ${numberToArabicWords(payment.amount, settings.currencySymbol)}
 💳 طريقة السداد: ${paymentMethodLabel}
@@ -372,9 +375,9 @@ ${pos ? `📊 المديونية المتبقية حالياً: ${(pos.currentDe
               {/* Detailed Statement Lines */}
               <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <div className="flex items-start gap-2 border-b border-slate-200 pb-2">
-                  <span className="text-slate-500 min-w-28 font-semibold">استلمنا من الأخ:</span>
+                  <span className="text-slate-500 min-w-28 font-semibold">استلمنا من السيد/ة:</span>
                   <span className="font-black text-slate-950 text-sm flex-1">
-                    {pos ? pos.name : 'نقطة البيع'} {pos?.managerName ? `(المسؤول: ${pos.managerName})` : ''}
+                    {customer?.name || pos?.name || 'مباشر'} {pos?.managerName && !customer ? `(المسؤول: ${pos.managerName})` : ''}
                   </span>
                 </div>
 
@@ -477,7 +480,7 @@ ${pos ? `📊 المديونية المتبقية حالياً: ${(pos.currentDe
               <div className="text-[11px] space-y-1 pb-2 border-b border-dashed border-black">
                 <div className="flex justify-between">
                   <span className="font-semibold">المسدد / النقطة:</span>
-                  <span className="font-black">{pos ? pos.name : 'نقطة البيع'}</span>
+                  <span className="font-black">{customer?.name || pos?.name || 'نقطة البيع'}</span>
                 </div>
                 {pos?.managerName && (
                   <div className="flex justify-between text-[10px]">

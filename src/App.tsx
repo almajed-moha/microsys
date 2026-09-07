@@ -497,6 +497,45 @@ export default function App() {
     saveData(STORAGE_KEYS.DISPATCHES, dispatches);
   }, [dispatches]);
 
+  const refreshCustomerBalances = useCallback(
+    (
+      currentCustomers: Customer[] = [],
+      currentInvoices: InvoiceRecord[] = [],
+      currentPayments: PaymentRecord[] = []
+    ) => {
+      const safeCustomers = currentCustomers || [];
+      const safeInvoices = currentInvoices || [];
+      const safePayments = currentPayments || [];
+
+      return safeCustomers.map((customer) => {
+        if (!customer) return customer;
+        const custInvoices = safeInvoices.filter(inv => inv.customerId === customer.id);
+        const custPayments = safePayments.filter(p => p.customerId === customer.id);
+        
+        let totalPurchases = 0;
+        let totalReturns = 0;
+        custInvoices.forEach(inv => {
+          if (inv.type === 'sale') totalPurchases += (inv.totalWholesaleAmount || 0);
+          if (inv.type === 'return') totalReturns += (inv.totalWholesaleAmount || 0);
+        });
+
+        const totalPaymentsAmount = custPayments.reduce((acc, p) => acc + (p.amount || 0), 0);
+        
+        const balance = totalPurchases - totalReturns - totalPaymentsAmount;
+
+        return {
+          ...customer,
+          totalPurchases,
+          totalPayments: totalPaymentsAmount,
+          balance
+        };
+      });
+    },
+    []
+  );
+
+
+
   useEffect(() => {
     saveData(STORAGE_KEYS.SALES, sales);
   }, [sales]);
@@ -1055,6 +1094,7 @@ export default function App() {
       setPayments(nextPayments);
       setDispatches((prev) => prev.filter((d) => d.posPointId !== posId));
       setPosPoints((prev) => refreshPOSBalances(prev.filter((p) => p.id !== posId), nextInvoices, nextSales, nextPayments));
+      setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, nextPayments));
       return;
     }
     setPosPoints((prev) => prev.filter((p) => p.id !== posId));
@@ -1117,6 +1157,7 @@ export default function App() {
 
     // Update POS balances
     setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
+    setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, payments));
 
     // Audit Log Entry
     const targetPos = posPoints.find((p) => p.id === newInvoice.posPointId);
@@ -1175,6 +1216,7 @@ export default function App() {
     const nextInvoices = invoices.map((inv) => (inv.id === updatedInvoice.id ? updatedInvoice : inv));
     setInvoices(nextInvoices);
     setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
+    setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, payments));
     
     logUserActivity(
       'تعديل فاتورة',
@@ -1208,6 +1250,7 @@ export default function App() {
     const nextInvoices = invoices.filter((inv) => inv.id !== invoiceId);
     setInvoices(nextInvoices);
     setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
+    setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, payments));
 
     // Audit Log
     logUserActivity(
@@ -1242,6 +1285,7 @@ export default function App() {
     );
     setInvoices(nextInvoices);
     setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
+    setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, payments));
 
     // Audit Log
     logUserActivity(
@@ -1422,6 +1466,7 @@ export default function App() {
 
     // Refresh POS balances
     setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
+    setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, payments));
 
     // Update Order status to delivered
     const updatedOrder = applyUpdateAudit(targetOrder, {
@@ -1567,6 +1612,7 @@ export default function App() {
     const nextSales = [newSale, ...sales];
     setSales(nextSales);
     setPosPoints((prev) => refreshPOSBalances(prev, invoices, nextSales, payments));
+    setCustomers((prev) => refreshCustomerBalances(prev, invoices, payments));
   };
 
   const handleUpdateSale = (updatedSaleData: SalesRecord) => {
@@ -1578,12 +1624,14 @@ export default function App() {
     const nextSales = sales.map((s) => (s.id === updatedSale.id ? updatedSale : s));
     setSales(nextSales);
     setPosPoints((prev) => refreshPOSBalances(prev, invoices, nextSales, payments));
+    setCustomers((prev) => refreshCustomerBalances(prev, invoices, payments));
   };
 
   const handleDeleteSale = (saleId: string) => {
     const nextSales = sales.filter((s) => s.id !== saleId);
     setSales(nextSales);
     setPosPoints((prev) => refreshPOSBalances(prev, invoices, nextSales, payments));
+    setCustomers((prev) => refreshCustomerBalances(prev, invoices, payments));
   };
 
   // 5. Category Actions
@@ -1774,6 +1822,7 @@ export default function App() {
     setPayments(nextPayments);
 
     setPosPoints((prev) => refreshPOSBalances(prev, invoices, sales, nextPayments));
+    setCustomers((prev) => refreshCustomerBalances(prev, invoices, nextPayments));
 
     const targetPos = posPoints.find((p) => p.id === newPayment.posPointId);
     logUserActivity(
@@ -1799,6 +1848,7 @@ export default function App() {
     const nextPayments = payments.map((p) => (p.id === updatedPayment.id ? updatedPayment : p));
     setPayments(nextPayments);
     setPosPoints((prev) => refreshPOSBalances(prev, invoices, sales, nextPayments));
+    setCustomers((prev) => refreshCustomerBalances(prev, invoices, nextPayments));
     logUserActivity(
       'تعديل سند قبض',
       'payments',
@@ -1814,6 +1864,7 @@ export default function App() {
     const nextPayments = payments.filter((p) => p.id !== paymentId);
     setPayments(nextPayments);
     setPosPoints((prev) => refreshPOSBalances(prev, invoices, sales, nextPayments));
+    setCustomers((prev) => refreshCustomerBalances(prev, invoices, nextPayments));
 
     if (toDelete) {
       logUserActivity(
@@ -2508,13 +2559,13 @@ export default function App() {
                 <InvoicesView
                   invoices={scopedInvoices}
                   posPoints={scopedPOSPoints}
-                  customers={scopedCustomers}
                   categories={scopedCategories}
                   settings={settings}
                   onAddInvoice={handleAddInvoice}
                   onUpdateInvoice={handleUpdateInvoice}
                   onDeleteInvoice={handleDeleteInvoice}
                   onCancelInvoice={handleCancelInvoice}
+                  customers={scopedCustomers}
                   onViewReceipt={(inv) => setSelectedInvoiceForReceipt(inv)}
                   onOpenFinancialExport={() => setIsFinancialExportModalOpen(true)}
                 />
@@ -2569,11 +2620,11 @@ export default function App() {
                 <PaymentsView
                   payments={scopedPayments}
                   posPoints={scopedPOSPoints}
-                  customers={scopedCustomers}
                   settings={settings}
                   onAddPayment={handleAddPayment}
                   onUpdatePayment={handleUpdatePayment}
                   onDeletePayment={handleDeletePayment}
+                  customers={scopedCustomers}
                   onViewReceipt={(payment) => setSelectedPaymentForReceipt(payment)}
                   onOpenStatement={(posId) => {
                     setStatementPaperMode('a4');
@@ -2595,7 +2646,7 @@ export default function App() {
 
 
               {activeView === 'mikrotik_sessions' && (
-                <MikrotikSessionsView />
+                <MikrotikSessionsView settings={settings} />
               )}
 
               {activeView === 'mikrotik' && (
@@ -2707,8 +2758,12 @@ export default function App() {
       {/* 1. Multi-Item Invoice Receipt Modal */}
       {selectedInvoiceForReceipt && (
         <InvoiceReceiptModal
+          isOpen={!!selectedInvoiceForReceipt}
           invoice={selectedInvoiceForReceipt}
           settings={settings}
+          categories={scopedCategories}
+          posPoint={scopedPOSPoints.find(p => p.id === selectedInvoiceForReceipt.posPointId)}
+          customer={scopedCustomers.find(c => c.id === selectedInvoiceForReceipt.customerId)}
           onClose={() => setSelectedInvoiceForReceipt(null)}
         />
       )}
@@ -2745,10 +2800,10 @@ export default function App() {
       {isPaymentModalOpen && (
         <PaymentModal
           posPoints={scopedPOSPoints}
-          customers={scopedCustomers}
           initialPOSId={paymentTargetPOSId}
           settings={settings}
           onAddPayment={handleAddPayment}
+          customers={scopedCustomers}
           onClose={() => {
             setIsPaymentModalOpen(false);
             setPaymentTargetPOSId(undefined);
@@ -2838,6 +2893,7 @@ export default function App() {
           settings={settings}
           sales={scopedSales}
           payments={scopedPayments}
+          customers={scopedCustomers}
           onClose={() => setSelectedPaymentForReceipt(null)}
         />
       )}

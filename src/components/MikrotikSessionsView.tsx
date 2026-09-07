@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Calendar, Download, FileText, Wifi, Clock, Activity, HardDrive } from 'lucide-react';
+import { Search, Calendar, Download, FileText, Wifi, Clock, Activity, HardDrive, Printer, ChevronDown } from 'lucide-react';
+import { printElementDocument, exportElementToPdf } from '../utils/pdfExport';
+import { NetworkSettings } from '../types';
 
 interface MikrotikSession {
   id: string;
@@ -78,7 +80,8 @@ const formatDate = (isoString: string) => {
   });
 };
 
-export const MikrotikSessionsView: React.FC = () => {
+export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({ settings }) => {
+  
   const [sessions] = useState<MikrotikSession[]>(MOCK_SESSIONS);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -86,6 +89,30 @@ export const MikrotikSessionsView: React.FC = () => {
   const todayStr = new Date().toISOString().split('T')[0];
   const [fromDate, setFromDate] = useState(todayStr);
   const [toDate, setToDate] = useState(todayStr);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportPdf = async (format: 'a4' | 'pos-80mm') => {
+    setIsExportMenuOpen(false);
+    setIsExporting(true);
+    try {
+      await exportElementToPdf('mikrotik-sessions-report', {
+        filename: `تقرير_إحصائيات_المتصلين_${format}.pdf`,
+        title: `تقرير إحصائيات المتصلين - ${settings?.networkName || ''}`,
+        format: format,
+        paperFormat: format,
+        scale: 2
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handlePrint = async () => {
+    setIsExportMenuOpen(false);
+    await printElementDocument('mikrotik-sessions-report', { title: 'تقرير إحصائيات المتصلين' });
+  };
+
 
   const filteredSessions = useMemo(() => {
     return sessions.filter(session => {
@@ -112,7 +139,7 @@ export const MikrotikSessionsView: React.FC = () => {
   const totalSessions = filteredSessions.length;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in" id="mikrotik-sessions-report">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -122,13 +149,52 @@ export const MikrotikSessionsView: React.FC = () => {
           <p className="text-slate-500">مراقبة الجلسات واستهلاك البيانات للمشتركين</p>
         </div>
         <div className="flex gap-2">
-          <button className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors flex items-center gap-2 font-medium">
-            <Download size={18} />
-            تصدير التقرير
-          </button>
+          
+          <div className="relative">
+            <button
+              onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+              className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors flex items-center gap-2 font-medium print:hidden"
+            >
+              {isExporting ? <span className="w-5 h-5 border-2 border-slate-700 border-t-transparent rounded-full animate-spin"></span> : <Download size={18} />}
+              تصدير التقرير
+              <ChevronDown size={16} />
+            </button>
+
+            {isExportMenuOpen && (
+              <div className="absolute top-full mt-2 left-0 w-48 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-50 print:hidden">
+                <button
+                  onClick={() => handleExportPdf('a4')}
+                  className="w-full text-right px-4 py-3 text-sm hover:bg-slate-50 border-b border-slate-100 flex items-center justify-between"
+                >
+                  <span className="font-semibold text-slate-700">PDF - A4</span>
+                  <span className="text-xs text-slate-400">للطابعات العادية</span>
+                </button>
+                <button
+                  onClick={() => handleExportPdf('pos-80mm')}
+                  className="w-full text-right px-4 py-3 text-sm hover:bg-slate-50 border-b border-slate-100 flex items-center justify-between"
+                >
+                  <span className="font-semibold text-slate-700">PDF - الحراري</span>
+                  <span className="text-xs text-slate-400">كاشير 80mm</span>
+                </button>
+                <button
+                  onClick={handlePrint}
+                  className="w-full text-right px-4 py-3 text-sm hover:bg-slate-50 flex items-center justify-between text-indigo-600"
+                >
+                  <span className="font-semibold">طباعة مباشرة</span>
+                  <Printer size={16} />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
+      {/* Print Header */}
+      <div className="hidden print:block mb-6 text-center border-b pb-4">
+        <h2 className="text-2xl font-bold mb-1">{settings?.networkName || 'تقرير إحصائيات المتصلين'}</h2>
+        <p className="text-slate-500">الفترة: من {fromDate} إلى {toDate}</p>
+        <p className="text-slate-500 text-sm">تاريخ الطباعة: {new Date().toLocaleString('ar-SA')}</p>
+      </div>
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex items-center gap-4">
@@ -173,7 +239,7 @@ export const MikrotikSessionsView: React.FC = () => {
       </div>
 
       {/* Filters and Search */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-end">
+      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-end print:hidden">
         <div className="flex-1 w-full">
           <label className="block text-sm font-medium text-slate-700 mb-1">بحث</label>
           <div className="relative">
