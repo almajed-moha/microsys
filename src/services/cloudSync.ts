@@ -8,7 +8,7 @@ import {
   deleteDoc,
   Unsubscribe,
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, ensureAuthenticatedSession } from '../firebase';
 
 export const STORAGE_KEYS = {
   SETTINGS: 'mikrotik_pos_settings',
@@ -56,11 +56,15 @@ export function setIsReceivingRemote(status: boolean) {
 
 /**
  * Synchronize a state array to Firestore
+ * Enforces session authentication and atomic batch updates
  */
 export async function syncArrayToFirestore(storageKey: string, currentArray: any[]) {
   const collectionName = COLLECTION_MAP[storageKey];
   if (!collectionName || !db || isReceivingRemoteUpdate) return;
   if (!Array.isArray(currentArray)) return;
+
+  // Ensure client is authenticated before performing operations
+  await ensureAuthenticatedSession();
 
   const previousArray = lastKnownState[storageKey] || [];
   
@@ -143,6 +147,8 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
 export async function loadAllDataFromFirestore(): Promise<Record<string, any[]> | null> {
   if (!db) return null;
 
+  await ensureAuthenticatedSession();
+
   const results: Record<string, any[]> = {};
   let totalDocsFound = 0;
 
@@ -183,39 +189,57 @@ export function subscribeToCloudUpdates(
 
   const unsubscribes: Unsubscribe[] = [];
 
-  for (const [storageKey, collectionName] of Object.entries(COLLECTION_MAP)) {
-    try {
-      const unsub = onSnapshot(
-        collection(db, collectionName),
-        (snapshot) => {
-          // If changes come from local cache write, skip to avoid double render
-          if (snapshot.metadata.hasPendingWrites) return;
+  // Guarantee authentication before subscribing
+  ensureAuthenticatedSession().then(() => {
+    for (const [storageKey, collectionName] of Object.entries(COLLECTION_MAP)) {
+      try {
+        const unsub = onSnapshot(
+          collection(db, collectionName),
+          (snapshot) => {
+            // If changes come from local cache write, skip to avoid double render
+            if (snapshot.metadata.hasPendingWrites) return;
 
-          const items: any[] = [];
-          snapshot.forEach((d) => {
-            items.push({ id: d.id, ...d.data() });
-          });
+            const items: any[] = [];
+            snapshot.forEach((d) => {
+              items.push({ id: d.id, ...d.data() });
+            });
 
-          if (items.length > 0) {
-            lastKnownState[storageKey] = [...items];
-            setIsReceivingRemote(true);
-            onUpdate(storageKey, items);
-            setTimeout(() => setIsReceivingRemote(false), 200);
+            if (items.length > 0) {
+              lastKnownState[storageKey] = [...items];
+              setIsReceivingRemote(true);
+              onUpdate(storageKey, items);
+              setTimeout(() => setIsReceivingRemote(false), 200);
+            }
+          },
+          (error) => {
+            console.warn(`Live listener error on ${collectionName}:`, error);
           }
-        },
-        (error) => {
-          console.warn(`Live listener error on ${collectionName}:`, error);
-        }
-      );
-      unsubscribes.push(unsub);
-    } catch (e) {
-      console.warn(`Failed to set up listener for ${collectionName}:`, e);
+        );
+        unsubscribes.push(unsub);
+      } catch (e) {
+        console.warn(`Failed to set up listener for ${collectionName}:`, e);
+      }
     }
-  }
+  });
 
   return () => {
     unsubscribes.forEach((unsub) => unsub());
   };
+}
+
+/**
+ * Force synchronization of all collections to the cloud
+ */
+export async function forceSyncAllToCloud(dataState: Record<string, any[]>) {
+  if (!db) return false;
+  await ensureAuthenticatedSession();
+  
+  for (const [storageKey, items] of Object.entries(dataState)) {
+    if (Array.isArray(items) && COLLECTION_MAP[storageKey]) {
+      await syncArrayToFirestore(storageKey, items);
+    }
+  }
+  return true;
 }
 
 /**

@@ -30,6 +30,7 @@ import {
   initialUsers,
   initialCardOrders,
 } from '../mockData';
+import { syncArrayToFirestore } from '../services/cloudSync';
 
 export const STORAGE_KEYS = {
   SETTINGS: 'mikrotik_pos_settings',
@@ -81,11 +82,9 @@ export function saveToStorage<T>(key: string, value: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
     
-    // Fire and forget cloud sync if value is an array
+    // Cloud sync if value is an array
     if (Array.isArray(value)) {
-      import('../services/cloudSync').then(({ syncArrayToFirestore }) => {
-        syncArrayToFirestore(key, value).catch(err => console.error('Cloud Sync Error:', err));
-      }).catch(err => console.error('Failed to import cloudSync:', err));
+      syncArrayToFirestore(key, value).catch(err => console.warn('Cloud Sync Error:', err));
     }
   } catch (error) {
     console.error(`Error saving key ${key} to storage:`, error);

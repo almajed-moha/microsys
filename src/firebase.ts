@@ -1,5 +1,13 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  signInAnonymously,
+  onAuthStateChanged,
+  User as FirebaseUser,
+} from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -12,6 +20,24 @@ googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
 let cachedAccessToken: string | null = null;
 
 export const getGoogleAccessToken = () => cachedAccessToken;
+
+/**
+ * Ensures that the client has an active, authenticated Firebase session.
+ * Prevents unauthenticated external access while allowing seamless synchronization.
+ */
+export const ensureAuthenticatedSession = async (): Promise<FirebaseUser | null> => {
+  if (auth.currentUser) return auth.currentUser;
+  try {
+    const cred = await signInAnonymously(auth);
+    return cred.user;
+  } catch (error) {
+    console.warn('Authentication session initialization warning:', error);
+    return null;
+  }
+};
+
+// Initialize authentication on module load
+ensureAuthenticatedSession();
 
 export const signInWithGoogle = async () => {
   try {
@@ -35,3 +61,4 @@ export const logout = async () => {
     console.error("Error signing out", error);
   }
 };
+

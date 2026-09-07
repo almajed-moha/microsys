@@ -2410,6 +2410,7 @@ export default function App() {
     const newSales = mergeList<SalesRecord>(sales, backupData.sales);
     const newPayments = mergeList<PaymentRecord>(payments, backupData.payments);
     const newOrders = mergeList<CardOrder>(orders, backupData.orders);
+    const newCustomers = mergeList<Customer>(customers, backupData.customers);
     const newTenants = mergeList<NetworkTenant>(tenants, backupData.tenants);
     const newUsers = mergeList<AppUser>(users, backupData.users);
     const newLogs = mergeList<UserActivityLog>(activityLogs, backupData.activityLogs);
@@ -2426,6 +2427,7 @@ export default function App() {
     if (backupData.sales || mode === 'overwrite') setSales(newSales);
     if (backupData.payments || mode === 'overwrite') setPayments(newPayments);
     if (backupData.orders || mode === 'overwrite') setOrders(newOrders);
+    if (backupData.customers || mode === 'overwrite') setCustomers(newCustomers);
     if (backupData.posPoints || mode === 'overwrite') setPosPoints(newPOS);
     if (backupData.tenants && backupData.tenants.length > 0) setTenants(newTenants);
     if (backupData.users && backupData.users.length > 0) setUsers(newUsers);
@@ -2441,6 +2443,7 @@ export default function App() {
     saveData(STORAGE_KEYS.SALES, newSales);
     saveData(STORAGE_KEYS.PAYMENTS, newPayments);
     saveData(STORAGE_KEYS.ORDERS, newOrders);
+    saveData(STORAGE_KEYS.CUSTOMERS, newCustomers);
     saveData(STORAGE_KEYS.POS_POINTS, newPOS);
     if (backupData.tenants && backupData.tenants.length > 0) saveData(STORAGE_KEYS.TENANTS, newTenants);
     if (backupData.users && backupData.users.length > 0) saveData(STORAGE_KEYS.USERS, newUsers);
