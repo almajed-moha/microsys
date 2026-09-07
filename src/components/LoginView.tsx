@@ -122,7 +122,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
     e.preventDefault();
     setErrorMessage('');
 
-
     const targetUser = users.find(
       (u) =>
         u.username.toLowerCase() === usernameInput.trim().toLowerCase() ||

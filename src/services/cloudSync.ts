@@ -1,7 +1,16 @@
-import { collection, doc, setDoc, deleteDoc, getDocs, query, where, writeBatch, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import {
+  collection,
+  doc,
+  getDocs,
+  writeBatch,
+  onSnapshot,
+  setDoc,
+  deleteDoc,
+  Unsubscribe,
+} from 'firebase/firestore';
+import { db } from '../firebase';
 
-const STORAGE_KEYS = {
+export const STORAGE_KEYS = {
   SETTINGS: 'mikrotik_pos_settings',
   CATEGORIES: 'mikrotik_pos_categories',
   POS_POINTS: 'mikrotik_pos_points',
@@ -21,8 +30,7 @@ const STORAGE_KEYS = {
   CUSTOMERS: 'mikrotik_pos_customers',
 };
 
-
-const COLLECTION_MAP: Record<string, string> = {
+export const COLLECTION_MAP: Record<string, string> = {
   [STORAGE_KEYS.USERS]: 'users',
   [STORAGE_KEYS.TENANTS]: 'tenants',
   [STORAGE_KEYS.CATEGORIES]: 'categories',
@@ -38,21 +46,30 @@ const COLLECTION_MAP: Record<string, string> = {
   [STORAGE_KEYS.CUSTOMERS]: 'customers',
 };
 
-// Keep track of the last known state to compute diffs
+// Keep track of the last known state to prevent unnecessary loops and writes
 const lastKnownState: Record<string, any[]> = {};
+let isReceivingRemoteUpdate = false;
 
+export function setIsReceivingRemote(status: boolean) {
+  isReceivingRemoteUpdate = status;
+}
+
+/**
+ * Synchronize a state array to Firestore
+ */
 export async function syncArrayToFirestore(storageKey: string, currentArray: any[]) {
   const collectionName = COLLECTION_MAP[storageKey];
-  if (!collectionName || !db || !auth.currentUser) return;
+  if (!collectionName || !db || isReceivingRemoteUpdate) return;
+  if (!Array.isArray(currentArray)) return;
 
   const previousArray = lastKnownState[storageKey] || [];
   
-  // Create maps for faster lookup
-  const currentMap = new Map(currentArray.map(item => [item.id, item]));
-  const previousMap = new Map(previousArray.map(item => [item.id, item]));
+  // Create maps for lookup
+  const currentMap = new Map(currentArray.map(item => [item?.id || String(Math.random()), item]));
+  const previousMap = new Map(previousArray.map(item => [item?.id, item]));
 
-  const toAddOrUpdate = [];
-  const toDelete = [];
+  const toAddOrUpdate: any[] = [];
+  const toDelete: string[] = [];
 
   // Find added or updated items
   for (const [id, currentItem] of currentMap.entries()) {
@@ -63,7 +80,7 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
     }
   }
 
-  // Find deleted items (if any, though deletion is rare in this app)
+  // Find deleted items
   for (const id of previousMap.keys()) {
     if (!id) continue;
     if (!currentMap.has(id)) {
@@ -82,11 +99,9 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
 
     for (const item of toAddOrUpdate) {
       if (!item.id) continue;
-      const docRef = doc(db, collectionName, item.id);
+      const docRef = doc(db, collectionName, String(item.id));
       
-      // Ensure required fields are present for Firestore security rules
       const dataToSave = { ...item };
-      
       // Sanitize undefined values
       Object.keys(dataToSave).forEach(key => {
         if (dataToSave[key] === undefined) delete dataToSave[key];
@@ -95,15 +110,22 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
       batch.set(docRef, dataToSave, { merge: true });
       opCount++;
 
-      // Batch limit is 500
       if (opCount === 490) {
         await batch.commit();
         opCount = 0;
       }
     }
 
-    // We don't actively delete from Firestore to prevent accidental data loss for other tenants
-    // unless explicitly needed. For a basic sync, we leave deletions manual or handle them carefully.
+    for (const delId of toDelete) {
+      const docRef = doc(db, collectionName, String(delId));
+      batch.delete(docRef);
+      opCount++;
+
+      if (opCount === 490) {
+        await batch.commit();
+        opCount = 0;
+      }
+    }
 
     if (opCount > 0) {
       await batch.commit();
@@ -111,58 +133,98 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
     
     lastKnownState[storageKey] = [...currentArray];
   } catch (error) {
-    console.error(`Error syncing ${storageKey} to Firestore:`, error);
+    console.warn(`Cloud sync warning for ${collectionName}:`, error);
   }
 }
 
-export async function loadTenantDataFromFirestore(tenantId: string, onProgress: (msg: string) => void) {
-  if (!tenantId || !db || !auth.currentUser) return null;
+/**
+ * Load all collections from Firestore on startup
+ */
+export async function loadAllDataFromFirestore(): Promise<Record<string, any[]> | null> {
+  if (!db) return null;
 
   const results: Record<string, any[]> = {};
-  
-  const collectionsToLoad = [
-    { key: STORAGE_KEYS.USERS, name: 'users' },
-    { key: STORAGE_KEYS.CATEGORIES, name: 'categories' },
-    { key: STORAGE_KEYS.POS_POINTS, name: 'posPoints' },
-    { key: STORAGE_KEYS.INVOICES, name: 'invoices' },
-    { key: STORAGE_KEYS.PAYMENTS, name: 'payments' },
-    { key: STORAGE_KEYS.EXPENSES, name: 'expenses' },
-    { key: STORAGE_KEYS.ORDERS, name: 'orders' },
-    { key: STORAGE_KEYS.CUSTOMERS, name: 'customers' }
-  ];
+  let totalDocsFound = 0;
 
   try {
-    for (const coll of collectionsToLoad) {
-      onProgress(`جاري تحميل بيانات ${coll.name}...`);
-      const q = query(collection(db, coll.name), where('networkId', '==', tenantId));
-      const querySnapshot = await getDocs(q);
-      const items: any[] = [];
-      querySnapshot.forEach((doc) => {
-        items.push({ id: doc.id, ...doc.data() });
-      });
-      results[coll.key] = items;
-      lastKnownState[coll.key] = [...items];
-    }
-    
-    // Also load tenants for Super Admins
-    onProgress(`جاري تحميل الشبكات...`);
-    const tenantsQ = query(collection(db, 'tenants')); // Admins should see tenants they have access to, Rules will handle this
-    try {
-        const tenantsSnap = await getDocs(tenantsQ);
-        const tenants: any[] = [];
-        tenantsSnap.forEach((doc) => {
-          tenants.push({ id: doc.id, ...doc.data() });
+    for (const [storageKey, collectionName] of Object.entries(COLLECTION_MAP)) {
+      try {
+        const snap = await getDocs(collection(db, collectionName));
+        const items: any[] = [];
+        snap.forEach((d) => {
+          items.push({ id: d.id, ...d.data() });
         });
-        results[STORAGE_KEYS.TENANTS] = tenants;
-        lastKnownState[STORAGE_KEYS.TENANTS] = [...tenants];
-    } catch (e) {
-        console.warn("Could not list all tenants, likely standard user.", e);
+        results[storageKey] = items;
+        lastKnownState[storageKey] = [...items];
+        totalDocsFound += items.length;
+      } catch (collErr) {
+        console.warn(`Could not read collection ${collectionName}:`, collErr);
+      }
+    }
+
+    if (totalDocsFound === 0) {
+      return null;
     }
 
     return results;
-  } catch (error) {
-    console.error("Error loading tenant data from Firestore:", error);
-    throw error;
+  } catch (err) {
+    console.warn('Failed to load online Firestore data:', err);
+    return null;
   }
 }
 
+/**
+ * Subscribe to real-time updates from Firestore across all connected devices
+ */
+export function subscribeToCloudUpdates(
+  onUpdate: (key: string, items: any[]) => void
+): () => void {
+  if (!db) return () => {};
+
+  const unsubscribes: Unsubscribe[] = [];
+
+  for (const [storageKey, collectionName] of Object.entries(COLLECTION_MAP)) {
+    try {
+      const unsub = onSnapshot(
+        collection(db, collectionName),
+        (snapshot) => {
+          // If changes come from local cache write, skip to avoid double render
+          if (snapshot.metadata.hasPendingWrites) return;
+
+          const items: any[] = [];
+          snapshot.forEach((d) => {
+            items.push({ id: d.id, ...d.data() });
+          });
+
+          if (items.length > 0) {
+            lastKnownState[storageKey] = [...items];
+            setIsReceivingRemote(true);
+            onUpdate(storageKey, items);
+            setTimeout(() => setIsReceivingRemote(false), 200);
+          }
+        },
+        (error) => {
+          console.warn(`Live listener error on ${collectionName}:`, error);
+        }
+      );
+      unsubscribes.push(unsub);
+    } catch (e) {
+      console.warn(`Failed to set up listener for ${collectionName}:`, e);
+    }
+  }
+
+  return () => {
+    unsubscribes.forEach((unsub) => unsub());
+  };
+}
+
+/**
+ * Backwards compatibility helper
+ */
+export async function loadTenantDataFromFirestore(
+  tenantId: string,
+  onProgress?: (msg: string) => void
+) {
+  if (!db) return null;
+  return loadAllDataFromFirestore();
+}

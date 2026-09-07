@@ -80,7 +80,12 @@ import {
   defaultNetworkSettings,
   initialTemplates,
 } from './mockData';
-import { loadTenantDataFromFirestore } from './services/cloudSync';
+import {
+  loadTenantDataFromFirestore,
+  loadAllDataFromFirestore,
+  subscribeToCloudUpdates,
+  syncArrayToFirestore,
+} from './services/cloudSync';
 import { initialActivityLogs, buildActivityLog } from './utils/auditLogger';
 import { applyCreationAudit, applyUpdateAudit } from './utils/auditTrigger';
 import {
@@ -554,6 +559,38 @@ export default function App() {
   }, [users]);
 
   useEffect(() => {
+    saveData(STORAGE_KEYS.CUSTOMERS, customers);
+  }, [customers]);
+
+  useEffect(() => {
+    saveData(STORAGE_KEYS.INVOICES, invoices);
+  }, [invoices]);
+
+  useEffect(() => {
+    saveData(STORAGE_KEYS.CATEGORIES, categories);
+  }, [categories]);
+
+  useEffect(() => {
+    saveData(STORAGE_KEYS.POS_POINTS, posPoints);
+  }, [posPoints]);
+
+  useEffect(() => {
+    saveData(STORAGE_KEYS.EXPENSES, expenses);
+  }, [expenses]);
+
+  useEffect(() => {
+    saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, expenseCategories);
+  }, [expenseCategories]);
+
+  useEffect(() => {
+    saveData(STORAGE_KEYS.DISPATCHES, dispatches);
+  }, [dispatches]);
+
+  useEffect(() => {
+    saveData(STORAGE_KEYS.TENANTS, tenants);
+  }, [tenants]);
+
+  useEffect(() => {
     saveData(STORAGE_KEYS.ORDERS, orders);
   }, [orders]);
 
@@ -564,6 +601,102 @@ export default function App() {
   useEffect(() => {
     saveData(STORAGE_KEYS.ACTIVITY_LOGS, activityLogs);
   }, [activityLogs]);
+
+  // Online Real-time Cloud Synchronization across all devices (PC, Mobile, Tablets)
+  useEffect(() => {
+    let isMounted = true;
+
+    // 1. Initial Load from Online Database (Firestore)
+    loadAllDataFromFirestore()
+      .then((cloudData) => {
+        if (!isMounted) return;
+        if (cloudData && Object.keys(cloudData).length > 0) {
+          if (cloudData[STORAGE_KEYS.USERS]?.length) setUsers(cloudData[STORAGE_KEYS.USERS]);
+          if (cloudData[STORAGE_KEYS.CUSTOMERS]?.length) setCustomers(cloudData[STORAGE_KEYS.CUSTOMERS]);
+          if (cloudData[STORAGE_KEYS.CATEGORIES]?.length) setCategories(cloudData[STORAGE_KEYS.CATEGORIES]);
+          if (cloudData[STORAGE_KEYS.POS_POINTS]?.length) setPosPoints(cloudData[STORAGE_KEYS.POS_POINTS]);
+          if (cloudData[STORAGE_KEYS.INVOICES]?.length) setInvoices(cloudData[STORAGE_KEYS.INVOICES]);
+          if (cloudData[STORAGE_KEYS.PAYMENTS]?.length) setPayments(cloudData[STORAGE_KEYS.PAYMENTS]);
+          if (cloudData[STORAGE_KEYS.EXPENSES]?.length) setExpenses(cloudData[STORAGE_KEYS.EXPENSES]);
+          if (cloudData[STORAGE_KEYS.EXPENSE_CATEGORIES]?.length) setExpenseCategories(cloudData[STORAGE_KEYS.EXPENSE_CATEGORIES]);
+          if (cloudData[STORAGE_KEYS.DISPATCHES]?.length) setDispatches(cloudData[STORAGE_KEYS.DISPATCHES]);
+          if (cloudData[STORAGE_KEYS.SALES]?.length) setSales(cloudData[STORAGE_KEYS.SALES]);
+          if (cloudData[STORAGE_KEYS.ORDERS]?.length) setOrders(cloudData[STORAGE_KEYS.ORDERS]);
+          if (cloudData[STORAGE_KEYS.TENANTS]?.length) setTenants(cloudData[STORAGE_KEYS.TENANTS]);
+        } else {
+          // If Firestore is empty, seed current initial data to the cloud so all devices get it
+          syncArrayToFirestore(STORAGE_KEYS.USERS, users);
+          syncArrayToFirestore(STORAGE_KEYS.CATEGORIES, categories);
+          syncArrayToFirestore(STORAGE_KEYS.POS_POINTS, posPoints);
+          syncArrayToFirestore(STORAGE_KEYS.TENANTS, tenants);
+          if (customers.length > 0) syncArrayToFirestore(STORAGE_KEYS.CUSTOMERS, customers);
+          if (invoices.length > 0) syncArrayToFirestore(STORAGE_KEYS.INVOICES, invoices);
+        }
+      })
+      .catch((err) => {
+        console.warn('Initial cloud fetch:', err);
+      });
+
+    // 2. Real-time Live Sync: Instantly updates whenever changes occur on other devices
+    const unsubscribe = subscribeToCloudUpdates((key, items) => {
+      if (!isMounted || !Array.isArray(items)) return;
+      switch (key) {
+        case STORAGE_KEYS.USERS:
+          setUsers(items);
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(items));
+          break;
+        case STORAGE_KEYS.CUSTOMERS:
+          setCustomers(items);
+          localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(items));
+          break;
+        case STORAGE_KEYS.CATEGORIES:
+          setCategories(items);
+          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(items));
+          break;
+        case STORAGE_KEYS.POS_POINTS:
+          setPosPoints(items);
+          localStorage.setItem(STORAGE_KEYS.POS_POINTS, JSON.stringify(items));
+          break;
+        case STORAGE_KEYS.INVOICES:
+          setInvoices(items);
+          localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(items));
+          break;
+        case STORAGE_KEYS.PAYMENTS:
+          setPayments(items);
+          localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(items));
+          break;
+        case STORAGE_KEYS.EXPENSES:
+          setExpenses(items);
+          localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(items));
+          break;
+        case STORAGE_KEYS.EXPENSE_CATEGORIES:
+          setExpenseCategories(items);
+          localStorage.setItem(STORAGE_KEYS.EXPENSE_CATEGORIES, JSON.stringify(items));
+          break;
+        case STORAGE_KEYS.DISPATCHES:
+          setDispatches(items);
+          localStorage.setItem(STORAGE_KEYS.DISPATCHES, JSON.stringify(items));
+          break;
+        case STORAGE_KEYS.SALES:
+          setSales(items);
+          localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(items));
+          break;
+        case STORAGE_KEYS.ORDERS:
+          setOrders(items);
+          localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(items));
+          break;
+        case STORAGE_KEYS.TENANTS:
+          setTenants(items);
+          localStorage.setItem(STORAGE_KEYS.TENANTS, JSON.stringify(items));
+          break;
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
 
   // Ensure all POS points have corresponding users (Auto-recovery for existing data)
   useEffect(() => {
