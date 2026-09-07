@@ -881,7 +881,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                   <th className="py-3 px-4 w-28">رقم الفاتورة</th>
                   <th className="py-3 px-4 w-24">النوع</th>
                   <th className="py-3 px-4 w-24">التاريخ</th>
-                  <th className="py-3 px-4">نقطة البيع / الموزع</th>
+                  <th className="py-3 px-4">الجهة (نقطة البيع / العميل)</th>
                   <th className="py-3 px-4">الأصناف والفئات</th>
                   <th className="py-3 px-4 text-center">إجمالي الكروت</th>
                   <th className="py-3 px-4 text-center">المبلغ الإجمالي</th>
@@ -920,11 +920,34 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                         {inv.date} {inv.time ? ` - ${inv.time}` : ''}
                       </td>
                       <td className="py-3 px-4 font-bold text-white">
-                        {inv.posPointName}
-                        {inv.receivedBy && (
-                          <span className="block text-[10px] text-slate-500 font-normal">
-                            المستلم: {inv.receivedBy}
-                          </span>
+                        {inv.customerId ? (
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">
+                                عميل
+                              </span>
+                              <span>{inv.posPointName}</span>
+                            </div>
+                            {inv.receivedBy && (
+                              <span className="block text-[10px] text-slate-500 font-normal">
+                                المستلم: {inv.receivedBy}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">
+                                نقطة بيع
+                              </span>
+                              <span>{inv.posPointName}</span>
+                            </div>
+                            {inv.receivedBy && (
+                              <span className="block text-[10px] text-slate-500 font-normal">
+                                المستلم: {inv.receivedBy}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="py-3 px-4">
@@ -1567,6 +1590,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
           onClose={() => setViewingInvoice(null)}
           invoice={viewingInvoice}
           posPoint={posPoints.find((p) => p.id === viewingInvoice.posPointId)}
+          customer={customers.find((c) => c.id === viewingInvoice.customerId)}
           categories={categories}
           settings={settings}
         />

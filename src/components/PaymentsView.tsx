@@ -64,7 +64,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     time: new Date().toISOString().split('T')[1].substring(0, 5),
+    entityType: 'pos' as 'pos' | 'customer',
     posPointId: posPoints[0]?.id || '',
+    customerId: customers[0]?.id || '',
     amount: 10000,
     paymentMethod: 'cash' as 'cash' | 'bank_transfer' | 'cheque' | 'other',
     referenceNumber: '',
@@ -76,15 +78,23 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const [deletingPayment, setDeletingPayment] = useState<PaymentRecord | null>(null);
 
   const selectedPOS = posPoints.find((p) => p.id === formData.posPointId);
-  const currentDebt = selectedPOS?.currentDebt || 0;
+  const selectedCustomer = customers.find((c) => c.id === formData.customerId);
+
+  const currentDebt =
+    formData.entityType === 'pos'
+      ? (selectedPOS?.currentDebt || 0)
+      : (selectedCustomer?.balance || 0);
+
   const remainingAfterPayment = Math.max(0, currentDebt - (Number(formData.amount) || 0));
 
-  const handleOpenAdd = (posId?: string) => {
+  const handleOpenAdd = (entityId?: string, targetEntityType: 'pos' | 'customer' = 'pos') => {
     setEditingPayment(null);
     setFormData({
       date: new Date().toISOString().split('T')[0],
-    time: new Date().toISOString().split('T')[1].substring(0, 5),
-      posPointId: posId || (posPoints[0]?.id || ''),
+      time: new Date().toISOString().split('T')[1].substring(0, 5),
+      entityType: targetEntityType,
+      posPointId: targetEntityType === 'pos' ? (entityId || posPoints[0]?.id || '') : (posPoints[0]?.id || ''),
+      customerId: targetEntityType === 'customer' ? (entityId || customers[0]?.id || '') : (customers[0]?.id || ''),
       amount: 10000,
       paymentMethod: 'cash',
       referenceNumber: `REC-${Date.now().toString().slice(-6)}`,
@@ -96,10 +106,13 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
   const handleOpenEdit = (payment: PaymentRecord) => {
     setEditingPayment(payment);
+    const isCustomer = Boolean(payment.customerId);
     setFormData({
       date: payment.date,
       time: payment.time || new Date().toISOString().split('T')[1].substring(0, 5),
-      posPointId: payment.posPointId,
+      entityType: isCustomer ? 'customer' : 'pos',
+      posPointId: payment.posPointId || (posPoints[0]?.id || ''),
+      customerId: payment.customerId || (customers[0]?.id || ''),
       amount: payment.amount,
       paymentMethod: payment.paymentMethod,
       referenceNumber: payment.referenceNumber || '',
@@ -111,13 +124,31 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.posPointId || formData.amount <= 0) return;
+
+    if (formData.entityType === 'pos') {
+      if (!formData.posPointId) {
+        alert('يرجى اختيار نقطة البيع المسددة.');
+        return;
+      }
+    } else {
+      if (!formData.customerId) {
+        alert('يرجى اختيار العميل المسدد.');
+        return;
+      }
+    }
+
+    if (!formData.amount || formData.amount <= 0) {
+      alert('يرجى إدخال مبلغ صحيح.');
+      return;
+    }
 
     if (editingPayment) {
       onUpdatePayment({
         ...editingPayment,
         date: formData.date,
-        posPointId: formData.posPointId,
+        time: formData.time,
+        posPointId: formData.entityType === 'pos' ? formData.posPointId : '',
+        customerId: formData.entityType === 'customer' ? formData.customerId : undefined,
         amount: Number(formData.amount),
         paymentMethod: formData.paymentMethod,
         referenceNumber: formData.referenceNumber,
@@ -127,7 +158,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     } else {
       onAddPayment({
         date: formData.date,
-        posPointId: formData.posPointId,
+        time: formData.time,
+        posPointId: formData.entityType === 'pos' ? formData.posPointId : '',
+        customerId: formData.entityType === 'customer' ? formData.customerId : undefined,
         amount: Number(formData.amount),
         paymentMethod: formData.paymentMethod,
         referenceNumber: formData.referenceNumber || `REC-${Date.now().toString().slice(-6)}`,
@@ -149,20 +182,29 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const filteredPayments = useMemo(() => {
     return payments.filter((p) => {
       const pos = posPoints.find((point) => point.id === p.posPointId);
+      const cust = customers.find((c) => c.id === p.customerId);
+      const entityName = cust ? cust.name : (pos ? pos.name : '');
+
       const matchesSearch =
-        (pos && pos.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        entityName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (p.referenceNumber && p.referenceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (p.receivedBy && p.receivedBy.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (p.notes && p.notes.toLowerCase().includes(searchTerm.toLowerCase()));
 
       if (!matchesSearch) return false;
-      if (selectedPOSFilter !== 'all' && p.posPointId !== selectedPOSFilter) return false;
+
+      if (selectedPOSFilter !== 'all') {
+        const matchesPosFilter = p.posPointId === selectedPOSFilter;
+        const matchesCustFilter = p.customerId === selectedPOSFilter;
+        if (!matchesPosFilter && !matchesCustFilter) return false;
+      }
+
       if (methodFilter !== 'all' && p.paymentMethod !== methodFilter) return false;
       if (dateFilter && p.date !== dateFilter) return false;
 
       return true;
     }).sort((a, b) => (b.timestamp || b.date).localeCompare(a.timestamp || a.date));
-  }, [payments, posPoints, customers]);
+  }, [payments, posPoints, customers, searchTerm, selectedPOSFilter, methodFilter, dateFilter]);
 
   // Financial Stats
   const todayStr = new Date().toISOString().split('T')[0];
@@ -172,15 +214,18 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
   const totalPaymentsAmount = (payments || []).reduce((acc, p) => acc + (p?.amount || 0), 0);
   const totalDebtOverall = (posPoints || []).reduce((acc, p) => acc + (p?.currentDebt || 0), 0);
+  const totalCustomerDebt = (customers || []).reduce((acc, c) => acc + Math.max(0, c?.balance || 0), 0);
 
   // Export to CSV
   const handleExportCSV = () => {
     const dataToExport = filteredPayments.map((p) => {
       const pos = posPoints.find((point) => point.id === p.posPointId);
+      const cust = customers.find((c) => c.id === p.customerId);
       return {
         referenceNumber: p.referenceNumber || p.id,
         date: p.date,
-        posName: pos ? pos.name : 'غير محدد',
+        entityType: p.customerId ? 'عميل' : 'نقطة بيع',
+        entityName: cust ? cust.name : (pos ? pos.name : 'غير محدد'),
         amount: p.amount,
         currency: settings.currencySymbol,
         paymentMethod: p.paymentMethod,
@@ -192,7 +237,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     const headers = [
       { key: 'referenceNumber', label: 'رقم السند' },
       { key: 'date', label: 'التاريخ' },
-      { key: 'posName', label: 'نقطة البيع' },
+      { key: 'entityType', label: 'النوع' },
+      { key: 'entityName', label: 'الجهة المسددة' },
       { key: 'amount', label: 'المبلغ المسدد' },
       { key: 'currency', label: 'العملة' },
       { key: 'paymentMethod', label: 'طريقة السداد' },
@@ -316,9 +362,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             <AlertCircle className="w-4 h-4 text-amber-400" />
           </div>
           <div className="mt-2 text-lg sm:text-2xl font-black font-mono text-amber-400">
-            {(totalDebtOverall ?? 0).toLocaleString()} <span className="text-xs font-sans text-slate-400">{settings.currencySymbol}</span>
+            {(totalDebtOverall + totalCustomerDebt).toLocaleString()} <span className="text-xs font-sans text-slate-400">{settings.currencySymbol}</span>
           </div>
-          <span className="text-[10px] text-slate-500 block mt-1">المستحقات على نقاط البيع</span>
+          <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+            <span>نقاط: {(totalDebtOverall ?? 0).toLocaleString()}</span>
+            <span>عملاء: {(totalCustomerDebt ?? 0).toLocaleString()}</span>
+          </div>
         </div>
 
         <div className="p-4 bg-slate-900/90 rounded-2xl border border-slate-800 shadow-sm">
@@ -341,7 +390,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
             <input
               type="text"
-              placeholder="رقم السند، نقطة البيع، المحصل..."
+              placeholder="رقم السند، نقطة البيع، العميل، المحصل..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg pr-9 pl-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
@@ -350,18 +399,31 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1">نقطة البيع:</label>
+          <label className="block text-xs font-medium text-slate-400 mb-1">الجهة (نقطة البيع أو العميل):</label>
           <select
             value={selectedPOSFilter}
             onChange={(e) => setSelectedPOSFilter(e.target.value)}
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
           >
-            <option value="all">جميع نقاط البيع</option>
-            {posPoints.map((pos) => (
-              <option key={pos.id} value={pos.id}>
-                {pos.name}
-              </option>
-            ))}
+            <option value="all">جميع الجهات (نقاط البيع والعملاء)</option>
+            {posPoints.length > 0 && (
+              <optgroup label="نقاط البيع والموزعين">
+                {posPoints.map((pos) => (
+                  <option key={pos.id} value={pos.id}>
+                    {pos.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {customers.length > 0 && (
+              <optgroup label="العملاء">
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
 
@@ -399,7 +461,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               <tr>
                 <th className="py-3 px-4">رقم السند</th>
                 <th className="py-3 px-4">التاريخ</th>
-                <th className="py-3 px-4">نقطة البيع</th>
+                <th className="py-3 px-4">الجهة المسددة</th>
                 <th className="py-3 px-4">المبلغ المسدد</th>
                 <th className="py-3 px-4">طريقة السداد</th>
                 <th className="py-3 px-4">المحصل / المستلم</th>
@@ -420,6 +482,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               ) : (
                 filteredPayments.map((p) => {
                   const pos = posPoints.find((point) => point.id === p.posPointId);
+                  const cust = customers.find((c) => c.id === p.customerId);
                   return (
                     <tr key={p.id} className="hover:bg-slate-800/40 transition">
                       <td className="py-3 px-4">
@@ -442,12 +505,32 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                         </div>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="font-bold text-white flex items-center gap-1.5">
-                          <Store className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{pos ? pos.name : 'نقطة بيع غير معروفة'}</span>
-                        </div>
-                        {pos?.managerName && (
-                          <span className="text-[10px] text-slate-400 block">{pos.managerName}</span>
+                        {p.customerId ? (
+                          <div>
+                            <div className="font-bold text-white flex items-center gap-1.5">
+                              <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">
+                                <UserCheck className="w-3 h-3" />
+                                عميل
+                              </span>
+                              <span>{cust ? cust.name : 'عميل غير محدد'}</span>
+                            </div>
+                            {cust?.phone && (
+                              <span className="text-[10px] text-slate-400 block mt-0.5 font-mono">هاتف: {cust.phone}</span>
+                            )}
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="font-bold text-white flex items-center gap-1.5">
+                              <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">
+                                <Store className="w-3 h-3" />
+                                نقطة بيع
+                              </span>
+                              <span>{pos ? pos.name : 'نقطة بيع غير معروفة'}</span>
+                            </div>
+                            {pos?.managerName && (
+                              <span className="text-[10px] text-slate-400 block mt-0.5">المسؤول: {pos.managerName}</span>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="py-3 px-4 font-mono font-black text-emerald-400 text-sm whitespace-nowrap">
@@ -520,23 +603,74 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             </div>
 
             <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs">
-              {/* POS Selector */}
+              {/* Entity Type Toggle Tabs */}
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">
-                  نقطة البيع المسددة <span className="text-rose-400">*</span>:
+                  الجهة المسددة (نقطة بيع أو عميل) <span className="text-rose-400">*</span>:
                 </label>
-                <select
-                  value={formData.posPointId}
-                  onChange={(e) => setFormData({ ...formData, posPointId: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-emerald-500"
-                  required
-                >
-                  {posPoints.map((pos) => (
-                    <option key={pos.id} value={pos.id}>
-                      {pos.name} (المديونية الحالية: {(pos.currentDebt ?? 0).toLocaleString()} {settings.currencySymbol})
-                    </option>
-                  ))}
-                </select>
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, entityType: 'pos' })}
+                    className={`py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                      formData.entityType === 'pos'
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Store className="w-3.5 h-3.5" />
+                    <span>نقطة بيع / موزع</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, entityType: 'customer' })}
+                    className={`py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                      formData.entityType === 'customer'
+                        ? 'bg-amber-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>عميل</span>
+                  </button>
+                </div>
+
+                {formData.entityType === 'pos' ? (
+                  <select
+                    value={formData.posPointId}
+                    onChange={(e) => setFormData({ ...formData, posPointId: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-emerald-500 cursor-pointer"
+                    required
+                  >
+                    {posPoints.map((pos) => (
+                      <option key={pos.id} value={pos.id}>
+                        {pos.name} (المديونية الحالية: {(pos.currentDebt ?? 0).toLocaleString()} {settings.currencySymbol})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div>
+                    {customers.length === 0 ? (
+                      <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs">
+                        لا يوجد عملاء مسجلين حالياً.
+                      </div>
+                    ) : (
+                      <select
+                        value={formData.customerId}
+                        onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500 cursor-pointer"
+                        required
+                      >
+                        {customers.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {c.phone ? `(${c.phone})` : ''} - (الرصيد: {(c.balance ?? 0).toLocaleString()} {settings.currencySymbol})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Amount & Date */}
@@ -547,7 +681,6 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   </label>
                   <input
                     type="text" inputMode="decimal"                    
-                    
                     required
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: Number(e.target.value) })}
@@ -570,10 +703,14 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               </div>
 
               {/* Debt Calculation Preview */}
-              {selectedPOS && (
+              {(formData.entityType === 'pos' ? selectedPOS : selectedCustomer) && (
                 <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 space-y-1.5 text-xs">
                   <div className="flex justify-between items-center text-slate-400">
-                    <span>المديونية المسجلة قبل السداد:</span>
+                    <span>
+                      {formData.entityType === 'customer'
+                        ? 'رصيد العميل قبل السداد:'
+                        : 'المديونية المسجلة قبل السداد:'}
+                    </span>
                     <span className="font-mono font-bold text-amber-400">
                       {(currentDebt ?? 0).toLocaleString()} {settings.currencySymbol}
                     </span>
@@ -585,7 +722,11 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                     </span>
                   </div>
                   <div className="pt-1.5 border-t border-slate-800 flex justify-between items-center text-slate-200 font-bold">
-                    <span>المديونية المتبقية بعد السداد:</span>
+                    <span>
+                      {formData.entityType === 'customer'
+                        ? 'الرصيد المتبقي بعد السداد:'
+                        : 'المديونية المتبقية بعد السداد:'}
+                    </span>
                     <span className="font-mono text-cyan-300 text-sm">
                       {(remainingAfterPayment ?? 0).toLocaleString()} {settings.currencySymbol}
                     </span>

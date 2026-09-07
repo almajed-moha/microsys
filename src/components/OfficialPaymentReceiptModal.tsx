@@ -403,8 +403,26 @@ ${pos ? `📊 المديونية المتبقية حالياً: ${(pos.currentDe
                 </div>
               </div>
 
-              {/* Financial Balance Status for this POS Point */}
-              {pos && (
+              {/* Financial Balance Status for this POS Point or Customer */}
+              {customer ? (
+                <div className="p-3.5 bg-indigo-50/60 rounded-xl border border-indigo-200 text-[11px] grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-indigo-900 block font-semibold">إجمالي مدفوعات العميل:</span>
+                    <span className="font-mono font-black text-indigo-950 text-xs">
+                      {(customer.totalPayments ?? 0).toLocaleString()} {settings.currencySymbol}
+                    </span>
+                  </div>
+                  <div className="text-left">
+                    <span className="text-slate-700 block font-semibold">الرصيد المتبقي للعميل:</span>
+                    <span className={`font-mono font-black text-xs ${(customer.balance ?? 0) > 0 ? 'text-rose-900' : 'text-emerald-900'}`}>
+                      {Math.abs(customer.balance ?? 0).toLocaleString()} {settings.currencySymbol}
+                      <span className="text-[10px] font-normal mr-1">
+                        {(customer.balance ?? 0) > 0 ? '(مدين عليه)' : (customer.balance ?? 0) < 0 ? '(دائن له)' : '(خالص)'}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              ) : pos ? (
                 <div className="p-3.5 bg-blue-50/60 rounded-xl border border-blue-200 text-[11px] grid grid-cols-2 gap-2">
                   <div>
                     <span className="text-blue-900 block font-semibold">إجمالي سداد النقطة حتى الآن:</span>
@@ -419,7 +437,7 @@ ${pos ? `📊 المديونية المتبقية حالياً: ${(pos.currentDe
                     </span>
                   </div>
                 </div>
-              )}
+              ) : null}
 
               {/* Signatures & Seal */}
               <div className="pt-6 border-t-2 border-slate-300 grid grid-cols-2 gap-4 text-center">
@@ -479,16 +497,22 @@ ${pos ? `📊 المديونية المتبقية حالياً: ${(pos.currentDe
               {/* Payer Information */}
               <div className="text-[11px] space-y-1 pb-2 border-b border-dashed border-black">
                 <div className="flex justify-between">
-                  <span className="font-semibold">المسدد / النقطة:</span>
-                  <span className="font-black">{customer?.name || pos?.name || 'نقطة البيع'}</span>
+                  <span className="font-semibold">المسدد / الجهة:</span>
+                  <span className="font-black">{customer?.name || pos?.name || 'مباشر'}</span>
                 </div>
-                {pos?.managerName && (
+                {customer?.phone && (
+                  <div className="flex justify-between text-[10px]">
+                    <span>هاتف العميل:</span>
+                    <span>{customer.phone}</span>
+                  </div>
+                )}
+                {pos?.managerName && !customer && (
                   <div className="flex justify-between text-[10px]">
                     <span>المسؤول:</span>
                     <span>{pos.managerName}</span>
                   </div>
                 )}
-                {pos?.phone && (
+                {pos?.phone && !customer && (
                   <div className="flex justify-between text-[10px]">
                     <span>الهاتف:</span>
                     <span>{pos.phone}</span>
@@ -520,12 +544,22 @@ ${pos ? `📊 المديونية المتبقية حالياً: ${(pos.currentDe
                     <span className="font-bold">البيان:</span> {payment.notes}
                   </div>
                 )}
-                {pos && (
+                {customer ? (
+                  <div className="flex justify-between text-[11px] font-bold text-slate-900 pt-1">
+                    <span>رصيد العميل المتبقي:</span>
+                    <span>
+                      {Math.abs(customer.balance ?? 0).toLocaleString()} {settings.currencySymbol}
+                      <span className="text-[9px] font-normal mr-1">
+                        {(customer.balance ?? 0) > 0 ? '(عليه)' : (customer.balance ?? 0) < 0 ? '(له)' : '(خالص)'}
+                      </span>
+                    </span>
+                  </div>
+                ) : pos ? (
                   <div className="flex justify-between text-[11px] font-bold text-slate-900 pt-1">
                     <span>المديونية المتبقية:</span>
                     <span>{(pos.currentDebt ?? 0).toLocaleString()} {settings.currencySymbol}</span>
                   </div>
-                )}
+                ) : null}
               </div>
 
               {/* Barcode & Signature */}

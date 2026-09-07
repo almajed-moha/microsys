@@ -8,7 +8,9 @@ import {
   User,
   Calendar,
   Share2,
-  Printer
+  Printer,
+  Store,
+  AlertCircle
 } from 'lucide-react';
 import { POSPoint, PaymentRecord, NetworkSettings, Customer } from '../types';
 
@@ -16,6 +18,7 @@ interface PaymentModalProps {
   posPoints: POSPoint[];
   customers?: Customer[];
   initialPOSId?: string;
+  initialCustomerId?: string;
   settings: NetworkSettings;
   onAddPayment: (payment: Omit<PaymentRecord, 'id' | 'timestamp'>) => void;
   onClose: () => void;
@@ -25,14 +28,32 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   posPoints,
   customers = [],
   initialPOSId,
+  initialCustomerId,
   settings,
   onAddPayment,
   onClose,
 }) => {
-  const initialEntity = initialPOSId && customers.find(c => c.id === initialPOSId) ? 'customer' : 'pos';
-  const [entityType, setEntityType] = useState<'pos' | 'customer'>(initialEntity);
-  const [selectedPOSId, setSelectedPOSId] = useState(initialEntity === 'pos' ? (initialPOSId || (posPoints[0]?.id || '')) : (posPoints[0]?.id || ''));
-  const [selectedCustomerId, setSelectedCustomerId] = useState(initialEntity === 'customer' ? (initialPOSId || (customers[0]?.id || '')) : (customers[0]?.id || ''));
+  const isInitiallyCustomer = Boolean(
+    initialCustomerId ||
+    (initialPOSId && customers.some((c) => c.id === initialPOSId))
+  );
+
+  const [entityType, setEntityType] = useState<'pos' | 'customer'>(
+    isInitiallyCustomer ? 'customer' : 'pos'
+  );
+
+  const defaultPOSId =
+    !isInitiallyCustomer && initialPOSId
+      ? initialPOSId
+      : (posPoints[0]?.id || '');
+
+  const defaultCustomerId =
+    initialCustomerId ||
+    (initialPOSId && customers.find((c) => c.id === initialPOSId)?.id) ||
+    (customers[0]?.id || '');
+
+  const [selectedPOSId, setSelectedPOSId] = useState<string>(defaultPOSId);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>(defaultCustomerId);
   const [amount, setAmount] = useState<number>(10000);
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank_transfer' | 'e_wallet'>('cash');
@@ -41,23 +62,44 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [notes, setNotes] = useState<string>('');
 
   const selectedPOS = posPoints.find((p) => p.id === selectedPOSId);
-  const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
-  const currentDebt = entityType === 'pos' ? (selectedPOS?.currentDebt || 0) : (selectedCustomer?.balance || 0);
+  const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
+
+  const currentDebt =
+    entityType === 'pos'
+      ? (selectedPOS?.currentDebt || 0)
+      : (selectedCustomer?.balance || 0);
+
   const remainingAfterPayment = Math.max(0, currentDebt - (Number(amount) || 0));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPOSId || amount <= 0) return;
+
+    if (entityType === 'pos') {
+      if (!selectedPOSId) {
+        alert('يرجى اختيار نقطة البيع المسددة.');
+        return;
+      }
+    } else {
+      if (!selectedCustomerId) {
+        alert('يرجى اختيار العميل المسدد.');
+        return;
+      }
+    }
+
+    if (!amount || amount <= 0) {
+      alert('يرجى إدخال مبلغ صحيح لسند القبض.');
+      return;
+    }
 
     onAddPayment({
       date,
       posPointId: entityType === 'pos' ? selectedPOSId : '',
-      customerId: entityType === 'customer' ? selectedCustomerId : '',
+      customerId: entityType === 'customer' ? selectedCustomerId : undefined,
       amount: Number(amount),
       paymentMethod,
-      receivedBy,
-      referenceNumber,
-      notes,
+      receivedBy: receivedBy.trim() || 'مدير الشبكة',
+      referenceNumber: referenceNumber.trim() || `REC-${Date.now().toString().slice(-6)}`,
+      notes: notes.trim() || undefined,
     });
 
     onClose();
@@ -71,28 +113,85 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             <DollarSign className="w-5 h-5 text-emerald-400" />
             <span>سند قبض وسداد دفعة نقدية</span>
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white font-bold">
+          <button onClick={onClose} className="text-slate-400 hover:text-white font-bold cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs">
-          {/* POS Selector */}
+          {/* Entity Type Tabs (POS vs Customer) */}
           <div>
             <label className="block text-slate-300 font-semibold mb-1">
-              نقطة البيع المسددة <span className="text-rose-400">*</span>:
+              الجهة المسددة (نقطة بيع أو عميل) <span className="text-rose-400">*</span>:
             </label>
-            <select
-              value={selectedPOSId}
-              onChange={(e) => setSelectedPOSId(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-indigo-500"
-            >
-              {posPoints.map((pos) => (
-                <option key={pos.id} value={pos.id}>
-                  {pos.name} - (المديونية الحالية: {(pos.currentDebt ?? 0).toLocaleString()} {settings.currencySymbol})
-                </option>
-              ))}
-            </select>
+            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800 mb-2.5">
+              <button
+                type="button"
+                onClick={() => setEntityType('pos')}
+                className={`py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  entityType === 'pos'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Store className="w-3.5 h-3.5" />
+                <span>نقطة بيع / موزع</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setEntityType('customer')}
+                className={`py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  entityType === 'customer'
+                    ? 'bg-amber-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>عميل</span>
+              </button>
+            </div>
+
+            {/* Dropdown for POS Point */}
+            {entityType === 'pos' && (
+              <div>
+                <select
+                  value={selectedPOSId}
+                  onChange={(e) => setSelectedPOSId(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+                >
+                  {posPoints.map((pos) => (
+                    <option key={pos.id} value={pos.id}>
+                      {pos.name} - (المديونية الحالية: {(pos.currentDebt ?? 0).toLocaleString()} {settings.currencySymbol})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Dropdown for Customer */}
+            {entityType === 'customer' && (
+              <div>
+                {customers.length === 0 ? (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>لا يوجد عملاء مضافين حالياً. يمكنك إضافة عميل من قسم إدارة العملاء.</span>
+                  </div>
+                ) : (
+                  <select
+                    value={selectedCustomerId}
+                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500 cursor-pointer"
+                  >
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.phone ? `(${c.phone})` : ''} - (الرصيد/المديونية: {(c.balance ?? 0).toLocaleString()} {settings.currencySymbol})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Amount & Date */}
@@ -156,19 +255,27 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           {(entityType === 'pos' ? selectedPOS : selectedCustomer) && (
             <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1.5 text-xs">
               <div className="flex justify-between items-center text-slate-400">
-                <span>المديونية الحالية قبل السداد:</span>
+                <span>
+                  {entityType === 'customer'
+                    ? 'رصيد العميل (المديونية) قبل السداد:'
+                    : 'المديونية الحالية لنقطة البيع قبل السداد:'}
+                </span>
                 <span className="font-mono font-bold text-amber-400">
                   {(currentDebt ?? 0).toLocaleString()} {settings.currencySymbol}
                 </span>
               </div>
               <div className="flex justify-between items-center text-emerald-400 font-bold">
-                <span>المبلغ المدفوع:</span>
+                <span>المبلغ المقبوض بهذا السند:</span>
                 <span className="font-mono">
                   - {(amount ?? 0).toLocaleString()} {settings.currencySymbol}
                 </span>
               </div>
               <div className="pt-1.5 border-t border-slate-800 flex justify-between items-center text-slate-200 font-bold">
-                <span>الرصيد المتبقي بعد السداد:</span>
+                <span>
+                  {entityType === 'customer'
+                    ? 'رصيد العميل المتبقي بعد السداد:'
+                    : 'المديونية المتبقية بعد السداد:'}
+                </span>
                 <span className="font-mono text-cyan-300 text-sm">
                   {(remainingAfterPayment ?? 0).toLocaleString()} {settings.currencySymbol}
                 </span>

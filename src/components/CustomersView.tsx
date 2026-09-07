@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Plus, Edit2, Trash2, User, Phone, MapPin, Activity, FileText, Download } from 'lucide-react';
-import { Customer, InvoiceRecord, PaymentRecord } from '../types';
+import { Search, Plus, Edit2, Trash2, User, Phone, MapPin, Activity, FileText, Download, DollarSign, Receipt } from 'lucide-react';
+import { Customer, InvoiceRecord, PaymentRecord, NetworkSettings } from '../types';
 import { CustomerStatementModal } from './CustomerStatementModal';
 
 interface CustomersViewProps {
@@ -10,6 +10,9 @@ interface CustomersViewProps {
   onDeleteCustomer: (id: string) => void;
   invoices: InvoiceRecord[];
   payments: PaymentRecord[];
+  settings?: NetworkSettings;
+  onOpenPaymentModal?: (customerId: string) => void;
+  onOpenInvoiceModal?: (customerId: string) => void;
 }
 
 export const CustomersView: React.FC<CustomersViewProps> = ({
@@ -18,7 +21,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   onUpdateCustomer,
   onDeleteCustomer,
   invoices,
-  payments
+  payments,
+  settings,
+  onOpenPaymentModal,
+  onOpenInvoiceModal,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -33,19 +39,28 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     status: 'active' as 'active' | 'inactive'
   });
 
-  // Calculate balances
+  const currency = settings?.currencySymbol || 'ريال';
+
+  // Calculate balances with return invoices accounted for
   const customersWithStats = useMemo(() => {
     return customers.map(c => {
       const customerInvoices = invoices.filter(inv => inv.customerId === c.id);
       const customerPayments = payments.filter(p => p.customerId === c.id);
       
-      const totalPurchases = customerInvoices.reduce((sum, inv) => sum + (inv.totalWholesaleAmount || 0), 0);
-      const totalPaymentsAmt = customerPayments.reduce((sum, p) => sum + p.amount, 0);
-      const balance = totalPurchases - totalPaymentsAmt;
+      let totalPurchases = 0;
+      let totalReturns = 0;
+      customerInvoices.forEach(inv => {
+        if (inv.type === 'sale') totalPurchases += (inv.totalWholesaleAmount || 0);
+        if (inv.type === 'return') totalReturns += (inv.totalWholesaleAmount || 0);
+      });
+
+      const totalPaymentsAmt = customerPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      const balance = totalPurchases - totalReturns - totalPaymentsAmt;
       
       return {
         ...c,
         totalPurchases,
+        totalReturns,
         totalPayments: totalPaymentsAmt,
         balance
       };
@@ -175,17 +190,49 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               )}
             </div>
 
-            <div className="pt-4 border-t border-slate-100 grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-slate-500 mb-1">الرصيد المتبقي</p>
-                <p className={`font-bold ${customer.balance && customer.balance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                  {customer.balance?.toLocaleString()} ريال
-                </p>
+            <div className="pt-4 border-t border-slate-100">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs text-slate-500">الرصيد المتبقي:</span>
+                <span className={`text-base font-bold ${customer.balance && customer.balance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                  {customer.balance ? Math.abs(customer.balance).toLocaleString() : 0} {currency}
+                  <span className="text-xs font-normal mr-1">
+                    {customer.balance && customer.balance > 0 ? '(مدين)' : customer.balance && customer.balance < 0 ? '(دائن)' : '(خالص)'}
+                  </span>
+                </span>
               </div>
-              <div className="text-left">
-                <button onClick={() => setStatementCustomer(customer)} className="text-sm text-indigo-600 hover:text-indigo-700 flex items-center justify-end gap-1 w-full font-medium">
-                  <FileText size={16} />
-                  كشف حساب
+
+              <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-slate-100/80">
+                {onOpenPaymentModal && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenPaymentModal(customer.id)}
+                    className="py-1.5 px-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition"
+                    title="تحصيل وسند قبض مالي للعميل"
+                  >
+                    <DollarSign size={13} />
+                    <span>سند قبض</span>
+                  </button>
+                )}
+                {onOpenInvoiceModal && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenInvoiceModal(customer.id)}
+                    className="py-1.5 px-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition"
+                    title="إصدار فاتورة مبيعات جديدة للعميل"
+                  >
+                    <Receipt size={13} />
+                    <span>فاتورة كروت</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setStatementCustomer(customer)}
+                  className={`py-1.5 px-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition ${
+                    !onOpenPaymentModal && !onOpenInvoiceModal ? 'col-span-3' : ''
+                  }`}
+                >
+                  <FileText size={13} />
+                  <span>كشف حساب</span>
                 </button>
               </div>
             </div>
@@ -293,6 +340,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           customer={statementCustomer}
           invoices={invoices}
           payments={payments}
+          settings={settings}
           onClose={() => setStatementCustomer(null)}
         />
       )}

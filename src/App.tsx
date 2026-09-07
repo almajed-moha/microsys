@@ -430,6 +430,7 @@ export default function App() {
   const [statementPaperMode, setStatementPaperMode] = useState<'a4' | 'pos-80mm'>('a4');
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentTargetPOSId, setPaymentTargetPOSId] = useState<string | undefined>(undefined);
+  const [paymentTargetCustomerId, setPaymentTargetCustomerId] = useState<string | undefined>(undefined);
 
   const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
   const [dispatchTargetPOSId, setDispatchTargetPOSId] = useState<string | undefined>(undefined);
@@ -2320,8 +2321,9 @@ export default function App() {
   };
 
   // Quick Triggers
-  const handleOpenPaymentModal = (posId?: string) => {
+  const handleOpenPaymentModal = (posId?: string, customerId?: string) => {
     setPaymentTargetPOSId(posId);
+    setPaymentTargetCustomerId(customerId);
     setIsPaymentModalOpen(true);
   };
 
@@ -2668,18 +2670,27 @@ export default function App() {
               
         {activeView === 'customers' && (
           <CustomersView
-            customers={customers}
-            invoices={invoices}
-            payments={payments}
+            customers={scopedCustomers}
+            invoices={scopedInvoices}
+            payments={scopedPayments}
+            settings={settings}
+            onOpenPaymentModal={(customerId) => handleOpenPaymentModal(undefined, customerId)}
+            onOpenInvoiceModal={(_customerId) => setActiveView('invoices')}
             onAddCustomer={(customer) => {
-              const updated = [...customers, customer];
-              setCustomers(updated);
-              saveData(STORAGE_KEYS.CUSTOMERS, updated);
+              const customerWithNetwork = {
+                ...customer,
+                networkId: customer.networkId || (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : currentTenantId) || 'net-microsys'
+              };
+              const updated = [...customers, customerWithNetwork];
+              const withBalances = refreshCustomerBalances(updated, invoices, payments);
+              setCustomers(withBalances);
+              saveData(STORAGE_KEYS.CUSTOMERS, withBalances);
             }}
             onUpdateCustomer={(customer) => {
               const updated = customers.map(c => c.id === customer.id ? customer : c);
-              setCustomers(updated);
-              saveData(STORAGE_KEYS.CUSTOMERS, updated);
+              const withBalances = refreshCustomerBalances(updated, invoices, payments);
+              setCustomers(withBalances);
+              saveData(STORAGE_KEYS.CUSTOMERS, withBalances);
             }}
             onDeleteCustomer={(id) => {
               const updated = customers.filter(c => c.id !== id);
@@ -2800,13 +2811,15 @@ export default function App() {
       {isPaymentModalOpen && (
         <PaymentModal
           posPoints={scopedPOSPoints}
+          customers={scopedCustomers}
           initialPOSId={paymentTargetPOSId}
+          initialCustomerId={paymentTargetCustomerId}
           settings={settings}
           onAddPayment={handleAddPayment}
-          customers={scopedCustomers}
           onClose={() => {
             setIsPaymentModalOpen(false);
             setPaymentTargetPOSId(undefined);
+            setPaymentTargetCustomerId(undefined);
           }}
         />
       )}

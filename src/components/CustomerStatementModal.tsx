@@ -1,12 +1,13 @@
 import React, { useMemo } from 'react';
 import { X, Printer, FileText, ArrowUpRight, ArrowDownLeft, Phone, MapPin } from 'lucide-react';
-import { Customer, InvoiceRecord, PaymentRecord } from '../types';
+import { Customer, InvoiceRecord, PaymentRecord, NetworkSettings } from '../types';
 import { printElementDocument } from '../utils/pdfExport';
 
 interface CustomerStatementModalProps {
   customer: Customer;
   invoices: InvoiceRecord[];
   payments: PaymentRecord[];
+  settings?: NetworkSettings;
   onClose: () => void;
 }
 
@@ -27,8 +28,11 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   customer,
   invoices,
   payments,
+  settings,
   onClose
 }) => {
+  const currency = settings?.currencySymbol || 'ريال';
+  const networkName = settings?.networkName || 'نظام إدارة الشبكات والمبيعات';
   const entries = useMemo(() => {
     const custInvoices = invoices.filter(inv => inv.customerId === customer.id);
     const custPayments = payments.filter(p => p.customerId === customer.id);
@@ -143,12 +147,12 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
               </div>
               <div>
                 <p className="text-sm text-slate-500 mb-1">إجمالي المسحوبات</p>
-                <p className="font-bold text-slate-800">{totalDebit.toLocaleString()} ريال</p>
+                <p className="font-bold text-slate-800">{totalDebit.toLocaleString()} {currency}</p>
               </div>
               <div>
                 <p className="text-sm text-slate-500 mb-1">الرصيد المتبقي</p>
                 <p className={`text-xl font-black ${finalBalance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                  {Math.abs(finalBalance).toLocaleString()} ريال
+                  {Math.abs(finalBalance).toLocaleString()} {currency}
                   <span className="text-sm font-normal ml-1">
                     {finalBalance > 0 ? '(عليه)' : finalBalance < 0 ? '(له)' : ''}
                   </span>
@@ -225,7 +229,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
           </div>
           
           <div className="mt-8 text-center text-xs text-slate-400 hidden print:block">
-            طبع بواسطة النظام الموحد لإدارة المبيعات والشبكات - {new Date().toLocaleString('ar-SA')}
+            طبع بواسطة {networkName} - {new Date().toLocaleString('ar-SA')}
           </div>
         </div>
       </div>
