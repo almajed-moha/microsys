@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Plus, Edit2, Trash2, User, Phone, MapPin, Activity, FileText, Download } from 'lucide-react';
 import { Customer, InvoiceRecord, PaymentRecord } from '../types';
+import { CustomerStatementModal } from './CustomerStatementModal';
 
 interface CustomersViewProps {
   customers: Customer[];
@@ -22,6 +23,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [statementCustomer, setStatementCustomer] = useState<Customer | null>(null);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -151,7 +153,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   <Edit2 size={18} />
                 </button>
                 <button onClick={() => {
-                  if (confirm('هل أنت متأكد من حذف العميل؟')) onDeleteCustomer(customer.id);
+                  if (customer.balance && customer.balance !== 0) { alert('لا يمكن حذف العميل لأن عليه مديونية أو له رصيد متبقي. الرجاء تصفية حسابه أولاً.'); return; } if (confirm('هل أنت متأكد من حذف العميل؟')) onDeleteCustomer(customer.id);
                 }} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
                   <Trash2 size={18} />
                 </button>
@@ -181,7 +183,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 </p>
               </div>
               <div className="text-left">
-                <button className="text-sm text-indigo-600 hover:text-indigo-700 flex items-center justify-end gap-1 w-full font-medium">
+                <button onClick={() => setStatementCustomer(customer)} className="text-sm text-indigo-600 hover:text-indigo-700 flex items-center justify-end gap-1 w-full font-medium">
                   <FileText size={16} />
                   كشف حساب
                 </button>
@@ -213,43 +215,43 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">اسم العميل / الشركة <span className="text-rose-500">*</span></label>
+                <label className="block text-sm font-medium text-slate-800 font-bold mb-1">اسم العميل / الشركة <span className="text-rose-500">*</span></label>
                 <input
                   type="text"
                   required
                   value={formData.name}
                   onChange={e => setFormData({...formData, name: e.target.value})}
-                  className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 bg-white"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">رقم الهاتف</label>
+                <label className="block text-sm font-medium text-slate-800 font-bold mb-1">رقم الهاتف</label>
                 <input
                   type="text"
                   value={formData.phone}
                   onChange={e => setFormData({...formData, phone: e.target.value})}
-                  className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 bg-white"
                   dir="ltr"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">العنوان</label>
+                <label className="block text-sm font-medium text-slate-800 font-bold mb-1">العنوان</label>
                 <input
                   type="text"
                   value={formData.address}
                   onChange={e => setFormData({...formData, address: e.target.value})}
-                  className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 bg-white"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">الحالة</label>
+                <label className="block text-sm font-medium text-slate-800 font-bold mb-1">الحالة</label>
                 <select
                   value={formData.status}
                   onChange={e => setFormData({...formData, status: e.target.value as 'active' | 'inactive'})}
-                  className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                  className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 bg-white"
                 >
                   <option value="active">نشط</option>
                   <option value="inactive">غير نشط (موقوف)</option>
@@ -257,11 +259,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">ملاحظات</label>
+                <label className="block text-sm font-medium text-slate-800 font-bold mb-1">ملاحظات</label>
                 <textarea
                   value={formData.notes}
                   onChange={e => setFormData({...formData, notes: e.target.value})}
-                  className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none min-h-[80px]"
+                  className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none min-h-[80px] text-slate-900 bg-white"
                 />
               </div>
 
@@ -283,6 +285,16 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* Statement Modal */}
+      {statementCustomer && (
+        <CustomerStatementModal
+          customer={statementCustomer}
+          invoices={invoices}
+          payments={payments}
+          onClose={() => setStatementCustomer(null)}
+        />
       )}
     </div>
   );

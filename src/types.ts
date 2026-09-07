@@ -115,7 +115,7 @@ export interface CardBatchDispatch extends EntityAuditMetadata {
   networkId?: string;
   date: string;
   time?: string;
-  posPointId: string;
+  posPointId?: string;
   categoryId: string;
   quantity: number;
   unitWholesalePrice: number;
@@ -153,8 +153,9 @@ export interface InvoiceRecord extends EntityAuditMetadata {
   date: string;
   time?: string;
   timestamp: string; // ISO string
-  posPointId: string;
+  posPointId?: string;
   posPointName?: string;
+  customerId?: string; // ID of the customer (optional for POS)
   items: InvoiceItem[];
   totalQuantity: number;
   totalWholesaleAmount: number; // المبلغ الإجمالي المحتسب على نقطة البيع
@@ -233,6 +234,7 @@ export interface PaymentRecord extends EntityAuditMetadata {
   time?: string;
   timestamp: string;
   posPointId: string;
+  customerId?: string;
   amount: number;
   paymentMethod: 'cash' | 'bank_transfer' | 'cheque' | 'other';
   referenceNumber?: string;
@@ -719,7 +721,8 @@ export interface MikrotikPermissions {
   view: boolean;                  // عرض مركز مراقبة المايكروتك
   disconnectUsers: boolean;       // فصل وطرد المشتركين النشطين
   editMikrotikConfig: boolean;    // تعديل إعدادات وبيانات الاتصال بالراوتر
-  viewLiveTraffic: boolean;       // مراقبة الباندويث المباشر والمنافذ
+  viewLiveTraffic: boolean;
+  viewSessions: boolean;          // عرض إحصائيات المتصلين       // مراقبة الباندويث المباشر والمنافذ
   rebootRouter: boolean;          // إرسال أوامر إعادة تشغيل الراوتر
 }
 

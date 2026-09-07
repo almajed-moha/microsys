@@ -116,7 +116,7 @@ export function generateSystemBackup(params: {
       payments: targetPayments.length,
       orders: targetOrders.length,
       templates: templates?.length || 0,
-      logs: targetLogs.length,
+      activityLogs: targetLogs.length,
     },
     data: {
       tenants: targetTenants,

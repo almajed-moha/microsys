@@ -22,7 +22,7 @@ import {
   ArrowDownLeft,
   Eye
 } from 'lucide-react';
-import { PaymentRecord, POSPoint, NetworkSettings } from '../types';
+import { PaymentRecord, POSPoint, NetworkSettings, Customer } from '../types';
 import { exportToCSV, downloadFile } from '../utils/storage';
 import { exportElementToPdf } from '../utils/pdfExport';
 import { RecordAuditInfo } from './RecordAuditInfo';
@@ -30,6 +30,7 @@ import { RecordAuditInfo } from './RecordAuditInfo';
 interface PaymentsViewProps {
   payments: PaymentRecord[];
   posPoints: POSPoint[];
+  customers?: Customer[];
   settings: NetworkSettings;
   onAddPayment: (payment: Omit<PaymentRecord, 'id' | 'timestamp'>) => void;
   onUpdatePayment: (payment: PaymentRecord) => void;
@@ -41,6 +42,7 @@ interface PaymentsViewProps {
 export const PaymentsView: React.FC<PaymentsViewProps> = ({
   payments,
   posPoints,
+  customers = [],
   settings,
   onAddPayment,
   onUpdatePayment,
@@ -160,7 +162,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
       return true;
     }).sort((a, b) => (b.timestamp || b.date).localeCompare(a.timestamp || a.date));
-  }, [payments, posPoints, searchTerm, selectedPOSFilter, methodFilter, dateFilter]);
+  }, [payments, posPoints, customers]);
 
   // Financial Stats
   const todayStr = new Date().toISOString().split('T')[0];

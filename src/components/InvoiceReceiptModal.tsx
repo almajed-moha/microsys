@@ -20,7 +20,7 @@ import {
   Loader2,
   Receipt
 } from 'lucide-react';
-import { InvoiceRecord, CardCategory, POSPoint, NetworkSettings } from '../types';
+import { InvoiceRecord, CardCategory, POSPoint, NetworkSettings, Customer } from '../types';
 import { Barcode } from './Barcode';
 import { generateMikroTikScript, downloadFile } from '../utils/storage';
 import { RecordAuditInfo } from './RecordAuditInfo';
@@ -35,6 +35,7 @@ interface InvoiceReceiptModalProps {
   onClose: () => void;
   invoice: InvoiceRecord | null;
   posPoint?: POSPoint;
+  customer?: Customer;
   categories: CardCategory[];
   settings: NetworkSettings;
 }
@@ -104,6 +105,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
   onClose,
   invoice,
   posPoint,
+  customer,
   categories,
   settings,
 }) => {
@@ -175,7 +177,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
       '# ========================================================',
       `# MikroTik RouterOS Script for Invoice: ${invoice.invoiceNumber}`,
       `# Type: ${isReturn ? 'Return Invoice' : 'Sales / Delivery Batch'}`,
-      `# POS Point: ${invoice.posPointName || posPoint?.name || 'Unknown'}`,
+      `# POS Point: ${invoice.posPointName || customer?.name || (customer?.name || posPoint?.name) || 'Unknown'}`,
       `# Date: ${invoice.date} ${invoice.time ? `- ${invoice.time}` : ''}`,
       `# Total Quantity: ${invoice.totalQuantity} Cards`,
       '# ========================================================',
@@ -220,8 +222,8 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
       `🧾 *${isReturn ? 'سند مرتجع كروت معتمد' : 'فاتورة تسليم كروت ومبيعات'}*\n` +
       `رقم الفاتورة: *${invoice.invoiceNumber}*\n` +
       `التاريخ: ${invoice.date} ${invoice.time ? `- ${invoice.time}` : ''}\n` +
-      `نقطة البيع: *${invoice.posPointName || posPoint?.name}*\n` +
-      `المسؤول المستلم: ${invoice.receivedBy || posPoint?.managerName || '—'}\n` +
+      `نقطة البيع: *${invoice.posPointName || customer?.name || (customer?.name || posPoint?.name)}*\n` +
+      `المسؤول المستلم: ${invoice.receivedBy || (customer ? customer.name : posPoint?.managerName) || '—'}\n` +
       `طريقة السداد: ${isReturn ? 'خصم مديونية' : invoice.paymentType === 'cash' ? 'نقداً فوري' : 'آجل على الحساب'}\n` +
       `--------------------------------\n` +
       `📦 *تفاصيل الأصناف والكميات:*\n${itemsText}\n` +
@@ -230,7 +232,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
       `💰 المبلغ الإجمالي: *${(invoice.totalWholesaleAmount ?? 0).toLocaleString()} ${currency}*\n` +
       `📝 ${tafqeetArabic(invoice.totalWholesaleAmount || 0, settings?.currency || 'ريال يمني')}\n` +
       (invoice.notes ? `📌 ملاحظات: ${invoice.notes}\n` : '') +
-      (posPoint ? `📊 المديونية الحالية للنقطة: ${(posPoint.currentDebt ?? 0).toLocaleString()} ${currency}\n` : '') +
+      ((posPoint || customer) ? `📊 المديونية الحالية ${customer ? "للعميل" : "للنقطة"}: ${((customer?.balance || posPoint?.currentDebt) ?? 0).toLocaleString()} ${currency}\n` : '') +
       `--------------------------------\n` +
       `شكراً لتعاملكم معنا 🌹\nهاتف الدعم: ${settings.supportPhone}`;
   };
@@ -243,7 +245,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
       const res = await sharePdfToWhatsApp(containerId, {
         filename: fileName,
         title: `فاتورة ${invoice.invoiceNumber}`,
-        phone: posPoint?.phone,
+        phone: (customer?.phone || posPoint?.phone),
         messageText: getWhatsAppMessage(),
         paperFormat: paperFormat,
         scale: 2.8,
@@ -256,7 +258,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
       }
     } catch (err) {
       console.error('WhatsApp Share Error:', err);
-      const waUrl = `https://wa.me/${posPoint?.phone ? (posPoint.phone.startsWith('967') ? posPoint.phone : `967${posPoint.phone}`) : ''}?text=${encodeURIComponent(getWhatsAppMessage())}`;
+      const waUrl = `https://wa.me/${(customer?.phone || posPoint?.phone) ? (posPoint.phone.startsWith('967') ? posPoint.phone : `967${posPoint.phone}`) : ''}?text=${encodeURIComponent(getWhatsAppMessage())}`;
       window.open(waUrl, '_blank');
     } finally {
       setIsSharingWhatsApp(false);
@@ -288,7 +290,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
               </div>
               <div className="flex items-center gap-2 mt-1">
                 <p className="text-xs text-slate-400">
-                  {invoice.posPointName || posPoint?.name} • {invoice.date} {invoice.time ? ` - ${invoice.time}` : ''}
+                  {invoice.posPointName || customer?.name || (customer?.name || posPoint?.name)} • {invoice.date} {invoice.time ? ` - ${invoice.time}` : ''}
                 </p>
                 <RecordAuditInfo
                   audit={invoice}
@@ -427,11 +429,11 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
                 <div>
                   <span className="text-slate-500 block mb-0.5 font-medium">العميل / نقطة البيع:</span>
-                  <span className="font-bold text-slate-900 text-sm">{invoice.posPointName || posPoint?.name}</span>
+                  <span className="font-bold text-slate-900 text-sm">{invoice.posPointName || customer?.name || (customer?.name || posPoint?.name)}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block mb-0.5 font-medium">المسؤول / الهاتف:</span>
-                  <span className="font-bold text-slate-900">{posPoint?.managerName || invoice.receivedBy || '—'} ({posPoint?.phone || '—'})</span>
+                  <span className="font-bold text-slate-900">{(customer ? customer.name : posPoint?.managerName) || invoice.receivedBy || '—'} ({(customer?.phone || posPoint?.phone) || '—'})</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block mb-0.5 font-medium">طريقة السداد:</span>
@@ -447,7 +449,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
                 </div>
                 <div>
                   <span className="text-slate-500 block mb-0.5 font-medium">العنوان / الموقع:</span>
-                  <span className="font-medium text-slate-800 truncate block">{posPoint?.address || 'المقر الرئيسي'}</span>
+                  <span className="font-medium text-slate-800 truncate block">{(customer?.address || posPoint?.address) || 'المقر الرئيسي'}</span>
                 </div>
               </div>
 
@@ -537,7 +539,7 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
 
                 <div>
                   <span className="text-slate-500 block mb-1">المستلم / صاحب نقطة البيع</span>
-                  <span className="font-bold text-slate-800 block mb-8">{invoice.receivedBy || posPoint?.managerName || 'المستلم'}</span>
+                  <span className="font-bold text-slate-800 block mb-8">{invoice.receivedBy || (customer ? customer.name : posPoint?.managerName) || 'المستلم'}</span>
                   <div className="border-b border-dashed border-slate-400 w-36 mx-auto"></div>
                   <span className="text-[10px] text-slate-400 mt-1 block">توقيع الاستلام</span>
                 </div>
@@ -587,11 +589,11 @@ export const InvoiceReceiptModal: React.FC<InvoiceReceiptModalProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span>نقطة البيع:</span>
-                  <span className="font-bold truncate max-w-[150px]">{invoice.posPointName || posPoint?.name}</span>
+                  <span className="font-bold truncate max-w-[150px]">{invoice.posPointName || customer?.name || (customer?.name || posPoint?.name)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>المسؤول:</span>
-                  <span>{posPoint?.managerName || invoice.receivedBy || '—'}</span>
+                  <span>{(customer ? customer.name : posPoint?.managerName) || invoice.receivedBy || '—'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>طريقة السداد:</span>

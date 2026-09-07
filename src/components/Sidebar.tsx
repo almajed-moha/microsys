@@ -49,6 +49,7 @@ export type NavView =
   | 'system_tenants'
   | 'dashboard'
   | 'mikrotik'
+  | 'mikrotik_sessions'
   | 'invoices'
   | 'expenses'
   | 'pos'
@@ -164,6 +165,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const pendingOrdersCount = counts?.pendingOrders ?? orders?.filter((o) => o.status === 'pending').length ?? 0;
 
   const allNavItems = [
+
+    
+
     {
       id: 'system_tenants' as NavView,
       permissionModule: 'systemTenants' as const,
@@ -226,6 +230,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: `${paymentsCount}`,
       color: 'text-emerald-400',
       activeBg: 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30',
+    },
+    {
+      id: 'customers' as NavView,
+      permissionModule: 'pos' as const,
+      label: 'العملاء والديون',
+      icon: Users,
+      badge: null,
+      color: 'text-amber-400',
+      activeBg: 'bg-amber-600 text-white shadow-lg shadow-amber-600/30',
+    },
+    {
+      id: 'mikrotik_sessions' as NavView,
+      permissionModule: 'mikrotik' as const, // Uses mikrotik permissions group
+      label: 'إحصائيات المتصلين',
+      icon: Wifi,
+      badge: null,
+      color: 'text-teal-400',
+      activeBg: 'bg-teal-600 text-white shadow-lg shadow-teal-600/30',
     },
     {
       id: 'pos' as NavView,

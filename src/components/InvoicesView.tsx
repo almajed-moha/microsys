@@ -30,7 +30,7 @@ import {
   FileDown,
   Loader2
 } from 'lucide-react';
-import { InvoiceRecord, InvoiceItem, CardCategory, POSPoint, NetworkSettings, ExpenseRecord, SalesRecord, PaymentRecord } from '../types';
+import { InvoiceRecord, InvoiceItem, CardCategory, POSPoint, NetworkSettings, ExpenseRecord, SalesRecord, PaymentRecord, Customer } from '../types';
 import { exportToCSV, downloadFile, generateNextInvoiceNumber } from '../utils/storage';
 import { InvoiceReceiptModal } from './InvoiceReceiptModal';
 import { AdvancedSearchBar, AdvancedFilterState } from './AdvancedSearchBar';
@@ -45,6 +45,7 @@ interface InvoicesViewProps {
   invoices: InvoiceRecord[];
   categories: CardCategory[];
   posPoints: POSPoint[];
+  customers?: Customer[];
   settings: NetworkSettings;
   expenses?: ExpenseRecord[];
   sales?: SalesRecord[];
@@ -59,6 +60,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
   invoices = [],
   categories = [],
   posPoints = [],
+  customers = [],
   settings,
   expenses = [],
   sales = [],
@@ -109,7 +111,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
 
   // Form State for Invoice (Create or Edit)
   const [formInvoiceNumber, setFormInvoiceNumber] = useState<string>('');
-  const [formPOSId, setFormPOSId] = useState<string>(posPoints[0]?.id || '');
+  const [formEntityType, setFormEntityType] = useState<'pos' | 'customer'>('pos');
+  const [formEntityId, setFormEntityId] = useState<string>(posPoints[0]?.id || '');
   const [formDate, setFormDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [formTime, setFormTime] = useState<string>(new Date().toISOString().split('T')[1].substring(0, 5));
   const [formPaymentType, setFormPaymentType] = useState<'credit' | 'cash'>('credit');
@@ -141,12 +144,20 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     },
   ]);
 
-  // Synchronize initial manager name when POS changes in form
-  const handlePOSChange = (posId: string) => {
-    setFormPOSId(posId);
-    const selected = posPoints.find((p) => p.id === posId);
-    if (selected) {
-      setFormReceivedBy(selected.managerName || selected.name);
+    // Synchronize initial manager name when POS changes in form
+  const handleEntityChange = (id: string, type: 'pos' | 'customer' = formEntityType) => {
+    setFormEntityId(id);
+    setFormEntityType(type);
+    if (type === 'pos') {
+      const selected = posPoints.find((p) => p.id === id);
+      if (selected) {
+        setFormReceivedBy(selected.managerName || selected.name);
+      }
+    } else {
+      const selected = customers?.find((c) => c.id === id);
+      if (selected) {
+        setFormReceivedBy(selected.name);
+      }
     }
   };
 
@@ -158,7 +169,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     const autoNumber = generateNextInvoiceNumber(invoices, type, todayStr);
     setFormInvoiceNumber(autoNumber);
     const initialPos = posPoints[0];
-    setFormPOSId(initialPos?.id || '');
+    if (initialPos) handleEntityChange(initialPos.id, 'pos');
     setFormReceivedBy(initialPos?.managerName || initialPos?.name || '');
     setFormDate(todayStr);
     setFormTime(new Date().toISOString().split('T')[1].substring(0, 5));
@@ -189,7 +200,13 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     setEditingInvoice(inv);
     setCreateInvoiceType(inv.type);
     setFormInvoiceNumber(inv.invoiceNumber);
-    setFormPOSId(inv.posPointId);
+    if (inv.customerId) {
+      setFormEntityType('customer');
+      setFormEntityId(inv.customerId);
+    } else {
+      setFormEntityType('pos');
+      setFormEntityId(inv.posPointId || '');
+    }
     setFormReceivedBy(inv.receivedBy || '');
     setFormDate(inv.date);
     setFormTime(inv.time || new Date().toISOString().split('T')[1].substring(0, 5));
@@ -294,8 +311,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formPOSId) {
-      alert('يرجى اختيار نقطة البيع أو الموزع.');
+    if (!formEntityId) {
+      alert('يرجى اختيار نقطة البيع أو العميل.');
       return;
     }
 
@@ -313,8 +330,14 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
       }
     }
 
-    const selectedPOS = posPoints.find((p) => p.id === formPOSId);
-    const posPointName = selectedPOS ? selectedPOS.name : 'نقطة بيع غير محددة';
+    let posPointName = 'غير محدد';
+    if (formEntityType === 'pos') {
+      const selectedPOS = posPoints.find((p) => p.id === formEntityId);
+      posPointName = selectedPOS ? selectedPOS.name : 'نقطة بيع غير محددة';
+    } else {
+      const selectedCustomer = customers.find(c => c.id === formEntityId);
+      posPointName = selectedCustomer ? selectedCustomer.name : 'عميل غير محدد';
+    }
 
     // Group items by categoryId to prevent duplicate rows of the same category
     const groupedItemsMap = new Map<string, any>();
@@ -377,7 +400,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
         type: createInvoiceType,
         date: formDate,
         time: formTime,
-        posPointId: formPOSId,
+        posPointId: formEntityType === 'pos' ? formEntityId : '',
+        customerId: formEntityType === 'customer' ? formEntityId : undefined,
         posPointName,
         items: processedItems,
         totalQuantity: modalCalculations.totalQty,
@@ -399,7 +423,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
         type: createInvoiceType,
         date: formDate,
         time: formTime,
-        posPointId: formPOSId,
+        posPointId: formEntityType === 'pos' ? formEntityId : '',
+        customerId: formEntityType === 'customer' ? formEntityId : undefined,
         posPointName,
         items: processedItems,
         totalQuantity: modalCalculations.totalQty,
@@ -1093,18 +1118,57 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                 {/* Select POS */}
                 <div>
                   <label className="block text-slate-400 font-bold mb-1">نقطة البيع / الموزع *</label>
-                  <select
-                    value={formPOSId}
-                    onChange={(e) => handlePOSChange(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
-                    required
-                  >
-                    {posPoints.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.managerName || 'مسؤول'})
-                      </option>
-                    ))}
-                  </select>
+                  {/* Entity Type Tabs */}
+                  <div className="flex bg-slate-950 rounded-lg p-1 border border-slate-700 mb-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormEntityType('pos');
+                        if (posPoints[0]) handleEntityChange(posPoints[0].id, 'pos');
+                      }}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition ${formEntityType === 'pos' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                    >
+                      نقطة بيع / موزع
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormEntityType('customer');
+                        if (customers[0]) handleEntityChange(customers[0].id, 'customer');
+                      }}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition ${formEntityType === 'customer' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                    >
+                      عميل
+                    </button>
+                  </div>
+                  
+                  {formEntityType === 'pos' ? (
+                    <select
+                      value={formEntityId}
+                      onChange={(e) => handleEntityChange(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                      required
+                    >
+                      {posPoints.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <select
+                      value={formEntityId}
+                      onChange={(e) => handleEntityChange(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                      required
+                    >
+                      {customers.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 {/* Date and Time */}

@@ -10,6 +10,7 @@ import {
   CategoriesView,
   BatchDispatchView,
   MikrotikLiveView,
+  MikrotikSessionsView,
   InvoicesView,
   InvoiceReceiptModal,
   ExpensesView,
@@ -32,7 +33,7 @@ import {
   SystemTenantsView,
   AboutProgramModal,
   DatabaseBackupModal,
-} from './components';
+CustomersView } from './components';
 import {
   CardCategory,
   POSPoint,
@@ -47,6 +48,7 @@ import {
   UserPermissions,
   UserActivityLog,
   CardOrder,
+  Customer,
   NetworkTenant,
   CardTemplate,
 } from './types';
@@ -178,6 +180,11 @@ export default function App() {
       };
     });
   });
+
+
+  const [customers, setCustomers] = useState<Customer[]>(() =>
+    loadData(STORAGE_KEYS.CUSTOMERS, [])
+  );
 
   const [orders, setOrders] = useState<CardOrder[]>(() =>
     loadData<CardOrder[]>(STORAGE_KEYS.ORDERS, mockCardOrders)
@@ -375,6 +382,12 @@ export default function App() {
           : users),
     [users, effectiveTenantId, getRecordTenantId, activeUser?.role, selectedTenantFilter]
   );
+
+  const scopedCustomers = useMemo(() => 
+    (activeUser?.networkId && activeUser.networkId !== 'system')
+      ? customers.filter((c) => c.networkId === activeUser.networkId)
+      : customers,
+  [customers, activeUser?.networkId]);
 
   const scopedActivityLogs = useMemo(() => 
     effectiveTenantId ? activityLogs.filter((l) => getRecordTenantId(l) === effectiveTenantId) : activityLogs,
@@ -2149,12 +2162,19 @@ export default function App() {
       pos: 'pos',
       categories: 'categories',
       mikrotik: 'mikrotik',
+      mikrotik_sessions: 'mikrotik',
       users: 'usersAndPermissions',
+      customers: 'pos',
       sales: 'invoices',
       dispatches: 'categories',
     };
+
     const mod = viewToModuleMap[view] || 'invoices';
+    if (view === 'mikrotik_sessions') {
+      return hasPermission(activeUser, 'mikrotik', 'viewSessions', currentTenant);
+    }
     return hasPermission(activeUser, mod, 'view', currentTenant);
+
   };
 
   // Reset Data
@@ -2488,6 +2508,7 @@ export default function App() {
                 <InvoicesView
                   invoices={scopedInvoices}
                   posPoints={scopedPOSPoints}
+                  customers={scopedCustomers}
                   categories={scopedCategories}
                   settings={settings}
                   onAddInvoice={handleAddInvoice}
@@ -2548,6 +2569,7 @@ export default function App() {
                 <PaymentsView
                   payments={scopedPayments}
                   posPoints={scopedPOSPoints}
+                  customers={scopedCustomers}
                   settings={settings}
                   onAddPayment={handleAddPayment}
                   onUpdatePayment={handleUpdatePayment}
@@ -2569,6 +2591,11 @@ export default function App() {
                   onDeleteCategory={handleDeleteCategory}
                   onAdjustStock={handleAdjustStock}
                 />
+              )}
+
+
+              {activeView === 'mikrotik_sessions' && (
+                <MikrotikSessionsView />
               )}
 
               {activeView === 'mikrotik' && (
@@ -2718,6 +2745,7 @@ export default function App() {
       {isPaymentModalOpen && (
         <PaymentModal
           posPoints={scopedPOSPoints}
+          customers={scopedCustomers}
           initialPOSId={paymentTargetPOSId}
           settings={settings}
           onAddPayment={handleAddPayment}

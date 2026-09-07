@@ -200,6 +200,7 @@ export function createFullPermissions(): UserPermissions {
       disconnectUsers: true,
       editMikrotikConfig: true,
       viewLiveTraffic: true,
+          viewSessions: true,
       rebootRouter: true,
     },
     usersAndPermissions: {
@@ -296,6 +297,7 @@ export function createEmptyPermissions(): UserPermissions {
       disconnectUsers: false,
       editMikrotikConfig: false,
       viewLiveTraffic: false,
+          viewSessions: false,
       rebootRouter: false,
     },
     usersAndPermissions: {
@@ -402,6 +404,7 @@ export function getRoleDefaultPermissions(role: UserRole): UserPermissions {
           disconnectUsers: false,
           editMikrotikConfig: false,
           viewLiveTraffic: false,
+          viewSessions: false,
           rebootRouter: false,
         },
         usersAndPermissions: {
@@ -493,6 +496,7 @@ export function getRoleDefaultPermissions(role: UserRole): UserPermissions {
           disconnectUsers: false,
           editMikrotikConfig: false,
           viewLiveTraffic: false,
+          viewSessions: false,
           rebootRouter: false,
         },
         usersAndPermissions: {
@@ -584,6 +588,7 @@ export function getRoleDefaultPermissions(role: UserRole): UserPermissions {
           disconnectUsers: false,
           editMikrotikConfig: false,
           viewLiveTraffic: false,
+          viewSessions: false,
           rebootRouter: false,
         },
         usersAndPermissions: {
@@ -675,6 +680,7 @@ export function getRoleDefaultPermissions(role: UserRole): UserPermissions {
           disconnectUsers: false,
           editMikrotikConfig: false,
           viewLiveTraffic: false,
+          viewSessions: false,
           rebootRouter: false,
         },
         usersAndPermissions: {
@@ -766,6 +772,7 @@ export function getRoleDefaultPermissions(role: UserRole): UserPermissions {
           disconnectUsers: true,
           editMikrotikConfig: true,
           viewLiveTraffic: true,
+          viewSessions: true,
           rebootRouter: true,
         },
         usersAndPermissions: {
@@ -857,6 +864,7 @@ export function getRoleDefaultPermissions(role: UserRole): UserPermissions {
           disconnectUsers: false,
           editMikrotikConfig: false,
           viewLiveTraffic: true,
+          viewSessions: true,
           rebootRouter: false,
         },
         usersAndPermissions: {
@@ -1029,6 +1037,7 @@ export const PERMISSION_MODULES_CONFIG: PermissionModuleMeta[] = [
       { key: 'disconnectUsers', label: 'فصل وطرد المشتركين النشطين', description: 'إنهاء جلسة المستخدمين من الهوتسبوت', actionType: 'special' },
       { key: 'editMikrotikConfig', label: 'تعديل بيانات وإعدادات الاتصال بالراوتر', description: 'تغيير عنوان IP ومنفذ وكلمة مرور الراوتر', isDanger: true, actionType: 'edit' },
       { key: 'viewLiveTraffic', label: 'مراقبة حركة الباندويث والمنافذ', description: 'عرض الرسوم الحية لمعدل الرفع والتنزيل', actionType: 'read' },
+      { key: 'viewSessions', label: 'عرض إحصائيات المتصلين وجلسات الاستخدام', description: 'الاطلاع على تقارير تفصيلية عن المتصلين خلال فترات محددة', actionType: 'read' },
       { key: 'rebootRouter', label: 'إعادة تشغيل الراوتر عن بعد', description: 'إرسال أمر Reboot لراوتر المايكروتك', isDanger: true, actionType: 'special' },
     ],
   },

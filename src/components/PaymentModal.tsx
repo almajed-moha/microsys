@@ -10,10 +10,11 @@ import {
   Share2,
   Printer
 } from 'lucide-react';
-import { POSPoint, PaymentRecord, NetworkSettings } from '../types';
+import { POSPoint, PaymentRecord, NetworkSettings, Customer } from '../types';
 
 interface PaymentModalProps {
   posPoints: POSPoint[];
+  customers?: Customer[];
   initialPOSId?: string;
   settings: NetworkSettings;
   onAddPayment: (payment: Omit<PaymentRecord, 'id' | 'timestamp'>) => void;
@@ -22,12 +23,16 @@ interface PaymentModalProps {
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({
   posPoints,
+  customers = [],
   initialPOSId,
   settings,
   onAddPayment,
   onClose,
 }) => {
-  const [selectedPOSId, setSelectedPOSId] = useState(initialPOSId || (posPoints[0]?.id || ''));
+  const initialEntity = initialPOSId && customers.find(c => c.id === initialPOSId) ? 'customer' : 'pos';
+  const [entityType, setEntityType] = useState<'pos' | 'customer'>(initialEntity);
+  const [selectedPOSId, setSelectedPOSId] = useState(initialEntity === 'pos' ? (initialPOSId || (posPoints[0]?.id || '')) : (posPoints[0]?.id || ''));
+  const [selectedCustomerId, setSelectedCustomerId] = useState(initialEntity === 'customer' ? (initialPOSId || (customers[0]?.id || '')) : (customers[0]?.id || ''));
   const [amount, setAmount] = useState<number>(10000);
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank_transfer' | 'e_wallet'>('cash');
@@ -36,7 +41,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [notes, setNotes] = useState<string>('');
 
   const selectedPOS = posPoints.find((p) => p.id === selectedPOSId);
-  const currentDebt = selectedPOS?.currentDebt || 0;
+  const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
+  const currentDebt = entityType === 'pos' ? (selectedPOS?.currentDebt || 0) : (selectedCustomer?.balance || 0);
   const remainingAfterPayment = Math.max(0, currentDebt - (Number(amount) || 0));
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -45,7 +51,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
     onAddPayment({
       date,
-      posPointId: selectedPOSId,
+      posPointId: entityType === 'pos' ? selectedPOSId : '',
+      customerId: entityType === 'customer' ? selectedCustomerId : '',
       amount: Number(amount),
       paymentMethod,
       receivedBy,
@@ -146,7 +153,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           )}
 
           {/* Debt Balance Calculation Preview */}
-          {selectedPOS && (
+          {(entityType === 'pos' ? selectedPOS : selectedCustomer) && (
             <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1.5 text-xs">
               <div className="flex justify-between items-center text-slate-400">
                 <span>المديونية الحالية قبل السداد:</span>
