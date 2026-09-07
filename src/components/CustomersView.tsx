@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Plus, Edit2, Trash2, User, Phone, MapPin, Activity, FileText, Download, DollarSign, Receipt } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, User, Phone, MapPin, Activity, FileText, Download, DollarSign, Receipt, AlertTriangle, CheckCircle, ShieldAlert, X } from 'lucide-react';
 import { Customer, InvoiceRecord, PaymentRecord, SalesRecord, CardCategory, POSPoint, NetworkSettings } from '../types';
 import { CustomerStatementModal } from './CustomerStatementModal';
 
@@ -38,6 +38,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [statementCustomer, setStatementCustomer] = useState<Customer | null>(null);
+
+  // Deletion modals state
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
+  const [debtWarningCustomer, setDebtWarningCustomer] = useState<{ customer: Customer; debt: number } | null>(null);
+  const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -49,7 +54,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
   const currency = settings?.currencySymbol || 'ريال';
 
-  // Calculate balances with return invoices accounted for
+  // Calculate balances with cash vs credit invoices and returns accounted for
   const customersWithStats = useMemo(() => {
     return customers.map(c => {
       const customerInvoices = invoices.filter(inv => inv.customerId === c.id);
@@ -58,19 +63,28 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       let totalPurchases = 0;
       let totalReturns = 0;
       customerInvoices.forEach(inv => {
-        if (inv.type === 'sale') totalPurchases += (inv.totalWholesaleAmount || 0);
+        if (inv.status === 'cancelled') return;
+        if (inv.type === 'sale') {
+          // Cash invoices are paid at counter, so they do not add to lingering debt
+          if (inv.paymentType !== 'cash') {
+            totalPurchases += (inv.totalWholesaleAmount || 0);
+          }
+        }
         if (inv.type === 'return') totalReturns += (inv.totalWholesaleAmount || 0);
       });
 
       const totalPaymentsAmt = customerPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-      const balance = totalPurchases - totalReturns - totalPaymentsAmt;
+      const calculatedBalance = totalPurchases - totalReturns - totalPaymentsAmt;
       
+      // Use existing c.balance if present, or calculatedBalance
+      const finalBalance = c.balance !== undefined ? c.balance : calculatedBalance;
+
       return {
         ...c,
         totalPurchases,
         totalReturns,
         totalPayments: totalPaymentsAmt,
-        balance
+        balance: finalBalance
       };
     });
   }, [customers, invoices, payments]);
@@ -79,6 +93,29 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.phone?.includes(searchTerm)
   );
+
+  const handleDeleteClick = (customer: Customer) => {
+    // A customer has debt if their balance is strictly greater than 0
+    const rawDebt = customer.balance ?? 0;
+    const debt = Math.round(rawDebt * 100) / 100;
+
+    if (debt > 0) {
+      // Customer has debt: show informative blocker dialog
+      setDebtWarningCustomer({ customer, debt });
+    } else {
+      // Customer has NO debt (balance is 0 or credit): allow deletion
+      setCustomerToDelete(customer);
+    }
+  };
+
+  const handleConfirmDelete = () => {
+    if (!customerToDelete) return;
+    const customerName = customerToDelete.name;
+    onDeleteCustomer(customerToDelete.id);
+    setCustomerToDelete(null);
+    setFeedbackToast(`تم حذف العميل "${customerName}" بنجاح ✅`);
+    setTimeout(() => setFeedbackToast(null), 3500);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,6 +178,14 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         </button>
       </div>
 
+      {/* Feedback Toast Notification */}
+      {feedbackToast && (
+        <div className="bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold text-center flex items-center justify-center gap-2 shadow-md animate-fade-in">
+          <CheckCircle size={18} />
+          <span>{feedbackToast}</span>
+        </div>
+      )}
+
       {/* Search and Filters */}
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
@@ -172,12 +217,28 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 </div>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => openModal(customer)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                <button
+                  type="button"
+                  onClick={() => openModal(customer)}
+                  className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                  title="تعديل بيانات العميل"
+                >
                   <Edit2 size={18} />
                 </button>
-                <button onClick={() => {
-                  if (customer.balance && customer.balance !== 0) { alert('لا يمكن حذف العميل لأن عليه مديونية أو له رصيد متبقي. الرجاء تصفية حسابه أولاً.'); return; } if (confirm('هل أنت متأكد من حذف العميل؟')) onDeleteCustomer(customer.id);
-                }} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
+                <button
+                  type="button"
+                  onClick={() => handleDeleteClick(customer)}
+                  className={`p-2 rounded-lg transition-colors ${
+                    (customer.balance ?? 0) > 0
+                      ? 'text-slate-300 hover:text-amber-600 hover:bg-amber-50'
+                      : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
+                  }`}
+                  title={
+                    (customer.balance ?? 0) > 0
+                      ? `لا يمكن الحذف: توجد مديونية (${(customer.balance ?? 0).toLocaleString()} ${currency})`
+                      : 'حذف العميل (لا توجد مديونية)'
+                  }
+                >
                   <Trash2 size={18} />
                 </button>
               </div>
@@ -338,6 +399,90 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Customer Deletion Modal (No Debt) */}
+      {customerToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-200 animate-scale-up">
+            <div className="p-6 text-center">
+              <div className="w-14 h-14 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 size={28} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">تأكيد حذف العميل</h3>
+              <p className="text-slate-600 text-sm mb-4 leading-relaxed">
+                هل أنت متأكد من حذف العميل <span className="font-bold text-slate-900">"{customerToDelete.name}"</span> نهائياً من النظام؟
+              </p>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-5 text-xs text-emerald-800 flex items-center justify-center gap-2">
+                <CheckCircle size={16} className="text-emerald-600 shrink-0" />
+                <span>تم التحقق: لا توجد أي مديونية مستحقة على هذا العميل (الرصيد: 0 {currency}).</span>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setCustomerToDelete(null)}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition shadow-sm"
+                >
+                  نعم، احذف العميل
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Blocked Deletion Due To Debt Modal */}
+      {debtWarningCustomer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-200 animate-scale-up">
+            <div className="p-6 text-center">
+              <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <ShieldAlert size={28} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">تعذر حذف العميل</h3>
+              <p className="text-slate-600 text-sm mb-4 leading-relaxed">
+                لا يمكن حذف العميل <span className="font-bold text-slate-900">"{debtWarningCustomer.customer.name}"</span> نظراً لوجود مديونية مستحقة عليه.
+              </p>
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3.5 mb-5 text-center">
+                <span className="text-xs text-rose-600 block mb-1 font-semibold">المبلغ المطلوب تحصيله:</span>
+                <span className="text-xl font-black text-rose-700 font-mono">
+                  {debtWarningCustomer.debt.toLocaleString()} {currency}
+                </span>
+                <span className="text-[11px] text-rose-500 block mt-1">يجب سداد وتصفية هذا المبلغ أولاً قبل حذف العميل</span>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDebtWarningCustomer(null)}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition"
+                >
+                  إغلاق
+                </button>
+                {onOpenPaymentModal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const custId = debtWarningCustomer.customer.id;
+                      setDebtWarningCustomer(null);
+                      onOpenPaymentModal(custId);
+                    }}
+                    className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    <DollarSign size={16} />
+                    <span>سداد وتحصيل الآن</span>
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
