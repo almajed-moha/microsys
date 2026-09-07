@@ -2673,9 +2673,13 @@ export default function App() {
             customers={scopedCustomers}
             invoices={scopedInvoices}
             payments={scopedPayments}
+            sales={scopedSales}
+            categories={scopedCategories}
+            posPoints={scopedPOSPoints}
             settings={settings}
             onOpenPaymentModal={(customerId) => handleOpenPaymentModal(undefined, customerId)}
             onOpenInvoiceModal={(_customerId) => setActiveView('invoices')}
+            onViewInvoiceReceipt={(inv) => setSelectedInvoiceForReceipt(inv)}
             onAddCustomer={(customer) => {
               const customerWithNetwork = {
                 ...customer,

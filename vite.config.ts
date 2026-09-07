@@ -5,8 +5,10 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
+  const basePath = process.env.BASE_PATH || (process.env.GITHUB_ACTIONS ? '/microsys/' : '/');
+
   return {
-    base: '/',
+    base: basePath,
     plugins: [
       react(), 
       tailwindcss(),

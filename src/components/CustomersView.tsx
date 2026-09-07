@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Plus, Edit2, Trash2, User, Phone, MapPin, Activity, FileText, Download, DollarSign, Receipt } from 'lucide-react';
-import { Customer, InvoiceRecord, PaymentRecord, NetworkSettings } from '../types';
+import { Customer, InvoiceRecord, PaymentRecord, SalesRecord, CardCategory, POSPoint, NetworkSettings } from '../types';
 import { CustomerStatementModal } from './CustomerStatementModal';
 
 interface CustomersViewProps {
@@ -10,9 +10,13 @@ interface CustomersViewProps {
   onDeleteCustomer: (id: string) => void;
   invoices: InvoiceRecord[];
   payments: PaymentRecord[];
+  sales?: SalesRecord[];
+  categories?: CardCategory[];
+  posPoints?: POSPoint[];
   settings?: NetworkSettings;
   onOpenPaymentModal?: (customerId: string) => void;
   onOpenInvoiceModal?: (customerId: string) => void;
+  onViewInvoiceReceipt?: (invoice: InvoiceRecord) => void;
 }
 
 export const CustomersView: React.FC<CustomersViewProps> = ({
@@ -22,9 +26,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   onDeleteCustomer,
   invoices,
   payments,
+  sales = [],
+  categories = [],
+  posPoints = [],
   settings,
   onOpenPaymentModal,
   onOpenInvoiceModal,
+  onViewInvoiceReceipt,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -340,8 +348,12 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           customer={statementCustomer}
           invoices={invoices}
           payments={payments}
+          sales={sales}
+          categories={categories}
+          posPoints={posPoints}
           settings={settings}
           onClose={() => setStatementCustomer(null)}
+          onViewInvoiceReceipt={onViewInvoiceReceipt}
         />
       )}
     </div>

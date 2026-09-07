@@ -215,6 +215,8 @@ export interface SalesRecord extends EntityAuditMetadata {
   time?: string;
   timestamp: string; // ISO string
   posPointId: string;
+  customerId?: string;
+  customerName?: string;
   categoryId: string;
   quantity: number;
   unitRetailPrice: number;
