@@ -1955,6 +1955,7 @@ export default function App() {
           if (results[STORAGE_KEYS.PAYMENTS]) { setPayments(results[STORAGE_KEYS.PAYMENTS]); saveData(STORAGE_KEYS.PAYMENTS, results[STORAGE_KEYS.PAYMENTS]); }
           if (results[STORAGE_KEYS.EXPENSES]) { setExpenses(results[STORAGE_KEYS.EXPENSES]); saveData(STORAGE_KEYS.EXPENSES, results[STORAGE_KEYS.EXPENSES]); }
           if (results[STORAGE_KEYS.ORDERS]) { setOrders(results[STORAGE_KEYS.ORDERS]); saveData(STORAGE_KEYS.ORDERS, results[STORAGE_KEYS.ORDERS]); }
+          if (results[STORAGE_KEYS.CUSTOMERS]) { setCustomers(results[STORAGE_KEYS.CUSTOMERS]); saveData(STORAGE_KEYS.CUSTOMERS, results[STORAGE_KEYS.CUSTOMERS]); }
           if (results[STORAGE_KEYS.TENANTS]) { setTenants(results[STORAGE_KEYS.TENANTS]); saveData(STORAGE_KEYS.TENANTS, results[STORAGE_KEYS.TENANTS]); }
         }
       } catch (err) {
@@ -2586,7 +2587,31 @@ export default function App() {
                 />
               )}
 
-              {activeView === 'users' && (
+              
+        {activeView === 'customers' && (
+          <CustomersView
+            customers={customers}
+            invoices={invoices}
+            payments={payments}
+            onAddCustomer={(customer) => {
+              const updated = [...customers, customer];
+              setCustomers(updated);
+              saveData(STORAGE_KEYS.CUSTOMERS, updated);
+            }}
+            onUpdateCustomer={(customer) => {
+              const updated = customers.map(c => c.id === customer.id ? customer : c);
+              setCustomers(updated);
+              saveData(STORAGE_KEYS.CUSTOMERS, updated);
+            }}
+            onDeleteCustomer={(id) => {
+              const updated = customers.filter(c => c.id !== id);
+              setCustomers(updated);
+              saveData(STORAGE_KEYS.CUSTOMERS, updated);
+            }}
+          />
+        )}
+
+        {activeView === 'users' && (
                 <UsersAndPermissionsView
                   users={scopedUsers}
                   activeUser={activeUser}

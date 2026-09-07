@@ -38,3 +38,4 @@ export { DatabaseBackupModal } from './DatabaseBackupModal';
 export { RecordAuditInfo } from './RecordAuditInfo';
 export { EntityAuditHistoryModal } from './EntityAuditHistoryModal';
 export * from "./PrintableCard";
+export { CustomersView } from './CustomersView';

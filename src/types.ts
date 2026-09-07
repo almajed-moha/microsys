@@ -86,7 +86,8 @@ export interface CardOrder extends EntityAuditMetadata {
   id: string;
   networkId?: string;
   orderNumber: string; // e.g. "ORD-2026-001"
-  posPointId: string;
+  posPointId?: string;
+  customerId?: string;
   posPointName: string;
   posManagerName?: string;
   posPhone?: string;
@@ -857,3 +858,17 @@ export interface SystemDatabaseBackup {
   schemaSignature?: string;
 }
 
+
+
+export interface Customer extends EntityAuditMetadata {
+  id: string;
+  networkId?: string;
+  name: string;
+  phone?: string;
+  address?: string;
+  status: 'active' | 'inactive';
+  notes?: string;
+  totalPurchases?: number;
+  totalPayments?: number;
+  balance?: number;
+}

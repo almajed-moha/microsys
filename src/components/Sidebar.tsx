@@ -58,7 +58,8 @@ export type NavView =
   | 'sales'
   | 'dispatches'
   | 'orders'
-  | 'pos_portal';
+  | 'pos_portal'
+  | 'customers';
 
 interface SidebarProps {
   isOpen: boolean;

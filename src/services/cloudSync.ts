@@ -18,6 +18,7 @@ const STORAGE_KEYS = {
   ACTIVE_USER_ID: 'mikrotik_pos_active_user_id',
   ACTIVITY_LOGS: 'mikrotik_pos_activity_logs',
   ORDERS: 'mikrotik_pos_card_orders',
+  CUSTOMERS: 'mikrotik_pos_customers',
 };
 
 
@@ -34,6 +35,7 @@ const COLLECTION_MAP: Record<string, string> = {
   [STORAGE_KEYS.EXPENSE_CATEGORIES]: 'expenseCategories',
   [STORAGE_KEYS.ACTIVITY_LOGS]: 'activityLogs',
   [STORAGE_KEYS.ORDERS]: 'orders',
+  [STORAGE_KEYS.CUSTOMERS]: 'customers',
 };
 
 // Keep track of the last known state to compute diffs
@@ -125,7 +127,8 @@ export async function loadTenantDataFromFirestore(tenantId: string, onProgress: 
     { key: STORAGE_KEYS.INVOICES, name: 'invoices' },
     { key: STORAGE_KEYS.PAYMENTS, name: 'payments' },
     { key: STORAGE_KEYS.EXPENSES, name: 'expenses' },
-    { key: STORAGE_KEYS.ORDERS, name: 'orders' }
+    { key: STORAGE_KEYS.ORDERS, name: 'orders' },
+    { key: STORAGE_KEYS.CUSTOMERS, name: 'customers' }
   ];
 
   try {

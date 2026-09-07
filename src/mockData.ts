@@ -58,6 +58,7 @@ export const initialGeneratedVouchers: GeneratedVoucher[] = [];
 export const initialInvoices: InvoiceRecord[] = [];
 export const initialExpenses: ExpenseRecord[] = [];
 export const initialTenants: NetworkTenant[] = [];
+export const initialCustomers: any[] = [];
 
 // Reusable Print Templates
 export const initialTemplates: CardTemplate[] = [
@@ -398,3 +399,4 @@ export const mockExpenses = initialExpenses;
 export const mockInvoices = initialInvoices;
 export const mockUsers = initialUsers;
 export const mockCardOrders = initialCardOrders;
+export const mockCustomers = initialCustomers;
