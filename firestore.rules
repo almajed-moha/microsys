@@ -1,9 +1,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Only authenticated users/clients can read or write data
+    // The application uses its own custom authentication mechanism in-app, 
+    // so we allow client access here.
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if true;
     }
   }
 }

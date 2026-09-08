@@ -85,6 +85,7 @@ import {
   loadAllDataFromFirestore,
   subscribeToCloudUpdates,
   syncArrayToFirestore,
+  forceSyncAllToCloud,
 } from './services/cloudSync';
 import { initialActivityLogs, buildActivityLog } from './utils/auditLogger';
 import { applyCreationAudit, applyUpdateAudit } from './utils/auditTrigger';
@@ -3009,6 +3010,24 @@ export default function App() {
           }}
           onRestoreData={handleRestoreData}
           onOpenBackupModal={() => setIsDatabaseBackupOpen(true)}
+          onForceCloudSync={async () => {
+            const dataState = {
+              [STORAGE_KEYS.USERS]: users,
+              [STORAGE_KEYS.TENANTS]: tenants,
+              [STORAGE_KEYS.CATEGORIES]: categories,
+              [STORAGE_KEYS.POS_POINTS]: posPoints,
+              [STORAGE_KEYS.DISPATCHES]: dispatches,
+              [STORAGE_KEYS.SALES]: sales,
+              [STORAGE_KEYS.PAYMENTS]: payments,
+              [STORAGE_KEYS.INVOICES]: invoices,
+              [STORAGE_KEYS.EXPENSES]: expenses,
+              [STORAGE_KEYS.EXPENSE_CATEGORIES]: expenseCategories,
+              [STORAGE_KEYS.ACTIVITY_LOGS]: activityLogs,
+              [STORAGE_KEYS.CUSTOMERS]: customers,
+            };
+            await forceSyncAllToCloud(dataState);
+            alert('تم رفع جميع بيانات هذا الجهاز إلى التخزين السحابي بنجاح!');
+          }}
           onClose={() => setIsSettingsModalOpen(false)}
         />
       )}

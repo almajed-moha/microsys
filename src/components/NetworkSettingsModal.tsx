@@ -31,6 +31,7 @@ interface NetworkSettingsModalProps {
   allAppData: any;
   onRestoreData: (data: any) => void;
   onOpenBackupModal?: () => void;
+  onForceCloudSync?: () => void;
   onClose: () => void;
 }
 
@@ -41,6 +42,7 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
   allAppData,
   onRestoreData,
   onOpenBackupModal,
+  onForceCloudSync,
   onClose,
 }) => {
   const [formData, setFormData] = useState<NetworkSettings>({
@@ -502,6 +504,20 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
               <RotateCcw className="w-3.5 h-3.5" />
               <span>استعادة البيانات الافتراضية</span>
             </button>
+            {onForceCloudSync && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm('تنبيه هام: سيتم الآن رفع جميع بيانات هذا الجهاز بقوة إلى السحابة، مما سيؤدي إلى مسح أي بيانات سحابية سابقة واستبدالها ببيانات هذا الجهاز. هل أنت متأكد؟')) {
+                    onForceCloudSync();
+                  }
+                }}
+                className="w-full mt-3 py-2 bg-indigo-950/40 hover:bg-indigo-900/60 text-indigo-300 border border-indigo-800/50 rounded-lg font-semibold transition flex items-center justify-center gap-1.5"
+              >
+                <Server className="w-3.5 h-3.5" />
+                <span>مزامنة سحابية إجبارية (رفع للجميع)</span>
+              </button>
+            )}
           </div>
 
           <div className="sticky bottom-0 z-20 pt-3.5 pb-1 border-t border-slate-800 flex justify-end gap-2 bg-slate-900/95 backdrop-blur-md">
