@@ -198,9 +198,9 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
     if (!formData.name) return;
     if (!usernameValidation.isValid) return;
 
-    const finalUsername = formData.username.trim().toLowerCase();
-    const finalPassword = formData.password.trim() || '123456';
-    const finalPin = formData.pinCode.trim() || '1234';
+    const finalUsername = (formData.username || '').trim().toLowerCase();
+    const finalPassword = (formData.password || '').trim() || '123456';
+    const finalPin = (formData.pinCode || '').trim() || '1234';
 
     if (editingPOS) {
       onUpdatePOS({
@@ -306,12 +306,13 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
   // Filtered POS Points
   const filteredPOS = useMemo(() => {
     return posPoints.filter((pos) => {
+      const sTerm = (searchTerm || '').toLowerCase();
       const matchesSearch =
-        pos.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        pos.managerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        pos.phone.includes(searchTerm) ||
-        (pos.username && pos.username.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        pos.address.toLowerCase().includes(searchTerm.toLowerCase());
+        (pos.name || '').toLowerCase().includes(sTerm) ||
+        (pos.managerName || '').toLowerCase().includes(sTerm) ||
+        (pos.phone || '').includes(searchTerm) ||
+        (pos.username && (pos.username || '').toLowerCase().includes(sTerm)) ||
+        (pos.address || '').toLowerCase().includes(sTerm);
 
       if (!matchesSearch) return false;
 

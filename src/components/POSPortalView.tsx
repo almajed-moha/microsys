@@ -124,11 +124,12 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
   const filteredOrders = useMemo(() => {
     return posOrders.filter((order) => {
       const matchStatus = statusFilter === 'all' || order.status === statusFilter;
+      const q = (searchQuery || '').toLowerCase();
       const matchSearch =
-        searchQuery === '' ||
-        order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (order.notes && order.notes.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        order.items.some((i) => i.categoryName.toLowerCase().includes(searchQuery.toLowerCase()));
+        !q ||
+        (order.orderNumber || '').toLowerCase().includes(q) ||
+        (order.notes && (order.notes || '').toLowerCase().includes(q)) ||
+        (order.items || []).some((i) => (i.categoryName || '').toLowerCase().includes(q));
       return matchStatus && matchSearch;
     });
   }, [posOrders, statusFilter, searchQuery]);

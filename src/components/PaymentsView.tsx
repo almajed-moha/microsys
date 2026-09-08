@@ -185,11 +185,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       const cust = customers.find((c) => c.id === p.customerId);
       const entityName = cust ? cust.name : (pos ? pos.name : '');
 
+      const sTerm = (searchTerm || '').toLowerCase();
       const matchesSearch =
-        entityName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (p.referenceNumber && p.referenceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (p.receivedBy && p.receivedBy.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (p.notes && p.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+        (entityName || '').toLowerCase().includes(sTerm) ||
+        (p.referenceNumber && (p.referenceNumber || '').toLowerCase().includes(sTerm)) ||
+        (p.receivedBy && (p.receivedBy || '').toLowerCase().includes(sTerm)) ||
+        (p.notes && (p.notes || '').toLowerCase().includes(sTerm));
 
       if (!matchesSearch) return false;
 

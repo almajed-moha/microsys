@@ -165,8 +165,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
     return expenses.filter((e) => {
       // Search
-      if (searchTerm.trim()) {
-        const term = searchTerm.toLowerCase();
+      if (searchTerm && searchTerm.trim()) {
+        const term = (searchTerm || '').toLowerCase();
         const matchesTitle = e.title?.toLowerCase().includes(term);
         const matchesVoucher = e.voucherNumber?.toLowerCase().includes(term);
         const matchesPaidTo = e.paidTo?.toLowerCase().includes(term);

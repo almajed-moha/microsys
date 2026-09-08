@@ -192,15 +192,15 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
         }
 
         // Text Search
-        if (searchTerm.trim()) {
-          const term = searchTerm.toLowerCase();
-          const matchesUser = log.userName.toLowerCase().includes(term);
-          const matchesAction = log.action.toLowerCase().includes(term);
-          const matchesModule = log.targetModuleName.toLowerCase().includes(term);
-          const matchesTitle = log.title.toLowerCase().includes(term);
-          const matchesDetails = log.details?.toLowerCase().includes(term) || false;
-          const matchesIp = log.ipAddress?.includes(term) || false;
-          const netName = getLogNetworkName(log).toLowerCase();
+        if (searchTerm && searchTerm.trim()) {
+          const term = (searchTerm || '').toLowerCase();
+          const matchesUser = (log.userName || '').toLowerCase().includes(term);
+          const matchesAction = (log.action || '').toLowerCase().includes(term);
+          const matchesModule = (log.targetModuleName || '').toLowerCase().includes(term);
+          const matchesTitle = (log.title || '').toLowerCase().includes(term);
+          const matchesDetails = (log.details || '').toLowerCase().includes(term);
+          const matchesIp = (log.ipAddress || '').includes(term);
+          const netName = (getLogNetworkName(log) || '').toLowerCase();
           const matchesNet = netName.includes(term);
 
           if (!matchesUser && !matchesAction && !matchesModule && !matchesTitle && !matchesDetails && !matchesIp && !matchesNet) {

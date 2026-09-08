@@ -749,22 +749,22 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
 
   // Filtered active users
   const filteredActiveUsers = activeUsers.filter((u) => {
-    const q = activeUserSearch.toLowerCase();
+    const q = (activeUserSearch || '').toLowerCase();
     return (
-      u.user.toLowerCase().includes(q) ||
-      u.address.toLowerCase().includes(q) ||
-      u.macAddress.toLowerCase().includes(q) ||
-      (u.comment && u.comment.toLowerCase().includes(q))
+      (u.user || '').toLowerCase().includes(q) ||
+      (u.address || '').toLowerCase().includes(q) ||
+      (u.macAddress || '').toLowerCase().includes(q) ||
+      (u.comment && (u.comment || '').toLowerCase().includes(q))
     );
   });
 
   // Filtered configured users
   const filteredConfiguredUsers = configuredUsers.filter((u) => {
-    const q = allUserSearch.toLowerCase();
+    const q = (allUserSearch || '').toLowerCase();
     const matchesSearch =
-      u.name.toLowerCase().includes(q) ||
-      (u.comment && u.comment.toLowerCase().includes(q)) ||
-      (u.profile && u.profile.toLowerCase().includes(q));
+      (u.name || '').toLowerCase().includes(q) ||
+      (u.comment && (u.comment || '').toLowerCase().includes(q)) ||
+      (u.profile && (u.profile || '').toLowerCase().includes(q));
     const matchesProfile = userProfileFilter === 'all' || u.profile === userProfileFilter;
 
     const totalUsed = (u.bytesIn || 0) + (u.bytesOut || 0);

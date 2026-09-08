@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Zap,
+  Scale,
 } from 'lucide-react';
 import { MikrotikCallerSession } from '../types';
 import { printElementDocument, exportElementToPdf } from '../utils/pdfExport';
@@ -27,6 +28,7 @@ interface MikrotikDailyUsageModalProps {
   onClose: () => void;
   sessions: MikrotikCallerSession[];
   routerIdentity?: string;
+  onOpenComparisonModal?: () => void;
 }
 
 const formatBytes = (bytes: number) => {
@@ -38,8 +40,8 @@ const formatBytes = (bytes: number) => {
 };
 
 const getDeviceIcon = (hostName?: string) => {
-  if (!hostName) return <Smartphone size={14} className="text-slate-400" />;
-  const lower = hostName.toLowerCase();
+  if (!hostName || typeof hostName !== 'string') return <Smartphone size={14} className="text-slate-400" />;
+  const lower = (hostName || '').toLowerCase();
   if (
     lower.includes('desktop') ||
     lower.includes('laptop') ||
@@ -57,6 +59,7 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
   onClose,
   sessions,
   routerIdentity,
+  onOpenComparisonModal,
 }) => {
   // Selected date (defaults to today)
   const todayStr = new Date().toISOString().split('T')[0];
@@ -350,6 +353,20 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
                 <Printer size={13} />
                 <span>طباعة</span>
               </button>
+
+              {onOpenComparisonModal && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    onOpenComparisonModal();
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+                  title="مقارنة سحب المايكروتك مع مبيعات الباقات وكشف الفاقد"
+                >
+                  <Scale size={13} />
+                  <span>مقارنة المبيعات والفاقد</span>
+                </button>
+              )}
             </div>
           </div>
 

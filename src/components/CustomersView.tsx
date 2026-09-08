@@ -89,10 +89,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     });
   }, [customers, invoices, payments]);
 
-  const filteredCustomers = customersWithStats.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.phone?.includes(searchTerm)
-  );
+  const filteredCustomers = customersWithStats.filter(c => {
+    const sTerm = (searchTerm || '').toLowerCase();
+    return (
+      (c.name || '').toLowerCase().includes(sTerm) ||
+      (c.phone && c.phone.includes(searchTerm))
+    );
+  });
 
   const handleDeleteClick = (customer: Customer) => {
     // A customer has debt if their balance is strictly greater than 0

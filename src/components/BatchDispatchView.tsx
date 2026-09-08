@@ -180,12 +180,13 @@ export const BatchDispatchView: React.FC<BatchDispatchViewProps> = ({
     return dispatches.filter((d) => {
       const pos = posPoints.find((p) => p.id === d.posPointId);
       const cat = categories.find((c) => c.id === d.categoryId);
+      const sTerm = (searchTerm || '').toLowerCase();
 
       const matchesSearch =
-        (pos && pos.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (cat && cat.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (pos && (pos.name || '').toLowerCase().includes(sTerm)) ||
+        (cat && (cat.name || '').toLowerCase().includes(sTerm)) ||
         (d.serialStart && d.serialStart.includes(searchTerm)) ||
-        (d.notes && d.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+        (d.notes && (d.notes || '').toLowerCase().includes(sTerm));
 
       if (!matchesSearch) return false;
       if (selectedPOSFilter !== 'all' && d.posPointId !== selectedPOSFilter) return false;

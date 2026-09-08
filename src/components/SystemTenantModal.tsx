@@ -219,10 +219,10 @@ export const SystemTenantModal: React.FC<SystemTenantModalProps> = ({
 
   // Filter modules for custom selection
   const filteredModules = useMemo(() => {
-    if (!moduleSearch.trim()) return TENANT_AVAILABLE_MODULES;
+    if (!moduleSearch || !moduleSearch.trim()) return TENANT_AVAILABLE_MODULES;
     const q = moduleSearch.trim().toLowerCase();
     return TENANT_AVAILABLE_MODULES.filter(
-      (m) => m.title.toLowerCase().includes(q) || m.description.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)
+      (m) => (m.title || '').toLowerCase().includes(q) || (m.description || '').toLowerCase().includes(q) || (m.id || '').toLowerCase().includes(q)
     );
   }, [moduleSearch]);
 

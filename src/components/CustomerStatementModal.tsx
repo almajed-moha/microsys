@@ -240,10 +240,10 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
       // Search term
       if (searchTerm) {
-        const s = searchTerm.toLowerCase();
-        const inDesc = item.description.toLowerCase().includes(s);
-        const inRef = item.reference.toLowerCase().includes(s);
-        const inType = item.typeName.toLowerCase().includes(s);
+        const s = (searchTerm || '').toLowerCase();
+        const inDesc = (item.description || '').toLowerCase().includes(s);
+        const inRef = (item.reference || '').toLowerCase().includes(s);
+        const inType = (item.typeName || '').toLowerCase().includes(s);
         const inItems = (item.itemsSummary || '').toLowerCase().includes(s);
         if (!inDesc && !inRef && !inType && !inItems) return false;
       }

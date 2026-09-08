@@ -279,13 +279,13 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
   };
 
   const handleOpenEditProfile = (prof: UserManagerProfile) => {
-    const cleanName = prof.name.replace(/^UM-Profile-/, '');
+    const cleanName = (prof.name || '').replace(/^UM-Profile-/, '');
     const matchedLim = limitations.find(
       (l) =>
         l.name === prof.name ||
         l.name === `Lim-${prof.name}` ||
         l.name === `UM-Lim-${cleanName}` ||
-        l.name.toLowerCase().includes(cleanName.toLowerCase())
+        (cleanName && (l.name || '').toLowerCase().includes(cleanName.toLowerCase()))
     );
 
     let vDays = 1;
@@ -667,11 +667,11 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
   // Filtered Users
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
-      const q = userSearch.toLowerCase();
+      const q = (userSearch || '').toLowerCase();
       const matchesSearch =
-        u.name.toLowerCase().includes(q) ||
-        (u.comment && u.comment.toLowerCase().includes(q)) ||
-        (u.actualProfile && u.actualProfile.toLowerCase().includes(q));
+        (u.name || '').toLowerCase().includes(q) ||
+        (u.comment && (u.comment || '').toLowerCase().includes(q)) ||
+        (u.actualProfile && (u.actualProfile || '').toLowerCase().includes(q));
       const matchesProfile = profileFilter === 'all' || u.actualProfile === profileFilter;
       return matchesSearch && matchesProfile;
     });
@@ -896,9 +896,9 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                 onChange={(e) => setProfileFilter(e.target.value)}
                 className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-purple-500"
               >
-                <option value="all">كافة البروفايلات</option>
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.name}>
+                <option key="all-profiles-opt" value="all">كافة البروفايلات</option>
+                {profiles.map((p, idx) => (
+                  <option key={`filter-prof-${p.id || p.name || idx}`} value={p.name}>
                     {p.name}
                   </option>
                 ))}
@@ -947,8 +947,8 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    filteredUsers.map((u) => (
-                      <tr key={u.id} className="hover:bg-slate-800/40 transition">
+                    filteredUsers.map((u, idx) => (
+                      <tr key={u.id || u.name || `um-user-row-${idx}`} className="hover:bg-slate-800/40 transition">
                         {/* Username */}
                         <td className="p-3.5">
                           <div className="flex items-center gap-2">
@@ -1108,14 +1108,14 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
 
           {/* Profiles Grid with Direct View and Edit */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {profiles.map((prof) => {
-              const cleanName = prof.name.replace(/^UM-Profile-/, '');
+            {profiles.map((prof, idx) => {
+              const cleanName = (prof.name || '').replace(/^UM-Profile-/, '');
               const matchedLim = limitations.find(
                 (l) =>
                   l.name === prof.name ||
                   l.name === `Lim-${prof.name}` ||
                   l.name === `UM-Lim-${cleanName}` ||
-                  l.name.toLowerCase().includes(cleanName.toLowerCase())
+                  (cleanName && (l.name || '').toLowerCase().includes(cleanName.toLowerCase()))
               );
 
               const isConfirmingDelete = profileDeleteConfirmId === prof.id || profileDeleteConfirmId === prof.name;
@@ -1123,7 +1123,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
 
               return (
                 <div
-                  key={prof.id}
+                  key={prof.id || prof.name || `um-prof-card-${idx}`}
                   className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md space-y-3 relative overflow-hidden flex flex-col justify-between hover:border-purple-500/40 transition-colors"
                 >
                   <div>
@@ -1244,8 +1244,8 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {limitations.map((lim) => (
-                <div key={lim.id} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-xs space-y-2">
+              {limitations.map((lim, idx) => (
+                <div key={lim.id || lim.name || `um-lim-card-${idx}`} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-xs space-y-2">
                   <div className="font-bold text-cyan-400 flex items-center justify-between">
                     <span>{lim.name}</span>
                   </div>
@@ -1309,9 +1309,9 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                   onChange={(e) => setBatchTemplateId(e.target.value)}
                   className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500"
                 >
-                  <option value="">-- القالب الافتراضي --</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
+                  <option key="default-tpl-option" value="">-- القالب الافتراضي --</option>
+                  {templates.map((t, idx) => (
+                    <option key={t.id || `batch-template-${idx}`} value={t.id}>
                       {t.name} ({t.cardWidthMm || 85}×{t.cardHeightMm || 55} مم - {t.cardsPerPage || 18} كارت/ورقة)
                     </option>
                   ))}
@@ -1326,12 +1326,12 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                   onChange={(e) => setBatchProfile(e.target.value)}
                   className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white font-mono focus:outline-none focus:border-purple-500"
                 >
-                  {profiles.map((p) => (
-                    <option key={p.id} value={p.name}>
+                  {profiles.map((p, idx) => (
+                    <option key={`batch-profile-${p.id || p.name || idx}`} value={p.name}>
                       {p.name} ({p.nameForUsers || p.name}) {p.price ? `- ${p.price} ${settings.currencySymbol}` : ''}
                     </option>
                   ))}
-                  {profiles.length === 0 && <option value="default">default</option>}
+                  {profiles.length === 0 && <option key="default-batch-profile-empty" value="default">default</option>}
                 </select>
               </div>
 
@@ -1357,9 +1357,9 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                     }}
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500"
                   >
-                    <option value="">-- عام (بدون تحديد نقطة بيع / لجميع النقاط) --</option>
-                    {posPoints.map((pos) => (
-                      <option key={pos.id} value={pos.id}>
+                    <option key="pos-general-option" value="">-- عام (بدون تحديد نقطة بيع / لجميع النقاط) --</option>
+                    {posPoints.map((pos, idx) => (
+                      <option key={pos.id || `pos-opt-${idx}`} value={pos.id}>
                         {pos.name} {pos.location ? `(${pos.location})` : ''}
                       </option>
                     ))}
@@ -2136,7 +2136,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                   ).map((pageCards, pageIdx) => {
                     const pageDisplayNumber = previewPageMode === 'single_page' ? activePreviewPage + 1 : pageIdx + 1;
                     return (
-                      <div key={pageIdx} className="flex flex-col items-center gap-2 w-full">
+                      <div key={`page-sheet-${previewPageMode === 'single_page' ? activePreviewPage : pageIdx}`} className="flex flex-col items-center gap-2 w-full">
                         {totalPages > 1 && (
                           <div className="text-[11px] font-bold text-slate-400 bg-slate-900/90 px-3 py-1 rounded-full border border-slate-700 flex items-center gap-2 print:hidden select-none">
                             <span>ورقة A4 رقم {pageDisplayNumber} من {totalPages}</span>
@@ -2164,7 +2164,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                           }}
                         >
                           {pageCards.map((card, cIdx) => (
-                            <div key={cIdx} className="w-full h-full min-h-0 min-w-0 overflow-hidden relative">
+                            <div key={card.serial || card.username || `card-pos-${pageIdx}-${cIdx}`} className="w-full h-full min-h-0 min-w-0 overflow-hidden relative">
                               {isInteractivePreview && pageIdx === 0 && cIdx === 0 && (
                                 <div className="absolute top-1 left-1 z-30 pointer-events-none bg-purple-600/90 text-white font-black text-[8px] px-1.5 py-0.5 rounded shadow-xs">
                                   كارت التعديل الحي
@@ -2218,8 +2218,8 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {routers.map((r) => (
-              <div key={r.id} className="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-3">
+            {routers.map((r, idx) => (
+              <div key={r.id || r.name || `um-router-${idx}`} className="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                   <div className="flex items-center gap-2.5">
                     <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-bold">

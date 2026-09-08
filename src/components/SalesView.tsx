@@ -196,8 +196,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
       const cat = categories.find((c) => c.id === s.categoryId);
 
       // Search Query across multiple fields
-      if (advancedFilters.search.trim()) {
-        const term = advancedFilters.search.toLowerCase();
+      if (advancedFilters.search && advancedFilters.search.trim()) {
+        const term = (advancedFilters.search || '').toLowerCase();
         const matchesInvoice = s.invoiceNumber?.toLowerCase().includes(term);
         const matchesPOS = pos?.name?.toLowerCase().includes(term) || pos?.managerName?.toLowerCase().includes(term);
         const matchesCat = cat?.name?.toLowerCase().includes(term);

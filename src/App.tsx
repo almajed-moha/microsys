@@ -458,7 +458,7 @@ export default function App() {
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       // Ctrl+K or Cmd+K
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      if (e.key && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setIsGlobalSearchOpen((prev) => !prev);
         return;
@@ -878,7 +878,7 @@ export default function App() {
         saveData(STORAGE_KEYS.USERS, updatedUsers);
       }
     } else {
-      const adminExists = users.some(u => u.username.toLowerCase() === finalTenantToSave.adminUsername.toLowerCase());
+      const adminExists = users.some(u => (u.username || '').toLowerCase() === (finalTenantToSave.adminUsername || '').toLowerCase());
       if (adminExists) {
         alert('اسم المستخدم لمدير الشبكة محجوز أو موجود مسبقاً، يرجى اختيار اسم آخر.');
         return;
@@ -2799,7 +2799,14 @@ export default function App() {
 
 
               {activeView === 'mikrotik_sessions' && (
-                <MikrotikSessionsView settings={settings} />
+                <MikrotikSessionsView
+                  settings={settings}
+                  categories={scopedCategories}
+                  sales={scopedSales}
+                  invoices={scopedInvoices}
+                  dispatches={scopedDispatches}
+                  posPoints={scopedPOSPoints}
+                />
               )}
 
               {activeView === 'mikrotik' && (

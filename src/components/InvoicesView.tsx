@@ -470,8 +470,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
       if (advancedFilters.paymentType !== 'all' && inv.paymentType !== advancedFilters.paymentType) return false;
 
       // Search Query across multiple fields (Invoice Number, POS Name, Notes, DeliveredBy, ReceivedBy, Items)
-      if (advancedFilters.search.trim()) {
-        const term = advancedFilters.search.toLowerCase();
+      if (advancedFilters.search && advancedFilters.search.trim()) {
+        const term = (advancedFilters.search || '').toLowerCase();
         const matchesNumber = inv.invoiceNumber?.toLowerCase().includes(term);
         const matchesPOS = inv.posPointName?.toLowerCase().includes(term);
         const matchesNotes = inv.notes?.toLowerCase().includes(term);

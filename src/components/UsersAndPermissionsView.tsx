@@ -193,7 +193,7 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
 
   const handleAutoGenerateUserUsername = () => {
     const rolePrefix = formRole === 'super_admin' ? 'admin' : formRole.replace('_', '');
-    const cleanName = formName ? formName.trim().toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 8) : rolePrefix;
+    const cleanName = formName ? (formName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 8) : rolePrefix;
     const base = cleanName ? `${cleanName}_${rolePrefix}` : rolePrefix;
     const suggestions = generateAlternativeUsernames(base, effectiveAllUsers, posPoints, tenants);
     const chosen = suggestions[0] || `${rolePrefix}_${Date.now().toString().slice(-4)}`;
@@ -390,8 +390,8 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
       : (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : (editingUser?.networkId || 'net-microsys'));
 
     const userData: Omit<AppUser, 'id' | 'createdAt'> = {
-      name: formName.trim(),
-      username: formUsername.trim().toLowerCase(),
+      name: (formName || '').trim(),
+      username: (formUsername || '').trim().toLowerCase(),
       networkId: targetNetworkId,
       password: formPassword.trim() || undefined,
       pinCode: formPinCode.trim() || undefined,
@@ -496,11 +496,12 @@ export const UsersAndPermissionsView: React.FC<UsersAndPermissionsViewProps> = (
   // Filtered Users
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
+      const sTerm = (searchTerm || '').toLowerCase();
       const matchesSearch =
-        u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (u.name || '').toLowerCase().includes(sTerm) ||
+        (u.username || '').toLowerCase().includes(sTerm) ||
         (u.phone && u.phone.includes(searchTerm)) ||
-        (u.customRoleName && u.customRoleName.toLowerCase().includes(searchTerm.toLowerCase()));
+        (u.customRoleName && (u.customRoleName || '').toLowerCase().includes(sTerm));
 
       const matchesRole = roleFilter === 'all' || u.role === roleFilter;
       const matchesStatus = statusFilter === 'all' || u.status === statusFilter;

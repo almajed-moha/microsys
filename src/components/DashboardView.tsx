@@ -345,9 +345,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               onChange={(e) => setSelectedPOSFilter(e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
             >
-              <option value="all">جميع نقاط البيع المتوفرة ({posPoints.length} نقاط)</option>
-              {posPoints.map((pos) => (
-                <option key={pos.id} value={pos.id}>
+              <option key="all-pos" value="all">جميع نقاط البيع المتوفرة ({posPoints.length} نقاط)</option>
+              {posPoints.map((pos, idx) => (
+                <option key={pos.id || `pos-opt-${idx}`} value={pos.id}>
                   {pos.name} - (دين: {(pos.currentDebt ?? 0).toLocaleString()} {currency})
                 </option>
               ))}

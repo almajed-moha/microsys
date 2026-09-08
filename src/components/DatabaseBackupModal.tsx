@@ -183,7 +183,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
         setIsGDriveSignedIn(true);
         setGDriveFeedback({ type: 'success', message: `تم الاتصال بحساب Google بنجاح وتم تسجيل البريد (${user.email}) في بياناتك` });
         await loadGDriveFiles();
-      } else if (activeUser.email.toLowerCase() !== user.email?.toLowerCase()) {
+      } else if ((activeUser.email || '').toLowerCase() !== (user.email || '').toLowerCase()) {
         setPendingGoogleUser(user);
       } else {
         setGDriveUser(user);

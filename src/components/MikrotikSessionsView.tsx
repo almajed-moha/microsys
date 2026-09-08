@@ -34,9 +34,19 @@ import {
   ShieldAlert,
   TrendingUp,
   BarChart3,
+  Scale,
 } from 'lucide-react';
 import { printElementDocument, exportElementToPdf } from '../utils/pdfExport';
-import { NetworkSettings, MikroTikConfig, MikrotikCallerSession } from '../types';
+import {
+  NetworkSettings,
+  MikroTikConfig,
+  MikrotikCallerSession,
+  CardCategory,
+  SalesRecord,
+  InvoiceRecord,
+  CardBatchDispatch,
+  POSPoint,
+} from '../types';
 import {
   fetchMikrotikSessions,
   kickHotspotUser,
@@ -46,6 +56,7 @@ import {
 import { RemoteMikrotikWizardModal } from './RemoteMikrotikWizardModal';
 import { MikrotikExpiredCardsModal } from './MikrotikExpiredCardsModal';
 import { MikrotikDailyUsageModal } from './MikrotikDailyUsageModal';
+import { MikrotikSalesComparisonModal, parseQuotaToBytes } from './MikrotikSalesComparisonModal';
 
 const formatBytes = (bytes: number) => {
   if (!bytes || bytes <= 0) return '0 B';
@@ -69,8 +80,8 @@ const formatDate = (isoString?: string | null) => {
 };
 
 const getDeviceIcon = (hostName?: string) => {
-  if (!hostName) return <Smartphone size={16} className="text-slate-400" />;
-  const lower = hostName.toLowerCase();
+  if (!hostName || typeof hostName !== 'string') return <Smartphone size={16} className="text-slate-400" />;
+  const lower = (hostName || '').toLowerCase();
   if (
     lower.includes('desktop') ||
     lower.includes('laptop') ||
@@ -83,7 +94,23 @@ const getDeviceIcon = (hostName?: string) => {
   return <Smartphone size={16} className="text-emerald-500" />;
 };
 
-export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({ settings }) => {
+export interface MikrotikSessionsViewProps {
+  settings?: NetworkSettings;
+  categories?: CardCategory[];
+  sales?: SalesRecord[];
+  invoices?: InvoiceRecord[];
+  dispatches?: CardBatchDispatch[];
+  posPoints?: POSPoint[];
+}
+
+export const MikrotikSessionsView: React.FC<MikrotikSessionsViewProps> = ({
+  settings,
+  categories = [],
+  sales = [],
+  invoices = [],
+  dispatches = [],
+  posPoints = [],
+}) => {
   // Config selection
   const mikrotikConfig: Partial<MikroTikConfig> = useMemo(() => {
     return (
@@ -100,6 +127,8 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
 
   // Remote Wizard Modal state
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  // Sales Comparison Modal state
+  const [isComparisonModalOpen, setIsComparisonModalOpen] = useState(false);
 
   // Data states
   const [sessions, setSessions] = useState<MikrotikCallerSession[]>([]);
@@ -343,11 +372,11 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
       if (sourceFilter !== 'all' && session.source !== sourceFilter) return false;
 
       // Search term
-      if (searchTerm.trim()) {
-        const query = searchTerm.toLowerCase();
-        const matchesUser = session.user.toLowerCase().includes(query);
-        const matchesIp = session.address.includes(query);
-        const matchesMac = session.macAddress.toLowerCase().includes(query);
+      if (searchTerm && searchTerm.trim()) {
+        const query = (searchTerm || '').toLowerCase();
+        const matchesUser = (session.user || '').toLowerCase().includes(query);
+        const matchesIp = (session.address || '').includes(query);
+        const matchesMac = (session.macAddress || '').toLowerCase().includes(query);
         const matchesHost = (session.hostName || '').toLowerCase().includes(query);
         const matchesComment = (session.comment || '').toLowerCase().includes(query);
         if (!matchesUser && !matchesIp && !matchesMac && !matchesHost && !matchesComment) {
@@ -357,7 +386,7 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
 
       // Date range filter
       if (fromDate || toDate) {
-        const sessionDate = session.loginTime.split('T')[0];
+        const sessionDate = (session.loginTime || '').split('T')[0];
         if (fromDate && sessionDate < fromDate) return false;
         if (toDate && sessionDate > toDate) return false;
       }
@@ -405,6 +434,28 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
       activeCount: todaySessions.length,
     };
   }, [sessions]);
+
+  // Today's consumption vs sales comparison quick stats
+  const todayComparison = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const daySales = sales.filter((s) => s.date === today);
+    let totalCards = 0;
+    let soldQuotaBytes = 0;
+    for (const s of daySales) {
+      const cat = categories.find((c) => c.id === s.categoryId || c.name === s.categoryId);
+      const quotaBytes = parseQuotaToBytes(cat?.quotaLimit, cat?.name);
+      totalCards += s.quantity || 0;
+      soldQuotaBytes += (s.quantity || 0) * quotaBytes;
+    }
+    const routerTotal = todayPull.total;
+    const diffBytes = routerTotal - soldQuotaBytes;
+    return {
+      soldQuotaBytes,
+      totalCards,
+      diffBytes,
+      isLeakage: diffBytes > 1024 * 1024 * 1024,
+    };
+  }, [sales, categories, todayPull]);
 
   return (
     <div className="space-y-6 animate-fade-in" id="mikrotik-sessions-report">
@@ -492,6 +543,19 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
             <span>الاستهلاك اليومي</span>
             <span className="px-2 py-0.5 rounded-full bg-teal-600 text-white text-xs font-mono font-bold" dir="ltr">
               {formatBytes(todayPull.total)}
+            </span>
+          </button>
+
+          {/* Sales vs Consumption Comparison Button */}
+          <button
+            onClick={() => setIsComparisonModalOpen(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 hover:border-purple-300 text-purple-800 rounded-xl transition-all shadow-xs flex items-center gap-2 text-sm font-bold"
+            title="مقارنة سحب المايكروتك مع مبيعات الباقات وكشف الفاقد اليومي"
+          >
+            <Scale size={16} className="text-purple-600" />
+            <span>مقارنة الاستهلاك والمبيعات</span>
+            <span className="px-2 py-0.5 rounded-full bg-purple-600 text-white text-xs font-bold">
+              كشف الفاقد
             </span>
           </button>
 
@@ -641,7 +705,7 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {/* Active Now */}
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-3.5">
           <div className="w-12 h-12 bg-teal-50 text-teal-600 rounded-xl flex items-center justify-center shrink-0">
@@ -676,6 +740,44 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
           <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-teal-100/80">
             <span dir="ltr">↓ {formatBytes(todayPull.download)} • ↑ {formatBytes(todayPull.upload)}</span>
             <span className="text-teal-700 font-bold group-hover:underline">عرض التفاصيل ↗</span>
+          </div>
+        </div>
+
+        {/* Sales vs Consumption Comparison Card */}
+        <div
+          onClick={() => setIsComparisonModalOpen(true)}
+          className="bg-gradient-to-br from-purple-50/80 to-indigo-50/60 hover:from-purple-100/80 hover:to-indigo-100/70 rounded-2xl p-5 border border-purple-200 shadow-sm flex flex-col justify-between cursor-pointer transition group"
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-bold text-purple-900 flex items-center gap-1">
+              <Scale size={14} className="text-purple-600" />
+              مقارنة المبيعات والفاقد
+            </span>
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                todayComparison.isLeakage
+                  ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                  : 'bg-purple-200 text-purple-900'
+              }`}
+            >
+              {todayComparison.isLeakage ? 'تنبيه فاقد' : 'تحليل الفارق'}
+            </span>
+          </div>
+          <div className="flex items-baseline gap-2 my-1">
+            <p
+              className={`text-xl font-black font-mono ${
+                todayComparison.isLeakage ? 'text-rose-700' : 'text-purple-900'
+              }`}
+              dir="ltr"
+            >
+              {todayComparison.diffBytes > 0
+                ? `+${(todayComparison.diffBytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+                : `${(todayComparison.diffBytes / (1024 * 1024 * 1024)).toFixed(1)} GB`}
+            </p>
+          </div>
+          <div className="flex items-center justify-between text-[10px] text-purple-700 pt-1 border-t border-purple-100">
+            <span>{todayComparison.totalCards} كارت مباع اليوم</span>
+            <span className="font-bold group-hover:underline">فتح المقارنة ↗</span>
           </div>
         </div>
 
@@ -1334,6 +1436,20 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
         isOpen={isDailyModalOpen}
         onClose={() => setIsDailyModalOpen(false)}
         sessions={sessions}
+        routerIdentity={routerIdentity}
+        onOpenComparisonModal={() => setIsComparisonModalOpen(true)}
+      />
+
+      {/* Sales vs Consumption Comparison Dedicated Modal */}
+      <MikrotikSalesComparisonModal
+        isOpen={isComparisonModalOpen}
+        onClose={() => setIsComparisonModalOpen(false)}
+        sessions={sessions}
+        categories={categories}
+        sales={sales}
+        invoices={invoices}
+        posPoints={posPoints}
+        settings={settings}
         routerIdentity={routerIdentity}
       />
     </div>

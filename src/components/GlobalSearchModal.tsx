@@ -784,15 +784,15 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
       }
 
       // Check keywords
-      const matchInKeywords = item.keywords.some((k) =>
-        k.toLowerCase().includes(trimmed)
+      const matchInKeywords = (item.keywords || []).some((k) =>
+        (k || '').toLowerCase().includes(trimmed)
       );
 
       return (
         matchInKeywords ||
-        item.title.toLowerCase().includes(trimmed) ||
-        (item.subtitle && item.subtitle.toLowerCase().includes(trimmed)) ||
-        (item.badge && item.badge.toLowerCase().includes(trimmed))
+        (item.title || '').toLowerCase().includes(trimmed) ||
+        (item.subtitle && (item.subtitle || '').toLowerCase().includes(trimmed)) ||
+        (item.badge && (item.badge || '').toLowerCase().includes(trimmed))
       );
     });
   }, [allSearchItems, query, selectedFilter]);
@@ -852,9 +852,9 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
       let matches = true;
       if (trimmed) {
         matches =
-          item.keywords.some((k) => k.toLowerCase().includes(trimmed)) ||
-          item.title.toLowerCase().includes(trimmed) ||
-          (item.subtitle ? item.subtitle.toLowerCase().includes(trimmed) : false);
+          (item.keywords || []).some((k) => (k || '').toLowerCase().includes(trimmed)) ||
+          (item.title || '').toLowerCase().includes(trimmed) ||
+          (item.subtitle ? (item.subtitle || '').toLowerCase().includes(trimmed) : false);
       }
       if (matches) {
         counts.all++;
@@ -1124,13 +1124,14 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
 
 // Helper function to highlight matched text
 function highlightMatch(text: string, query: string): React.ReactNode {
-  if (!query.trim()) return text;
+  if (!text || typeof text !== 'string') return text || '';
+  if (!query || !query.trim()) return text;
 
   const parts = text.split(new RegExp(`(${escapeRegExp(query.trim())})`, 'gi'));
   return (
     <>
       {parts.map((part, i) =>
-        part.toLowerCase() === query.trim().toLowerCase() ? (
+        (part || '').toLowerCase() === (query.trim() || '').toLowerCase() ? (
           <mark
             key={i}
             className="bg-amber-400/30 text-amber-200 rounded px-0.5 font-bold"

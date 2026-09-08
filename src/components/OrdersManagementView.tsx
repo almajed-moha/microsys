@@ -124,13 +124,14 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
         const matchStatus = statusFilter === 'all' || order.status === statusFilter;
         const matchPriority = priorityFilter === 'all' || order.priority === priorityFilter;
         const matchPos = selectedPosFilter === 'all' || order.posPointId === selectedPosFilter;
+        const q = (searchQuery || '').toLowerCase();
         const matchSearch =
-          searchQuery === '' ||
-          (order.orderNumber || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-          posName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          posPhone.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          posManager.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (order.notes && order.notes.toLowerCase().includes(searchQuery.toLowerCase()));
+          !q ||
+          (order.orderNumber || '').toLowerCase().includes(q) ||
+          (posName || '').toLowerCase().includes(q) ||
+          (posPhone || '').toLowerCase().includes(q) ||
+          (posManager || '').toLowerCase().includes(q) ||
+          (order.notes && (order.notes || '').toLowerCase().includes(q));
 
         return matchStatus && matchPriority && matchPos && matchSearch;
       })

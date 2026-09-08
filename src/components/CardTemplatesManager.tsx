@@ -976,7 +976,7 @@ export const CardTemplatesManager: React.FC<CardTemplatesManagerProps> = ({
                               type="button"
                               onClick={() => updateStyle({ color: swatch.hex })}
                               className={`px-2 py-1 rounded-md text-[10px] font-bold transition flex items-center gap-1.5 border ${
-                                (curStyle.color || '#ffffff').toLowerCase() === swatch.hex.toLowerCase()
+                                (curStyle.color || '#ffffff').toLowerCase() === (swatch.hex || '').toLowerCase()
                                   ? 'border-amber-400 ring-2 ring-amber-400/50'
                                   : 'border-slate-800 hover:border-slate-700'
                               }`}

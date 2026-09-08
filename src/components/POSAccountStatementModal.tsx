@@ -219,10 +219,10 @@ export const POSAccountStatementModal: React.FC<POSAccountStatementModalProps> =
         if (txTypeFilter === 'return' && tx.type !== 'invoice_return') return false;
       }
       if (searchTerm) {
-        const s = searchTerm.toLowerCase();
-        const matchesDesc = tx.description.toLowerCase().includes(s);
-        const matchesRef = tx.ref.toLowerCase().includes(s);
-        const matchesType = tx.typeName.toLowerCase().includes(s);
+        const s = (searchTerm || '').toLowerCase();
+        const matchesDesc = (tx.description || '').toLowerCase().includes(s);
+        const matchesRef = (tx.ref || '').toLowerCase().includes(s);
+        const matchesType = (tx.typeName || '').toLowerCase().includes(s);
         if (!matchesDesc && !matchesRef && !matchesType) return false;
       }
       return true;

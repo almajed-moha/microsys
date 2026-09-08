@@ -75,7 +75,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         // Find user by email
-        let targetUser = users.find((u) => u.email && u.email.toLowerCase() === firebaseUser.email?.toLowerCase());
+        let targetUser = users.find((u) => u.email && firebaseUser.email && (u.email || '').toLowerCase() === (firebaseUser.email || '').toLowerCase());
         
         if (!targetUser) {
           // Sign out immediately so they aren't stuck logged into Firebase auth
@@ -116,7 +116,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
     let targetUser = users.find(
       (u) =>
-        u.username.toLowerCase() === usernameInput.trim().toLowerCase() ||
+        (u.username || '').toLowerCase() === usernameInput.trim().toLowerCase() ||
         (u.phone && u.phone.trim() === usernameInput.trim())
     );
 
@@ -126,7 +126,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         
         targetUser = cloudUsers.find(
           (u) =>
-            u.username.toLowerCase() === usernameInput.trim().toLowerCase() ||
+            (u.username || '').toLowerCase() === usernameInput.trim().toLowerCase() ||
             (u.phone && u.phone.trim() === usernameInput.trim())
         );
 
@@ -185,7 +185,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     setIsLoggingIn(true);
     let targetUser = users.find(
       (u) =>
-        u.username.toLowerCase() === pinUsernameInput.trim().toLowerCase() ||
+        (u.username || '').toLowerCase() === pinUsernameInput.trim().toLowerCase() ||
         (u.phone && u.phone.trim() === pinUsernameInput.trim())
     );
 
@@ -195,7 +195,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         
         targetUser = cloudUsers.find(
           (u) =>
-            u.username.toLowerCase() === pinUsernameInput.trim().toLowerCase() ||
+            (u.username || '').toLowerCase() === pinUsernameInput.trim().toLowerCase() ||
             (u.phone && u.phone.trim() === pinUsernameInput.trim())
         );
 

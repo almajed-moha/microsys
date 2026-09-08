@@ -208,9 +208,9 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
       if (reasonFilter === 'traffic' && card.expireReason !== 'traffic-limit') return false;
       if (reasonFilter === 'uptime' && card.expireReason !== 'uptime-limit') return false;
 
-      if (searchTerm.trim()) {
-        const q = searchTerm.toLowerCase();
-        const matchesName = card.name.toLowerCase().includes(q);
+      if (searchTerm && searchTerm.trim()) {
+        const q = (searchTerm || '').toLowerCase();
+        const matchesName = (card.name || '').toLowerCase().includes(q);
         const matchesProfile = (card.profile || '').toLowerCase().includes(q);
         const matchesComment = (card.comment || '').toLowerCase().includes(q);
         return matchesName || matchesProfile || matchesComment;
