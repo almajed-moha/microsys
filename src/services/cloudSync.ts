@@ -196,14 +196,10 @@ export function subscribeToCloudUpdates(
         const unsub = onSnapshot(
           collection(db, collectionName),
           (snapshot) => {
-            // If changes come from local cache write, skip to avoid double render
-            if (snapshot.metadata.hasPendingWrites) return;
-
             const items: any[] = [];
             snapshot.forEach((d) => {
               items.push({ id: d.id, ...d.data() });
             });
-
             if (items.length > 0) {
               lastKnownState[storageKey] = [...items];
               setIsReceivingRemote(true);
