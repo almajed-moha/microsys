@@ -31,6 +31,9 @@ import {
   CheckSquare,
   Square,
   Filter,
+  ShieldAlert,
+  TrendingUp,
+  BarChart3,
 } from 'lucide-react';
 import { printElementDocument, exportElementToPdf } from '../utils/pdfExport';
 import { NetworkSettings, MikroTikConfig, MikrotikCallerSession } from '../types';
@@ -41,6 +44,8 @@ import {
   deleteUserManagerUser,
 } from '../utils/mikrotikApi';
 import { RemoteMikrotikWizardModal } from './RemoteMikrotikWizardModal';
+import { MikrotikExpiredCardsModal } from './MikrotikExpiredCardsModal';
+import { MikrotikDailyUsageModal } from './MikrotikDailyUsageModal';
 
 const formatBytes = (bytes: number) => {
   if (!bytes || bytes <= 0) return '0 B';
@@ -109,12 +114,16 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
   const [countdown, setCountdown] = useState<number>(15);
 
   // Filters
-  const [activeTab, setActiveTab] = useState<'active' | 'history' | 'all'>('active');
+  const [activeTab, setActiveTab] = useState<'active' | 'history' | 'expired' | 'all'>('active');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'hotspot' | 'user-manager'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const todayStr = new Date().toISOString().split('T')[0];
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+
+  // Modals state for Expired Cards & Daily Usage
+  const [isExpiredModalOpen, setIsExpiredModalOpen] = useState(false);
+  const [isDailyModalOpen, setIsDailyModalOpen] = useState(false);
 
   // Kick user modal state
   const [userToKick, setUserToKick] = useState<MikrotikCallerSession | null>(null);
@@ -318,6 +327,17 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
       // Tab filter
       if (activeTab === 'active' && !session.isActive) return false;
       if (activeTab === 'history' && session.isActive) return false;
+      if (activeTab === 'expired') {
+        if (session.isActive) return false;
+        const isTerminatedByQuota =
+          session.terminateCause?.includes('traffic') ||
+          session.terminateCause?.includes('limit') ||
+          session.terminateCause?.includes('quota') ||
+          session.terminateCause?.includes('exhausted');
+        const isTerminatedByUptime =
+          session.terminateCause?.includes('uptime') || session.terminateCause?.includes('session-timeout');
+        if (!isTerminatedByQuota && !isTerminatedByUptime) return false;
+      }
 
       // Source filter
       if (sourceFilter !== 'all' && session.source !== sourceFilter) return false;
@@ -357,6 +377,34 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
     [filteredSessions]
   );
   const totalSessionsCount = filteredSessions.length;
+
+  // Expired cards / sessions count
+  const expiredSessionsCount = useMemo(() => {
+    return sessions.filter((s) => {
+      if (s.isActive) return false;
+      const isQuota =
+        s.terminateCause?.includes('traffic') ||
+        s.terminateCause?.includes('limit') ||
+        s.terminateCause?.includes('quota') ||
+        s.terminateCause?.includes('exhausted');
+      const isUptime = s.terminateCause?.includes('uptime') || s.terminateCause?.includes('session-timeout');
+      return isQuota || isUptime;
+    }).length;
+  }, [sessions]);
+
+  // Today's total internet bandwidth pull (Download + Upload)
+  const todayPull = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const todaySessions = sessions.filter((s) => s.loginTime && s.loginTime.split('T')[0] === today);
+    const dl = todaySessions.reduce((sum, s) => sum + (s.downloadBytes || 0), 0);
+    const ul = todaySessions.reduce((sum, s) => sum + (s.uploadBytes || 0), 0);
+    return {
+      download: dl,
+      upload: ul,
+      total: dl + ul,
+      activeCount: todaySessions.length,
+    };
+  }, [sessions]);
 
   return (
     <div className="space-y-6 animate-fade-in" id="mikrotik-sessions-report">
@@ -430,6 +478,34 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
             {autoRefreshInterval > 0 && (
               <span className="text-xs bg-teal-800/60 px-1.5 py-0.5 rounded-full font-mono">
                 {countdown}s
+              </span>
+            )}
+          </button>
+
+          {/* Daily Internet Bandwidth Pull Button */}
+          <button
+            onClick={() => setIsDailyModalOpen(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-200 hover:border-teal-300 text-teal-800 rounded-xl transition-all shadow-xs flex items-center gap-2 text-sm font-bold"
+            title="عرض السحب الإجمالي خلال اليوم الواحد وساعات الذروة"
+          >
+            <TrendingUp size={16} className="text-teal-600" />
+            <span>الاستهلاك اليومي</span>
+            <span className="px-2 py-0.5 rounded-full bg-teal-600 text-white text-xs font-mono font-bold" dir="ltr">
+              {formatBytes(todayPull.total)}
+            </span>
+          </button>
+
+          {/* Expired Cards Button */}
+          <button
+            onClick={() => setIsExpiredModalOpen(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-rose-50 to-amber-50 border border-rose-200 hover:border-rose-300 text-rose-800 rounded-xl transition-all shadow-xs flex items-center gap-2 text-sm font-bold"
+            title="عرض الكروت المنتهية الرصيد والصلاحية وتنظيف الراوتر"
+          >
+            <ShieldAlert size={16} className="text-rose-600" />
+            <span>الكروت المنتهية</span>
+            {expiredSessionsCount > 0 && (
+              <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-xs font-mono font-bold animate-pulse">
+                {expiredSessionsCount}
               </span>
             )}
           </button>
@@ -565,8 +641,9 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* Active Now */}
+        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-3.5">
           <div className="w-12 h-12 bg-teal-50 text-teal-600 rounded-xl flex items-center justify-center shrink-0">
             <Wifi size={24} />
           </div>
@@ -579,37 +656,75 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center gap-4">
+        {/* Today's Total Internet Pull */}
+        <div
+          onClick={() => setIsDailyModalOpen(true)}
+          className="bg-gradient-to-br from-teal-50/70 to-emerald-50/50 hover:from-teal-50 hover:to-emerald-50 rounded-2xl p-5 border border-teal-200/80 shadow-sm flex flex-col justify-between cursor-pointer transition group"
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-bold text-teal-800 flex items-center gap-1">
+              <Zap size={14} className="text-amber-500" />
+              سحب اليوم الإجمالي
+            </span>
+            <span className="text-[10px] bg-teal-200/60 text-teal-900 px-1.5 py-0.2 rounded font-bold">اليوم</span>
+          </div>
+          <div className="flex items-baseline gap-2 my-1">
+            <p className="text-xl font-black text-slate-900 font-mono" dir="ltr">
+              {formatBytes(todayPull.total)}
+            </p>
+          </div>
+          <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-teal-100/80">
+            <span dir="ltr">↓ {formatBytes(todayPull.download)} • ↑ {formatBytes(todayPull.upload)}</span>
+            <span className="text-teal-700 font-bold group-hover:underline">عرض التفاصيل ↗</span>
+          </div>
+        </div>
+
+        {/* Download */}
+        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-3.5">
           <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shrink-0">
             <ArrowDownCircle size={24} />
           </div>
           <div>
             <p className="text-xs font-semibold text-slate-500 mb-1">إجمالي التنزيل (Download)</p>
-            <p className="text-2xl font-black text-slate-800" dir="ltr">
+            <p className="text-xl font-black text-slate-800 font-mono" dir="ltr">
               {formatBytes(totalDownload)}
             </p>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center gap-4">
+        {/* Upload */}
+        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-3.5">
           <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
             <ArrowUpCircle size={24} />
           </div>
           <div>
             <p className="text-xs font-semibold text-slate-500 mb-1">إجمالي الرفع (Upload)</p>
-            <p className="text-2xl font-black text-slate-800" dir="ltr">
+            <p className="text-xl font-black text-slate-800 font-mono" dir="ltr">
               {formatBytes(totalUpload)}
             </p>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center shrink-0">
-            <Clock size={24} />
+        {/* Expired Cards */}
+        <div
+          onClick={() => setIsExpiredModalOpen(true)}
+          className="bg-gradient-to-br from-rose-50/70 to-amber-50/50 hover:from-rose-50 hover:to-amber-50 rounded-2xl p-5 border border-rose-200/80 shadow-sm flex flex-col justify-between cursor-pointer transition group"
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-bold text-rose-800 flex items-center gap-1">
+              <ShieldAlert size={14} className="text-rose-600" />
+              الكروت المنتهية
+            </span>
+            <span className="text-[10px] bg-rose-200/70 text-rose-900 px-1.5 py-0.2 rounded font-bold">نفد الرصيد</span>
           </div>
-          <div>
-            <p className="text-xs font-semibold text-slate-500 mb-1">الجلسات المعروضة</p>
-            <p className="text-2xl font-black text-slate-800">{totalSessionsCount}</p>
+          <div className="flex items-baseline gap-2 my-1">
+            <p className="text-xl font-black text-rose-900 font-mono">
+              {expiredSessionsCount} كرت
+            </p>
+          </div>
+          <div className="flex items-center justify-between text-[10px] text-rose-600 pt-1 border-t border-rose-100/80">
+            <span>نفذ رصيدها أو انتهت</span>
+            <span className="font-bold group-hover:underline">فتح النافذة ↗</span>
           </div>
         </div>
       </div>
@@ -618,7 +733,7 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
       <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-4 print:hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           {/* Main Status Tabs */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setActiveTab('active')}
               className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
@@ -642,6 +757,17 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
               الجلسات السابقة المنتهية ({sessions.filter((s) => !s.isActive).length})
             </button>
             <button
+              onClick={() => setActiveTab('expired')}
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+                activeTab === 'expired'
+                  ? 'bg-rose-600 text-white shadow-sm'
+                  : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80'
+              }`}
+            >
+              <ShieldAlert size={16} />
+              الكروت المنتهية ({expiredSessionsCount})
+            </button>
+            <button
               onClick={() => setActiveTab('all')}
               className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
                 activeTab === 'all'
@@ -650,6 +776,26 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
               }`}
             >
               الكل ({sessions.length})
+            </button>
+          </div>
+
+          {/* Quick Modal Action Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsExpiredModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition flex items-center gap-1.5 shadow-2xs"
+              title="فتح نافذة فحص وحذف الكروت المنتهية من الراوتر"
+            >
+              <ShieldAlert size={14} />
+              <span>نافذة الكروت المنتهية</span>
+            </button>
+            <button
+              onClick={() => setIsDailyModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 transition flex items-center gap-1.5 shadow-2xs"
+              title="عرض تقرير الاستهلاك والسحب اليومي للإنترنت"
+            >
+              <TrendingUp size={14} />
+              <span>تقرير السحب اليومي</span>
             </button>
           </div>
 
@@ -1172,6 +1318,23 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
           setIsWizardOpen(false);
           loadSessions(false);
         }}
+      />
+
+      {/* Expired Cards Dedicated Modal */}
+      <MikrotikExpiredCardsModal
+        isOpen={isExpiredModalOpen}
+        onClose={() => setIsExpiredModalOpen(false)}
+        config={mikrotikConfig}
+        sessions={sessions}
+        onCardsDeleted={() => loadSessions(false)}
+      />
+
+      {/* Daily Usage Bandwidth Pull Dedicated Modal */}
+      <MikrotikDailyUsageModal
+        isOpen={isDailyModalOpen}
+        onClose={() => setIsDailyModalOpen(false)}
+        sessions={sessions}
+        routerIdentity={routerIdentity}
       />
     </div>
   );
