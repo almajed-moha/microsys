@@ -18,7 +18,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { AppUser, NetworkSettings } from '../types';
-import firebaseConfig from '../firebase-applet-config.json';
+import firebaseConfig from '../../firebase-applet-config.json';
 import { fetchUsersFromCloud } from '../services/cloudSync';
 import {
   ROLE_DEFINITIONS,

@@ -19,10 +19,12 @@ import {
   FileSpreadsheet,
   AlignLeft,
   FileSignature,
-  Sparkles
+  Sparkles,
+  Globe
 } from 'lucide-react';
 import { NetworkSettings } from '../types';
 import { exportToJSON, downloadFile } from '../utils/storage';
+import { RemoteMikrotikWizardModal } from './RemoteMikrotikWizardModal';
 
 interface NetworkSettingsModalProps {
   settings: NetworkSettings;
@@ -58,6 +60,8 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
       autoRefreshInterval: 5
     }
   });
+
+  const [showRemoteWizard, setShowRemoteWizard] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -375,10 +379,20 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
 
           {/* MikroTik API Connection Section */}
           <div className="pt-4 border-t border-slate-800 space-y-3">
-            <label className="block text-slate-300 font-bold text-xs flex items-center gap-1.5 mb-2">
-              <Server className="w-4 h-4 text-emerald-400" />
-              <span>إعدادات الربط مع سيرفر المايكروتك (MikroTik API):</span>
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-slate-300 font-bold text-xs flex items-center gap-1.5">
+                <Server className="w-4 h-4 text-emerald-400" />
+                <span>إعدادات الربط مع سيرفر المايكروتك (MikroTik API):</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowRemoteWizard(true)}
+                className="text-[11px] text-sky-400 hover:text-sky-300 font-bold flex items-center gap-1.5 bg-sky-500/10 hover:bg-sky-500/20 px-2.5 py-1 rounded-lg border border-sky-500/30 transition shadow-xs"
+              >
+                <Globe className="w-3.5 h-3.5 text-sky-400" />
+                <span>معالج الربط عن بعد 🌐</span>
+              </button>
+            </div>
             <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -538,6 +552,23 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Remote MikroTik Wizard Modal */}
+      <RemoteMikrotikWizardModal
+        isOpen={showRemoteWizard}
+        onClose={() => setShowRemoteWizard(false)}
+        currentConfig={formData.mikrotikConfig}
+        networkName={formData.networkName}
+        onApplyConfig={(updated) => {
+          setFormData((prev) => ({
+            ...prev,
+            mikrotikConfig: {
+              ...prev.mikrotikConfig!,
+              ...updated,
+            },
+          }));
+        }}
+      />
     </div>
   );
 };

@@ -101,6 +101,17 @@ import {
 import { exportElementToPdf } from '../utils/pdfExport';
 import { UserManagerView } from './UserManagerView';
 import { MikrotikMaintenanceView } from './MikrotikMaintenanceView';
+import { RemoteMikrotikWizardModal } from './RemoteMikrotikWizardModal';
+
+function isPrivateIp(host?: string): boolean {
+  if (!host) return false;
+  const clean = host.trim().toLowerCase();
+  if (clean === 'localhost' || clean === '127.0.0.1' || clean === '::1') return true;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(clean)) return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(clean)) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(clean)) return true;
+  return false;
+}
 
 interface MikrotikLiveViewProps {
   settings: NetworkSettings;
@@ -177,6 +188,9 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   const [pingTarget, setPingTarget] = useState('8.8.8.8');
   const [isPinging, setIsPinging] = useState(false);
   const [pingResults, setPingResults] = useState<any[] | null>(null);
+
+  // Remote MikroTik Connection Wizard Modal
+  const [showRemoteWizard, setShowRemoteWizard] = useState(false);
 
   // Profile Edit / Add Modal
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -744,6 +758,16 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
                 <option value={30}>كل 30 ثانية</option>
               </select>
             </div>
+
+            {/* Remote Connection Wizard Button */}
+            <button
+              onClick={() => setShowRemoteWizard(true)}
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-600 via-indigo-600 to-indigo-700 hover:from-sky-500 hover:to-indigo-600 text-white text-xs sm:text-sm font-bold shadow-lg shadow-indigo-600/25 transition shrink-0"
+              title="معالج ودليل إعدادات ربط المايكروتك عن بعد (Cloud DDNS & VPN)"
+            >
+              <Globe className="w-4 h-4 text-sky-200" />
+              <span>معالج الربط عن بعد 🌐</span>
+            </button>
 
             {/* Refresh Button */}
             <button
@@ -1879,13 +1903,39 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
       {/* SUB-VIEW 10: Settings & Connection Configuration */}
       {activeSubTab === 'settings' && (
         <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-md space-y-5 animate-in fade-in duration-200 text-xs">
+          {/* Remote Connection Guide Callout */}
+          <div className="bg-gradient-to-r from-indigo-950/70 via-slate-950 to-sky-950/50 p-4 rounded-xl border border-indigo-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-sky-400" />
+                <span className="font-bold text-white text-xs sm:text-sm">
+                  هل ترغب بربط راوترك الحقيقي عن بعد عبر الإنترنت؟
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
+                  Cloud DDNS مجاني
+                </span>
+              </div>
+              <p className="text-slate-300 text-[11px] leading-relaxed max-w-2xl">
+                يتيح لك معالج الربط عن بعد توليد سكريبتات WinBox الجاهزة لتفعيل سحابة مايكروتك الرسمية المجانية (MikroTik Cloud DDNS)، أو استخدام IP عام مع Port Forwarding، أو أنفاق VPN لمودمات 4G.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowRemoteWizard(true)}
+              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold flex items-center gap-2 shrink-0 transition shadow-lg shadow-indigo-600/30 text-xs"
+            >
+              <Globe className="w-4 h-4" />
+              <span>فتح معالج وسكربتات الربط عن بعد</span>
+            </button>
+          </div>
+
           <div className="border-b border-slate-800 pb-3">
             <h3 className="text-base font-bold text-white flex items-center gap-2">
               <Sliders className="w-5 h-5 text-indigo-400" />
               <span>إعدادات الاتصال والبروتوكول مع راوتر مايكروتك</span>
             </h3>
             <p className="text-slate-400 mt-0.5">
-              تحديد عنوان IP الراوتر، بروتوكول التخاطب (REST API أو Binary API)، وبيانات تسجيل الدخول.
+              تحديد عنوان IP أو نطاق DDNS للراوتر، بروتوكول التخاطب (REST API أو Binary API)، وبيانات تسجيل الدخول.
             </p>
           </div>
 
@@ -1901,9 +1951,26 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
                 placeholder="192.168.88.1 أو demo"
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500"
               />
-              <span className="text-[10px] text-slate-500 mt-1 block">
-                ملاحظة: يمكنك كتابة <strong className="text-indigo-400">demo</strong> لتشغيل وضع المحاكاة للاختبار دون راوتر حقيقي.
-              </span>
+              {isPrivateIp(config.host) ? (
+                <div className="mt-1.5 p-2 rounded-lg bg-amber-950/40 border border-amber-500/30 text-amber-300 text-[10px] leading-relaxed flex items-start gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong>عنوان شبكة محلية (LAN): </strong>
+                    لن يتمكن السيرفر السحابي من الوصول إلى ({config.host}) عبر الإنترنت مباشرة.
+                    <button
+                      type="button"
+                      onClick={() => setShowRemoteWizard(true)}
+                      className="text-sky-400 hover:text-sky-300 underline font-bold mr-1"
+                    >
+                      اضغط هنا لتفعيل Cloud DDNS المجاني
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  ملاحظة: يمكنك كتابة <strong className="text-indigo-400">demo</strong> لتشغيل وضع المحاكاة للاختبار دون راوتر حقيقي.
+                </span>
+              )}
             </div>
 
             <div>
@@ -2150,6 +2217,17 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Remote MikroTik Wizard Modal */}
+      <RemoteMikrotikWizardModal
+        isOpen={showRemoteWizard}
+        onClose={() => setShowRemoteWizard(false)}
+        currentConfig={config}
+        networkName={settings.networkName}
+        onApplyConfig={(updated) => {
+          saveConfig({ ...config, ...updated });
+        }}
+      />
     </div>
   );
 };
