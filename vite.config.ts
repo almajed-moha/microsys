@@ -5,7 +5,7 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
-  const basePath = process.env.BASE_PATH || (process.env.GITHUB_ACTIONS ? '/microsys/' : '/');
+  const basePath = process.env.BASE_PATH || '/';
 
   return {
     base: basePath,

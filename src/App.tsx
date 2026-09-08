@@ -741,9 +741,7 @@ export default function App() {
 
     if (usersUpdated) {
       setUsers(newUsers);
-      import('./utils/storage').then(({ saveData, STORAGE_KEYS }) => {
-        saveData(STORAGE_KEYS.USERS, newUsers);
-      });
+      saveData(STORAGE_KEYS.USERS, newUsers);
     }
   }, [posPoints, users]);
 
