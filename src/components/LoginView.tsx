@@ -18,6 +18,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { AppUser, NetworkSettings } from '../types';
+import { fetchUsersFromCloud } from '../services/cloudSync';
 import {
   ROLE_DEFINITIONS,
   getDefaultLandingViewForUser,
@@ -118,25 +119,41 @@ export const LoginView: React.FC<LoginViewProps> = ({
   };
 
   // Handle Username & Password Submission
-  const handleCredentialsSubmit = (e: React.FormEvent) => {
+  const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    setIsLoggingIn(true);
 
-    const targetUser = users.find(
+    let targetUser = users.find(
       (u) =>
         u.username.toLowerCase() === usernameInput.trim().toLowerCase() ||
         (u.phone && u.phone.trim() === usernameInput.trim())
     );
 
     if (!targetUser) {
+      try {
+        const cloudUsers = await fetchUsersFromCloud();
+        targetUser = cloudUsers.find(
+          (u) =>
+            u.username.toLowerCase() === usernameInput.trim().toLowerCase() ||
+            (u.phone && u.phone.trim() === usernameInput.trim())
+        );
+      } catch (err) {
+        console.warn('Fallback fetch failed:', err);
+      }
+    }
+
+    if (!targetUser) {
       setErrorMessage('اسم المستخدم أو رقم الهاتف غير مسجل في النظام!');
       setIsShaking(true);
+      setIsLoggingIn(false);
       setTimeout(() => setIsShaking(false), 500);
       return;
     }
 
     if (targetUser.status === 'inactive' || targetUser.status === 'suspended') {
       setErrorMessage('هذا الحساب معطل حالياً من قبل إدارة الشبكة. يرجى التواصل مع المدير العام.');
+      setIsLoggingIn(false);
       return;
     }
 
@@ -144,15 +161,17 @@ export const LoginView: React.FC<LoginViewProps> = ({
     if (passwordInput.trim() !== expectedPass) {
       setErrorMessage('كلمة المرور غير صحيحة! يرجى إعادة المحاولة أو طلب إعادة ضبطها من الإدارة.');
       setIsShaking(true);
+      setIsLoggingIn(false);
       setTimeout(() => setIsShaking(false), 500);
       return;
     }
 
+    setIsLoggingIn(false);
     executeSuccess(targetUser);
   };
 
   // Handle PIN Submission
-  const handlePinSubmit = (e?: React.FormEvent) => {
+  const handlePinSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setErrorMessage('');
 
@@ -161,21 +180,37 @@ export const LoginView: React.FC<LoginViewProps> = ({
       return;
     }
 
-    const targetUser = users.find(
+    setIsLoggingIn(true);
+    let targetUser = users.find(
       (u) =>
         u.username.toLowerCase() === pinUsernameInput.trim().toLowerCase() ||
         (u.phone && u.phone.trim() === pinUsernameInput.trim())
     );
 
     if (!targetUser) {
+      try {
+        const cloudUsers = await fetchUsersFromCloud();
+        targetUser = cloudUsers.find(
+          (u) =>
+            u.username.toLowerCase() === pinUsernameInput.trim().toLowerCase() ||
+            (u.phone && u.phone.trim() === pinUsernameInput.trim())
+        );
+      } catch (err) {
+        console.warn('Fallback fetch failed:', err);
+      }
+    }
+
+    if (!targetUser) {
       setErrorMessage('اسم المستخدم أو رقم الهاتف غير مسجل في النظام!');
       setIsShaking(true);
+      setIsLoggingIn(false);
       setTimeout(() => setIsShaking(false), 500);
       return;
     }
 
     if (targetUser.status === 'inactive' || targetUser.status === 'suspended') {
       setErrorMessage('هذا الحساب معطل حالياً من قبل إدارة الشبكة.');
+      setIsLoggingIn(false);
       return;
     }
 
@@ -183,6 +218,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     if (pinInput !== expectedPin) {
       setErrorMessage('رمز PIN غير صحيح! يرجى التحقق وإعادة المحاولة.');
       setIsShaking(true);
+      setIsLoggingIn(false);
       setTimeout(() => {
         setIsShaking(false);
         setPinInput('');
@@ -190,6 +226,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       return;
     }
 
+    setIsLoggingIn(false);
     executeSuccess(targetUser);
   };
 

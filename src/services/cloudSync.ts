@@ -141,6 +141,20 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
   }
 }
 
+export async function fetchUsersFromCloud(): Promise<any[]> {
+  if (!db) return [];
+  await ensureAuthenticatedSession();
+  try {
+    const snap = await getDocs(collection(db, COLLECTION_MAP[STORAGE_KEYS.USERS]));
+    const items: any[] = [];
+    snap.forEach((d) => items.push({ id: d.id, ...d.data() }));
+    return items;
+  } catch (err) {
+    console.warn('Failed to fetch users from cloud:', err);
+    return [];
+  }
+}
+
 /**
  * Load all collections from Firestore on startup
  */
