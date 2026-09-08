@@ -110,6 +110,34 @@ app.post("/api/mikrotik/active-users", async (req, res) => {
   }
 });
 
+// 3b. Fetch Comprehensive Mikrotik Sessions & Real Callers Statistics
+app.post("/api/mikrotik/sessions", async (req, res) => {
+  try {
+    const options = req.body;
+    if (!options?.host) {
+      return res.status(400).json({ success: false, error: "عنوان IP غير محدد" });
+    }
+
+    const sessionsData = await MikroTikService.getRouterSessions(options);
+    res.json({
+      success: true,
+      data: sessionsData.sessions,
+      activeCount: sessionsData.activeCount,
+      totalCount: sessionsData.sessions.length,
+      summary: sessionsData.summary,
+      routerIdentity: sessionsData.routerIdentity,
+    });
+  } catch (error: any) {
+    console.warn(`[MikroTik] Sessions notice (${req.body?.host}): ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر جلب إحصائيات المتصلين وجلسات الراوتر",
+      isPrivateIp: isPrivateIp(req.body?.host),
+      data: [],
+    });
+  }
+});
+
 // 4. Fetch All Connected Physical Hosts & DHCP Leases
 app.post("/api/mikrotik/connected-hosts", async (req, res) => {
   try {

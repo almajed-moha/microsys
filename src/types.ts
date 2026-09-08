@@ -490,6 +490,30 @@ export interface UserManagerSession {
   terminateCause?: string;
 }
 
+export interface MikrotikCallerSession {
+  id: string;
+  user: string;
+  address: string;
+  macAddress: string;
+  hostName?: string;
+  source: 'hotspot' | 'user-manager' | 'dhcp';
+  loginTime: string; // ISO date string
+  logoutTime: string | null; // ISO date string or null if active
+  uptime: string;
+  idleTime?: string;
+  sessionTimeLeft?: string;
+  downloadBytes: number;
+  uploadBytes: number;
+  packetsIn?: number;
+  packetsOut?: number;
+  loginBy?: string;
+  server?: string;
+  comment?: string;
+  rateLimit?: string;
+  terminateCause?: string;
+  isActive: boolean;
+}
+
 export interface HotspotActiveUser {
   id: string;
   user: string;

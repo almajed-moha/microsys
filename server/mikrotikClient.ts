@@ -67,6 +67,30 @@ export interface HotspotHost {
   comment?: string;
 }
 
+export interface MikrotikCallerSession {
+  id: string;
+  user: string;
+  address: string;
+  macAddress: string;
+  hostName?: string;
+  source: 'hotspot' | 'user-manager' | 'dhcp';
+  loginTime: string; // ISO date string
+  logoutTime: string | null; // ISO string or null if active
+  uptime: string;
+  idleTime?: string;
+  sessionTimeLeft?: string;
+  downloadBytes: number;
+  uploadBytes: number;
+  packetsIn?: number;
+  packetsOut?: number;
+  loginBy?: string;
+  server?: string;
+  comment?: string;
+  rateLimit?: string;
+  terminateCause?: string;
+  isActive: boolean;
+}
+
 export interface RouterInterface {
   id: string;
   name: string;
@@ -439,6 +463,34 @@ async function fetchRestApi(
     }
     req.end();
   });
+}
+
+function parseDurationToSeconds(duration?: string): number {
+  if (!duration) return 0;
+  const str = duration.trim().toLowerCase();
+  let total = 0;
+  
+  const w = str.match(/(\d+)w/);
+  const d = str.match(/(\d+)d/);
+  const h = str.match(/(\d+)h/);
+  const m = str.match(/(\d+)m/);
+  const s = str.match(/(\d+)s/);
+  
+  if (w) total += parseInt(w[1], 10) * 7 * 86400;
+  if (d) total += parseInt(d[1], 10) * 86400;
+  if (h) total += parseInt(h[1], 10) * 3600;
+  if (m) total += parseInt(m[1], 10) * 60;
+  if (s) total += parseInt(s[1], 10);
+  
+  if (total === 0 && str.includes(':')) {
+    const parts = str.split(':').map(p => parseInt(p, 10) || 0);
+    if (parts.length === 3) {
+      total = parts[0] * 3600 + parts[1] * 60 + parts[2];
+    } else if (parts.length === 2) {
+      total = parts[0] * 60 + parts[1];
+    }
+  }
+  return total;
 }
 
 // -------------------------------------------------------------
@@ -940,6 +992,291 @@ export class MikroTikService {
     }));
 
     return { hosts, leases };
+  }
+
+  // Fetch Comprehensive Mikrotik Sessions (Active Hotspot users + User Manager sessions + DHCP Hostnames)
+  public static async getRouterSessions(options: MikroTikConnectionOptions): Promise<{
+    sessions: MikrotikCallerSession[];
+    activeCount: number;
+    summary: {
+      totalDownload: number;
+      totalUpload: number;
+      activeNow: number;
+      totalSessions: number;
+    };
+    routerIdentity?: string;
+  }> {
+    // If demo mode explicitly requested
+    if (options.protocol === 'demo' || options.host === 'demo' || options.host === 'simulation') {
+      const now = Date.now();
+      const demoList: MikrotikCallerSession[] = [
+        {
+          id: '*1',
+          user: '849201',
+          address: '10.0.0.154',
+          macAddress: 'DC:A6:32:8B:11:4F',
+          hostName: 'Samsung-Galaxy-S23',
+          source: 'hotspot',
+          loginTime: new Date(now - 5040 * 1000).toISOString(),
+          logoutTime: null,
+          uptime: '1h 24m',
+          sessionTimeLeft: '4h 36m',
+          downloadBytes: 489000000,
+          uploadBytes: 45200000,
+          packetsIn: 32000,
+          packetsOut: 450000,
+          loginBy: 'http-chap',
+          server: 'hotspot1',
+          comment: 'كارت 200 ريال',
+          isActive: true,
+        },
+        {
+          id: '*2',
+          user: '772910',
+          address: '10.0.0.182',
+          macAddress: '48:5F:99:1C:33:AA',
+          hostName: 'iPhone-14-Pro',
+          source: 'hotspot',
+          loginTime: new Date(now - 2700 * 1000).toISOString(),
+          logoutTime: null,
+          uptime: '45m',
+          sessionTimeLeft: '2h 15m',
+          downloadBytes: 182000000,
+          uploadBytes: 12500000,
+          packetsIn: 11000,
+          packetsOut: 140000,
+          loginBy: 'mac-cookie',
+          server: 'hotspot1',
+          comment: 'كارت 100 ريال',
+          isActive: true,
+        },
+        {
+          id: '*3',
+          user: '993412',
+          address: '10.0.0.201',
+          macAddress: 'BC:D0:74:6E:9A:02',
+          hostName: 'Xiaomi-Redmi-Note-12',
+          source: 'hotspot',
+          loginTime: new Date(now - 11400 * 1000).toISOString(),
+          logoutTime: null,
+          uptime: '3h 10m',
+          sessionTimeLeft: '48m',
+          downloadBytes: 1650000000,
+          uploadBytes: 180000000,
+          packetsIn: 120000,
+          packetsOut: 1400000,
+          loginBy: 'http-chap',
+          server: 'hotspot1',
+          comment: 'كارت 500 ريال',
+          isActive: true,
+        },
+      ];
+
+      return {
+        sessions: demoList,
+        activeCount: demoList.length,
+        summary: {
+          totalDownload: demoList.reduce((acc, s) => acc + s.downloadBytes, 0),
+          totalUpload: demoList.reduce((acc, s) => acc + s.uploadBytes, 0),
+          activeNow: demoList.length,
+          totalSessions: demoList.length,
+        },
+        routerIdentity: 'MikroTik-Demo',
+      };
+    }
+
+    // REAL ROUTER: Fetch strictly live callers from router
+    const sessions: MikrotikCallerSession[] = [];
+    const seenKeys = new Set<string>();
+
+    // 1. Fetch live active hotspot callers
+    let activeUsers: HotspotActiveUser[] = [];
+    try {
+      activeUsers = await this.getActiveHotspotUsers(options);
+    } catch (e: any) {
+      console.warn('[MikroTik Sessions] getActiveHotspotUsers notice:', e.message);
+    }
+
+    // 2. Fetch connected hosts & DHCP leases to resolve device hostnames
+    const macToHost = new Map<string, string>();
+    const ipToHost = new Map<string, string>();
+    try {
+      const connected = await this.getConnectedHosts(options);
+      if (connected.leases) {
+        for (const l of connected.leases) {
+          if (l.hostName) {
+            if (l.macAddress) macToHost.set(l.macAddress.toUpperCase().trim(), l.hostName);
+            if (l.address) ipToHost.set(l.address.trim(), l.hostName);
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn('[MikroTik Sessions] getConnectedHosts notice:', e.message);
+    }
+
+    // Process real active hotspot callers
+    const nowMs = Date.now();
+    for (const u of activeUsers) {
+      const macClean = (u.macAddress || '').toUpperCase().trim();
+      const ipClean = (u.address || '').trim();
+      const hostName = macToHost.get(macClean) || ipToHost.get(ipClean) || undefined;
+      const durSec = parseDurationToSeconds(u.uptime);
+      const loginTime = durSec > 0 ? new Date(nowMs - durSec * 1000).toISOString() : new Date().toISOString();
+
+      const key = `${u.user}_${u.address || u.macAddress}`;
+      seenKeys.add(key);
+
+      sessions.push({
+        id: u.id || `active-${u.user}-${u.address}`,
+        user: u.user,
+        address: u.address,
+        macAddress: u.macAddress,
+        hostName,
+        source: 'hotspot',
+        loginTime,
+        logoutTime: null,
+        uptime: u.uptime || '0s',
+        idleTime: u.idleTime,
+        sessionTimeLeft: u.sessionTimeLeft,
+        downloadBytes: u.bytesOut || 0,
+        uploadBytes: u.bytesIn || 0,
+        packetsIn: u.packetsIn,
+        packetsOut: u.packetsOut,
+        loginBy: u.loginBy,
+        server: u.server,
+        comment: u.comment,
+        rateLimit: u.rateLimit,
+        isActive: true,
+      });
+    }
+
+    // 3. Try to fetch User Manager sessions (active and historical) if available
+    const proto = options.protocol || 'auto';
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      const isHttps = proto === 'rest_https' || options.useSsl;
+      const port = options.port || (isHttps ? 443 : 80);
+      try {
+        let umData: any[] = [];
+        try {
+          const res = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/session');
+          umData = Array.isArray(res) ? res : (res ? [res] : []);
+        } catch {
+          try {
+            const res = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/session');
+            umData = Array.isArray(res) ? res : (res ? [res] : []);
+          } catch {}
+        }
+
+        for (const s of umData) {
+          if (!s || (!s.user && !s['user'])) continue;
+          const user = s.user || s['user'];
+          const mac = (s['calling-station-id'] || s.callingStationId || s['user-mac'] || '').toUpperCase().trim();
+          const ip = s['host-ip'] || s.hostIp || s['user-ip'] || s.address || '';
+          const key = `${user}_${ip || mac}`;
+
+          const isActive = s.active === 'true' || s.active === true || s['active'] === 'yes';
+          if (isActive && seenKeys.has(key)) {
+            continue;
+          }
+
+          const fromTime = s['from-time'] || s.fromTime;
+          const tillTime = s['till-time'] || s.tillTime;
+          const uptime = s.uptime || s['uptime'] || '0s';
+          const download = Number(s.download || s['download'] || s['bytes-out']) || 0;
+          const upload = Number(s.upload || s['upload'] || s['bytes-in']) || 0;
+          const hostName = macToHost.get(mac) || ipToHost.get(ip) || undefined;
+
+          sessions.push({
+            id: s['.id'] || s.id || `um-${user}-${s['from-time'] || Math.random()}`,
+            user,
+            address: ip,
+            macAddress: mac,
+            hostName,
+            source: 'user-manager',
+            loginTime: fromTime ? new Date(fromTime).toISOString() : new Date(nowMs - parseDurationToSeconds(uptime) * 1000).toISOString(),
+            logoutTime: isActive ? null : (tillTime ? new Date(tillTime).toISOString() : new Date().toISOString()),
+            uptime,
+            downloadBytes: download,
+            uploadBytes: upload,
+            terminateCause: s['terminate-cause'] || s.terminateCause,
+            isActive,
+          });
+        }
+      } catch {}
+    } else if (proto === 'api_binary' || proto === 'api_ssl') {
+      try {
+        const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+        const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 4000);
+        await client.connect();
+        await client.login(options.username, options.password || '');
+
+        let umRes: any[] = [];
+        try {
+          umRes = await client.sendSentence(['/user-manager/session/print']);
+        } catch {
+          try {
+            umRes = await client.sendSentence(['/tool/user-manager/session/print']);
+          } catch {}
+        }
+        client.close();
+
+        for (const s of umRes) {
+          if (!s || !s['user']) continue;
+          const user = s['user'];
+          const mac = (s['calling-station-id'] || s['user-mac'] || '').toUpperCase().trim();
+          const ip = s['host-ip'] || s['user-ip'] || s['address'] || '';
+          const key = `${user}_${ip || mac}`;
+          const isActive = s['active'] === 'true' || s['active'] === 'yes';
+
+          if (isActive && seenKeys.has(key)) continue;
+
+          const uptime = s['uptime'] || '0s';
+          const download = Number(s['download'] || s['bytes-out']) || 0;
+          const upload = Number(s['upload'] || s['bytes-in']) || 0;
+          const fromTime = s['from-time'];
+          const tillTime = s['till-time'];
+          const hostName = macToHost.get(mac) || ipToHost.get(ip) || undefined;
+
+          sessions.push({
+            id: s['.id'] || `um-${user}-${Math.random()}`,
+            user,
+            address: ip,
+            macAddress: mac,
+            hostName,
+            source: 'user-manager',
+            loginTime: fromTime ? new Date(fromTime).toISOString() : new Date(nowMs - parseDurationToSeconds(uptime) * 1000).toISOString(),
+            logoutTime: isActive ? null : (tillTime ? new Date(tillTime).toISOString() : new Date().toISOString()),
+            uptime,
+            downloadBytes: download,
+            uploadBytes: upload,
+            terminateCause: s['terminate-cause'],
+            isActive,
+          });
+        }
+      } catch {}
+    }
+
+    // Sort: Active users first, then by loginTime desc
+    sessions.sort((a, b) => {
+      if (a.isActive && !b.isActive) return -1;
+      if (!a.isActive && b.isActive) return 1;
+      return new Date(b.loginTime).getTime() - new Date(a.loginTime).getTime();
+    });
+
+    const activeNow = sessions.filter(s => s.isActive).length;
+    const totalDownload = sessions.reduce((acc, s) => acc + (s.downloadBytes || 0), 0);
+    const totalUpload = sessions.reduce((acc, s) => acc + (s.uploadBytes || 0), 0);
+
+    return {
+      sessions,
+      activeCount: activeNow,
+      summary: {
+        totalDownload,
+        totalUpload,
+        activeNow,
+        totalSessions: sessions.length,
+      },
+    };
   }
 
   // Fetch Network Interfaces & Live Bandwidth

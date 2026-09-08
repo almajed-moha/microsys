@@ -5,6 +5,7 @@ import {
   HotspotHost,
   RouterInterface,
   DhcpLease,
+  MikrotikCallerSession,
 } from '../types';
 
 export interface ConnectionTestResult {
@@ -87,6 +88,77 @@ export async function fetchActiveHotspotUsers(config: Partial<MikroTikConfig>): 
   } catch (error) {
     console.warn('fetchActiveHotspotUsers notice:', error);
     return [];
+  }
+}
+
+// 3b. Fetch Comprehensive Mikrotik Sessions & Real Caller Statistics
+export async function fetchMikrotikSessions(config: Partial<MikroTikConfig>): Promise<{
+  success: boolean;
+  sessions: MikrotikCallerSession[];
+  activeCount: number;
+  totalCount: number;
+  summary: {
+    totalDownload: number;
+    totalUpload: number;
+    activeNow: number;
+    totalSessions: number;
+  };
+  routerIdentity?: string;
+  error?: string;
+  isPrivateIp?: boolean;
+}> {
+  try {
+    const res = await fetch('/api/mikrotik/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    const data = await res.json();
+    if (data.success) {
+      return {
+        success: true,
+        sessions: data.data || [],
+        activeCount: data.activeCount || 0,
+        totalCount: data.totalCount || 0,
+        summary: data.summary || {
+          totalDownload: 0,
+          totalUpload: 0,
+          activeNow: 0,
+          totalSessions: 0,
+        },
+        routerIdentity: data.routerIdentity,
+      };
+    } else {
+      return {
+        success: false,
+        sessions: [],
+        activeCount: 0,
+        totalCount: 0,
+        summary: {
+          totalDownload: 0,
+          totalUpload: 0,
+          activeNow: 0,
+          totalSessions: 0,
+        },
+        error: data.error || 'تعذر الاتصال بالراوتر',
+        isPrivateIp: data.isPrivateIp,
+      };
+    }
+  } catch (error: any) {
+    console.warn('fetchMikrotikSessions notice:', error);
+    return {
+      success: false,
+      sessions: [],
+      activeCount: 0,
+      totalCount: 0,
+      summary: {
+        totalDownload: 0,
+        totalUpload: 0,
+        activeNow: 0,
+        totalSessions: 0,
+      },
+      error: error?.message || 'خطأ في الاتصال بالخادم',
+    };
   }
 }
 
