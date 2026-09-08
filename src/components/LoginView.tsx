@@ -18,6 +18,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { AppUser, NetworkSettings } from '../types';
+import firebaseConfig from '../firebase-applet-config.json';
 import { fetchUsersFromCloud } from '../services/cloudSync';
 import {
   ROLE_DEFINITIONS,
@@ -133,13 +134,25 @@ export const LoginView: React.FC<LoginViewProps> = ({
     if (!targetUser) {
       try {
         const cloudUsers = await fetchUsersFromCloud();
+        
         targetUser = cloudUsers.find(
           (u) =>
             u.username.toLowerCase() === usernameInput.trim().toLowerCase() ||
             (u.phone && u.phone.trim() === usernameInput.trim())
         );
-      } catch (err) {
+
+        if (!targetUser) {
+           setErrorMessage(`تم الاتصال بالسحابة بنجاح ووجدنا ${cloudUsers.length} مستخدمين، لكن لم نعثر على المستخدم: ${usernameInput}. الأسماء المتوفرة: ${cloudUsers.map(u => u.username).join(', ')}`);
+           setIsShaking(true);
+           setIsLoggingIn(false);
+           setTimeout(() => setIsShaking(false), 500);
+           return;
+        }
+      } catch (err: any) {
         console.warn('Fallback fetch failed:', err);
+        setErrorMessage('تعذر الاتصال بالسحابة: ' + (err.message || err.toString()));
+        setIsLoggingIn(false);
+        return;
       }
     }
 
@@ -190,13 +203,25 @@ export const LoginView: React.FC<LoginViewProps> = ({
     if (!targetUser) {
       try {
         const cloudUsers = await fetchUsersFromCloud();
+        
         targetUser = cloudUsers.find(
           (u) =>
             u.username.toLowerCase() === pinUsernameInput.trim().toLowerCase() ||
             (u.phone && u.phone.trim() === pinUsernameInput.trim())
         );
-      } catch (err) {
+
+        if (!targetUser) {
+           setErrorMessage(`تم الاتصال بالسحابة بنجاح ووجدنا ${cloudUsers.length} مستخدمين، لكن لم نعثر على المستخدم: ${pinUsernameInput}`);
+           setIsShaking(true);
+           setIsLoggingIn(false);
+           setTimeout(() => setIsShaking(false), 500);
+           return;
+        }
+      } catch (err: any) {
         console.warn('Fallback fetch failed:', err);
+        setErrorMessage('تعذر الاتصال بالسحابة: ' + (err.message || err.toString()));
+        setIsLoggingIn(false);
+        return;
       }
     }
 

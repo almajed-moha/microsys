@@ -151,7 +151,7 @@ export async function fetchUsersFromCloud(): Promise<any[]> {
     return items;
   } catch (err) {
     console.warn('Failed to fetch users from cloud:', err);
-    return [];
+    throw err;
   }
 }
 
