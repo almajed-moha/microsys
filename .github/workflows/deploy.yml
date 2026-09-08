@@ -46,6 +46,15 @@ jobs:
       - name: Create 404.html for client-side routing
         run: cp dist/index.html dist/404.html
 
+      - name: Deploy to Firebase Hosting (Optional)
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        continue-on-error: true
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_GEN_LANG_CLIENT_0990163205 }}'
+          channelId: live
+          projectId: gen-lang-client-0990163205
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
