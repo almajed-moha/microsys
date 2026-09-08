@@ -286,6 +286,29 @@ export async function deleteConfiguredHotspotUser(config: Partial<MikroTikConfig
   }
 }
 
+// 10b. Delete Multiple Hotspot Users (Bulk)
+export async function deleteConfiguredHotspotUsersBulk(
+  config: Partial<MikroTikConfig>,
+  userIds: string[]
+): Promise<{ success: boolean; deletedCount: number; message?: string }> {
+  try {
+    const res = await fetch('/api/mikrotik/delete-users-bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, userIds }),
+    });
+    const data = await res.json();
+    return {
+      success: Boolean(data.success),
+      deletedCount: data.deletedCount || 0,
+      message: data.message,
+    };
+  } catch (error: any) {
+    console.warn('deleteConfiguredHotspotUsersBulk notice:', error);
+    return { success: false, deletedCount: 0, message: error?.message };
+  }
+}
+
 // 11. Save or Update Hotspot User Profile
 export async function saveHotspotUserProfile(
   config: Partial<MikroTikConfig>,

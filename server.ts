@@ -278,6 +278,31 @@ app.post("/api/mikrotik/delete-user", async (req, res) => {
   }
 });
 
+// 10b. Delete Multiple Hotspot Users (Bulk)
+app.post("/api/mikrotik/delete-users-bulk", async (req, res) => {
+  try {
+    const { options, userIds } = req.body;
+    if (!options?.host || !Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ success: false, error: "بيانات الراوتر وقائمة الكروت مطلوبة" });
+    }
+
+    const result = await MikroTikService.deleteHotspotUsersBulk(options, userIds);
+    res.json({
+      success: result.success,
+      deletedCount: result.deletedCount,
+      message: `تم حذف ${result.deletedCount} كارت بنجاح من المايكروتك`,
+      errors: result.errors,
+    });
+  } catch (error: any) {
+    console.warn(`[MikroTik] Bulk Delete notice: ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر حذف الكروت من الراوتر",
+      isPrivateIp: isPrivateIp(req.body?.options?.host),
+    });
+  }
+});
+
 // 11. Save / Update Hotspot User Profile
 app.post("/api/mikrotik/save-profile", async (req, res) => {
   try {

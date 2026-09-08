@@ -1666,6 +1666,36 @@ export class MikroTikService {
     return true;
   }
 
+  // 10b. Delete Multiple Hotspot Users (/ip/hotspot/user/remove bulk)
+  public static async deleteHotspotUsersBulk(
+    options: MikroTikConnectionOptions,
+    userIdsOrNames: string[]
+  ): Promise<{ success: boolean; deletedCount: number; errors?: string[] }> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      return { success: true, deletedCount: userIdsOrNames.length };
+    }
+    if (!userIdsOrNames || userIdsOrNames.length === 0) {
+      return { success: true, deletedCount: 0 };
+    }
+
+    let deletedCount = 0;
+    const errors: string[] = [];
+    for (const id of userIdsOrNames) {
+      try {
+        const ok = await this.deleteHotspotUser(options, id);
+        if (ok) deletedCount++;
+      } catch (err: any) {
+        errors.push(`${id}: ${err.message}`);
+      }
+    }
+
+    return {
+      success: deletedCount > 0 || errors.length === 0,
+      deletedCount,
+      errors: errors.length > 0 ? errors : undefined,
+    };
+  }
+
   // 11. Add / Update Hotspot User Profile (/ip/hotspot/user/profile/add or set)
   public static async saveHotspotUserProfile(
     options: MikroTikConnectionOptions,

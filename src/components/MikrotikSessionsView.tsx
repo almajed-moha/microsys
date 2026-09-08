@@ -27,10 +27,19 @@ import {
   ArrowUpCircle,
   Server,
   Zap,
+  Trash2,
+  CheckSquare,
+  Square,
+  Filter,
 } from 'lucide-react';
 import { printElementDocument, exportElementToPdf } from '../utils/pdfExport';
 import { NetworkSettings, MikroTikConfig, MikrotikCallerSession } from '../types';
-import { fetchMikrotikSessions, kickHotspotUser } from '../utils/mikrotikApi';
+import {
+  fetchMikrotikSessions,
+  kickHotspotUser,
+  deleteConfiguredHotspotUser,
+  deleteUserManagerUser,
+} from '../utils/mikrotikApi';
 import { RemoteMikrotikWizardModal } from './RemoteMikrotikWizardModal';
 
 const formatBytes = (bytes: number) => {
@@ -111,6 +120,49 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
   const [userToKick, setUserToKick] = useState<MikrotikCallerSession | null>(null);
   const [isKicking, setIsKicking] = useState(false);
   const [kickSuccessMessage, setKickSuccessMessage] = useState<string | null>(null);
+
+  // Delete card modal state
+  const [cardToDelete, setCardToDelete] = useState<MikrotikCallerSession | null>(null);
+  const [isDeletingCard, setIsDeletingCard] = useState(false);
+  const [cardDeleteSuccessMessage, setCardDeleteSuccessMessage] = useState<string | null>(null);
+
+  // Quick period helper
+  const setQuickPeriod = (period: 'today' | 'yesterday' | 'week' | 'month' | 'all') => {
+    const now = new Date();
+    if (period === 'all') {
+      setFromDate('');
+      setToDate('');
+      return;
+    }
+    if (period === 'today') {
+      const today = now.toISOString().split('T')[0];
+      setFromDate(today);
+      setToDate(today);
+      return;
+    }
+    if (period === 'yesterday') {
+      const y = new Date(now);
+      y.setDate(y.getDate() - 1);
+      const yStr = y.toISOString().split('T')[0];
+      setFromDate(yStr);
+      setToDate(yStr);
+      return;
+    }
+    if (period === 'week') {
+      const w = new Date(now);
+      w.setDate(w.getDate() - 7);
+      setFromDate(w.toISOString().split('T')[0]);
+      setToDate(now.toISOString().split('T')[0]);
+      return;
+    }
+    if (period === 'month') {
+      const m = new Date(now);
+      m.setDate(m.getDate() - 30);
+      setFromDate(m.toISOString().split('T')[0]);
+      setToDate(now.toISOString().split('T')[0]);
+      return;
+    }
+  };
 
   // Export state
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
@@ -199,6 +251,40 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
       alert(`حدث خطأ أثناء فصل المستخدم: ${err.message}`);
     } finally {
       setIsKicking(false);
+    }
+  };
+
+  // Delete Card Action (Permanently from Router Hotspot or User Manager)
+  const handleDeleteCardConfirm = async () => {
+    if (!cardToDelete) return;
+    setIsDeletingCard(true);
+    setCardDeleteSuccessMessage(null);
+
+    try {
+      let success = false;
+      const targetNameOrId = cardToDelete.user || cardToDelete.id;
+
+      if (cardToDelete.source === 'user-manager') {
+        success = await deleteUserManagerUser(mikrotikConfig, targetNameOrId);
+      } else {
+        success = await deleteConfiguredHotspotUser(mikrotikConfig, targetNameOrId);
+      }
+
+      if (success) {
+        setCardDeleteSuccessMessage(`تم حذف الكارت (${cardToDelete.user}) نهائياً من راوتر مايكروتك.`);
+        setSessions((prev) => prev.filter((s) => s.user !== cardToDelete.user));
+        setTimeout(() => {
+          setCardToDelete(null);
+          setCardDeleteSuccessMessage(null);
+          loadSessions(true);
+        }, 1500);
+      } else {
+        alert('تعذر حذف الكارت من الراوتر. تأكد من وجوده أو صلاحيات حساب الإدارة في مايكروتك.');
+      }
+    } catch (err: any) {
+      alert(`حدث خطأ أثناء حذف الكارت: ${err.message}`);
+    } finally {
+      setIsDeletingCard(false);
     }
   };
 
@@ -600,65 +686,128 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
         </div>
 
         {/* Search Bar & Date Pickers */}
-        <div className="flex flex-col md:flex-row gap-3 items-end">
-          <div className="flex-1 w-full">
-            <label className="block text-xs font-semibold text-slate-600 mb-1">بحث في المتصلين</label>
-            <div className="relative">
-              <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input
-                type="text"
-                placeholder="ابحث برقم الكرت / المستخدم، اسم الهاتف، عنوان الـ IP، أو الماك MAC..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pr-10 pl-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none text-slate-800 text-sm font-medium bg-slate-50 focus:bg-white transition-colors"
-              />
-              {searchTerm && (
+        <div className="flex flex-col gap-3">
+          {/* Quick Date Shortcuts */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="font-semibold text-slate-600 flex items-center gap-1 pl-1">
+                <Calendar size={13} className="text-teal-600" />
+                فترة الاستعراض:
+              </span>
+              <button
+                type="button"
+                onClick={() => setQuickPeriod('today')}
+                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                  fromDate === todayStr && toDate === todayStr
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                اليوم
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickPeriod('yesterday')}
+                className="px-2.5 py-1 rounded-lg font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all"
+              >
+                أمس
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickPeriod('week')}
+                className="px-2.5 py-1 rounded-lg font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all"
+              >
+                آخر 7 أيام
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickPeriod('month')}
+                className="px-2.5 py-1 rounded-lg font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all"
+              >
+                آخر 30 يوماً
+              </button>
+              {(fromDate || toDate) && (
                 <button
-                  onClick={() => setSearchTerm('')}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600"
+                  type="button"
+                  onClick={() => setQuickPeriod('all')}
+                  className="px-2.5 py-1 rounded-lg font-medium text-rose-600 bg-rose-50 hover:bg-rose-100 transition-all"
                 >
-                  مسح
+                  كافة الفترات
                 </button>
               )}
             </div>
+
+            {/* Summary Badge for Active Date Selection */}
+            {(fromDate || toDate) && (
+              <div className="text-xs bg-teal-50 text-teal-800 border border-teal-200 px-3 py-1 rounded-lg font-medium flex items-center gap-2">
+                <span>
+                  مجموع استهلاك الفترة: <strong className="font-mono font-bold text-teal-900" dir="ltr">{formatBytes(totalDownload + totalUpload)}</strong> (تحميل: {formatBytes(totalDownload)} | رفع: {formatBytes(totalUpload)})
+                </span>
+              </div>
+            )}
           </div>
 
-          <div className="w-full md:w-auto flex flex-col sm:flex-row gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">من تاريخ</label>
+          <div className="flex flex-col md:flex-row gap-3 items-end">
+            <div className="flex-1 w-full">
+              <label className="block text-xs font-semibold text-slate-600 mb-1">بحث في المتصلين</label>
               <div className="relative">
-                <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 <input
-                  type="date"
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  className="pl-3 pr-9 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none text-slate-800 text-xs font-medium bg-slate-50 focus:bg-white transition-colors"
+                  type="text"
+                  placeholder="ابحث برقم الكرت / المستخدم، اسم الهاتف، عنوان الـ IP، أو الماك MAC..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pr-10 pl-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none text-slate-800 text-sm font-medium bg-slate-50 focus:bg-white transition-colors"
                 />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600"
+                  >
+                    مسح
+                  </button>
+                )}
               </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">إلى تاريخ</label>
-              <div className="relative">
-                <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                <input
-                  type="date"
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  className="pl-3 pr-9 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none text-slate-800 text-xs font-medium bg-slate-50 focus:bg-white transition-colors"
-                />
+
+            <div className="w-full md:w-auto flex flex-col sm:flex-row gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">من تاريخ معين</label>
+                <div className="relative">
+                  <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input
+                    type="date"
+                    value={fromDate}
+                    onChange={(e) => setFromDate(e.target.value)}
+                    className="pl-3 pr-9 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none text-slate-800 text-xs font-medium bg-slate-50 focus:bg-white transition-colors"
+                  />
+                </div>
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">إلى تاريخ معين</label>
+                <div className="relative">
+                  <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input
+                    type="date"
+                    value={toDate}
+                    onChange={(e) => setToDate(e.target.value)}
+                    className="pl-3 pr-9 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none text-slate-800 text-xs font-medium bg-slate-50 focus:bg-white transition-colors"
+                  />
+                </div>
+              </div>
+              {(fromDate || toDate) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFromDate('');
+                    setToDate('');
+                  }}
+                  className="py-2 px-3 text-xs text-red-600 hover:bg-red-50 rounded-xl font-medium transition-colors"
+                >
+                  مسح التاريخ
+                </button>
+              )}
             </div>
-            {(fromDate || toDate) && (
-              <button
-                onClick={() => {
-                  setFromDate('');
-                  setToDate('');
-                }}
-                className="py-2 px-3 text-xs text-red-600 hover:bg-red-50 rounded-xl font-medium transition-colors"
-              >
-                إلغاء التواريخ
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -846,18 +995,26 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
 
                     {/* Actions */}
                     <td className="px-6 py-4 text-center print:hidden">
-                      {session.isActive ? (
+                      <div className="flex items-center justify-center gap-1.5">
+                        {session.isActive && (
+                          <button
+                            onClick={() => setUserToKick(session)}
+                            className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-xs font-semibold transition-colors inline-flex items-center gap-1"
+                            title="فصل جلسة المستخدم من راوتر مايكروتك"
+                          >
+                            <UserX size={13} />
+                            فصل
+                          </button>
+                        )}
                         <button
-                          onClick={() => setUserToKick(session)}
-                          className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-semibold transition-colors inline-flex items-center gap-1"
-                          title="فصل المستخدم من راوتر مايكروتك"
+                          onClick={() => setCardToDelete(session)}
+                          className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-semibold transition-colors inline-flex items-center gap-1"
+                          title="حذف هذا الكارت نهائياً من قاعدة بيانات الراوتر"
                         >
-                          <UserX size={13} />
-                          فصل الجلسة
+                          <Trash2 size={13} />
+                          حذف الكارت
                         </button>
-                      ) : (
-                        <span className="text-slate-300 text-xs">—</span>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -929,6 +1086,75 @@ export const MikrotikSessionsView: React.FC<{ settings?: NetworkSettings }> = ({
                   </>
                 ) : (
                   'نعم، افصل الجلسة الآن'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Card Confirmation Modal */}
+      {cardToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-scale-in">
+            <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Trash2 size={24} />
+            </div>
+
+            <h3 className="text-lg font-bold text-slate-900 text-center mb-2">
+              حذف الكارت نهائياً من راوتر مايكروتك؟
+            </h3>
+
+            <p className="text-sm text-slate-600 text-center leading-relaxed mb-4">
+              أنت على وشك حذف الكارت{' '}
+              <strong className="text-slate-800 font-mono text-base bg-slate-100 px-2 py-0.5 rounded">{cardToDelete.user}</strong>{' '}
+              نهائياً من قاعدة بيانات الراوتر ({cardToDelete.source === 'user-manager' ? 'اليوزر مانجر User Manager' : 'الهوتسبوت Hotspot Users'}).
+              لن يتمكن صاحب هذا الكارت من تسجيل الدخول مجدداً.
+            </p>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 mb-4 space-y-1">
+              <div className="flex justify-between">
+                <span>إجمالي التحميل (Download):</span>
+                <span className="font-bold text-slate-800 font-mono" dir="ltr">{formatBytes(cardToDelete.downloadBytes)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>إجمالي الرفع (Upload):</span>
+                <span className="font-bold text-slate-800 font-mono" dir="ltr">{formatBytes(cardToDelete.uploadBytes)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>مدة الاستهلاك الإجمالية:</span>
+                <span className="font-bold text-slate-800 font-mono">{cardToDelete.uptime}</span>
+              </div>
+            </div>
+
+            {cardDeleteSuccessMessage && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold mb-4 text-center">
+                {cardDeleteSuccessMessage}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setCardToDelete(null)}
+                disabled={isDeletingCard}
+                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium text-sm transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteCardConfirm}
+                disabled={isDeletingCard}
+                className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-sm transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isDeletingCard ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    جاري الحذف من الراوتر...
+                  </>
+                ) : (
+                  'نعم، احذف الكارت نهائياً'
                 )}
               </button>
             </div>

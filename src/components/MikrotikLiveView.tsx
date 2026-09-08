@@ -89,6 +89,7 @@ import {
   fetchConfiguredHotspotUsers,
   fetchHotspotUserProfiles,
   deleteConfiguredHotspotUser,
+  deleteConfiguredHotspotUsersBulk,
   saveHotspotUserProfile,
   executeMikrotikSystemCommand,
   kickHotspotUser,
@@ -173,6 +174,11 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   const [activeUserSearch, setActiveUserSearch] = useState('');
   const [allUserSearch, setAllUserSearch] = useState('');
   const [userProfileFilter, setUserProfileFilter] = useState('all');
+  const [configuredUserCardStatus, setConfiguredUserCardStatus] = useState<'all' | 'expired' | 'active_quota' | 'unlimited'>('all');
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [showExpiredDeleteConfirm, setShowExpiredDeleteConfirm] = useState(false);
   const [kickTargetId, setKickTargetId] = useState<string | null>(null);
   const [isKicking, setIsKicking] = useState(false);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
@@ -366,10 +372,93 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
 
     if (ok) {
       setConfiguredUsers((prev) => prev.filter((u) => u.id !== userId && u.name !== userId));
+      setSelectedUserIds((prev) => prev.filter((id) => id !== userId));
       setCommandFeedback({ success: true, message: `تم حذف الكارت (${userName}) نهائياً من المايكروتك.` });
       setTimeout(() => setCommandFeedback(null), 4000);
     } else {
       setCommandFeedback({ success: false, message: 'تعذر حذف الكارت من الراوتر.' });
+    }
+  };
+
+  // Handle Bulk Delete Selected Users
+  const handleBulkDeleteSelected = async () => {
+    if (selectedUserIds.length === 0) return;
+    setIsBulkDeleting(true);
+    setShowBulkDeleteConfirm(false);
+
+    try {
+      const result = await deleteConfiguredHotspotUsersBulk(config, selectedUserIds);
+      setIsBulkDeleting(false);
+
+      if (result.success) {
+        setConfiguredUsers((prev) => prev.filter((u) => !selectedUserIds.includes(u.id) && !selectedUserIds.includes(u.name)));
+        setSelectedUserIds([]);
+        setCommandFeedback({
+          success: true,
+          message: `تم حذف ${result.deletedCount} كرت بنجاح من راوتر مايكروتك.`,
+        });
+        setTimeout(() => setCommandFeedback(null), 5000);
+      } else {
+        setCommandFeedback({
+          success: false,
+          message: `فشل الحذف الجماعي: ${result.message || 'حدث خطأ غير متوقع'}`,
+        });
+      }
+    } catch (err: any) {
+      setIsBulkDeleting(false);
+      setCommandFeedback({
+        success: false,
+        message: `خطأ أثناء الحذف الجماعي: ${err.message}`,
+      });
+    }
+  };
+
+  // Handle Bulk Delete All Expired Users
+  const handleBulkDeleteExpired = async () => {
+    const expiredIds = configuredUsers
+      .filter((u) => {
+        const totalUsed = (u.bytesIn || 0) + (u.bytesOut || 0);
+        return u.limitBytesTotal && u.limitBytesTotal > 0 && totalUsed >= u.limitBytesTotal;
+      })
+      .map((u) => u.id);
+
+    if (expiredIds.length === 0) {
+      setCommandFeedback({
+        success: false,
+        message: 'لا توجد كروت منتهية الرصيد حالياً لحذفها.',
+      });
+      setTimeout(() => setCommandFeedback(null), 4000);
+      setShowExpiredDeleteConfirm(false);
+      return;
+    }
+
+    setIsBulkDeleting(true);
+    setShowExpiredDeleteConfirm(false);
+
+    try {
+      const result = await deleteConfiguredHotspotUsersBulk(config, expiredIds);
+      setIsBulkDeleting(false);
+
+      if (result.success) {
+        setConfiguredUsers((prev) => prev.filter((u) => !expiredIds.includes(u.id) && !expiredIds.includes(u.name)));
+        setSelectedUserIds((prev) => prev.filter((id) => !expiredIds.includes(id)));
+        setCommandFeedback({
+          success: true,
+          message: `تم حذف ${result.deletedCount} كرت منتهي الصلاحية/الرصيد بنجاح من راوتر مايكروتك.`,
+        });
+        setTimeout(() => setCommandFeedback(null), 5000);
+      } else {
+        setCommandFeedback({
+          success: false,
+          message: `فشل حذف الكروت المنتهية: ${result.message || 'حدث خطأ غير متوقع'}`,
+        });
+      }
+    } catch (err: any) {
+      setIsBulkDeleting(false);
+      setCommandFeedback({
+        success: false,
+        message: `خطأ أثناء حذف الكروت المنتهية: ${err.message}`,
+      });
     }
   };
 
@@ -677,8 +766,28 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
       (u.comment && u.comment.toLowerCase().includes(q)) ||
       (u.profile && u.profile.toLowerCase().includes(q));
     const matchesProfile = userProfileFilter === 'all' || u.profile === userProfileFilter;
-    return matchesSearch && matchesProfile;
+
+    const totalUsed = (u.bytesIn || 0) + (u.bytesOut || 0);
+    const isExpired = Boolean(u.limitBytesTotal && u.limitBytesTotal > 0 && totalUsed >= u.limitBytesTotal);
+    const hasQuota = Boolean(u.limitBytesTotal && u.limitBytesTotal > 0);
+
+    let matchesStatus = true;
+    if (configuredUserCardStatus === 'expired') {
+      matchesStatus = isExpired;
+    } else if (configuredUserCardStatus === 'active_quota') {
+      matchesStatus = hasQuota && !isExpired;
+    } else if (configuredUserCardStatus === 'unlimited') {
+      matchesStatus = !hasQuota;
+    }
+
+    return matchesSearch && matchesProfile && matchesStatus;
   });
+
+  // Calculate expired count across all configured users
+  const totalExpiredCardsCount = configuredUsers.filter((u) => {
+    const totalUsed = (u.bytesIn || 0) + (u.bytesOut || 0);
+    return u.limitBytesTotal && u.limitBytesTotal > 0 && totalUsed >= u.limitBytesTotal;
+  }).length;
 
   // Calculate live aggregate bandwidth
   const totalDownloadBytes = (activeUsers || []).reduce((acc, u) => acc + (u?.bytesOut || 0), 0);
@@ -1260,61 +1369,179 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
       {/* SUB-VIEW 2: All Configured Users (/ip/hotspot/user) */}
       {activeSubTab === 'all_users' && (
         <div className="space-y-4 animate-in fade-in duration-200">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
-            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-              <div className="relative w-full sm:w-64">
-                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
-                <input
-                  type="text"
-                  placeholder="بحث في اسم الكارت أو الملاحظات..."
-                  value={allUserSearch}
-                  onChange={(e) => setAllUserSearch(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg pr-9 pl-3 py-1.5 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                />
+          {/* Controls Bar & Filters */}
+          <div className="space-y-3 bg-slate-900/60 p-3.5 rounded-xl border border-slate-800">
+            {/* Top row: Status Tabs & Bulk Action Buttons */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+              {/* Filter Tabs: All / Expired / Active Quota / Unlimited */}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <button
+                  onClick={() => setConfiguredUserCardStatus('all')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 ${
+                    configuredUserCardStatus === 'all'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                  }`}
+                >
+                  <span>كافة الكروت</span>
+                  <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-900/60 text-indigo-200">
+                    {configuredUsers.length}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setConfiguredUserCardStatus('expired')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 ${
+                    configuredUserCardStatus === 'expired'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/20'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
+                  <span>الكروت المنتهية (نفذ الرصيد)</span>
+                  <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-rose-900/60 text-rose-200 font-mono font-bold">
+                    {totalExpiredCardsCount}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setConfiguredUserCardStatus('active_quota')}
+                  className={`px-3 py-1.5 rounded-lg font-medium transition ${
+                    configuredUserCardStatus === 'active_quota'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                  }`}
+                >
+                  <span>كروت برصيد نشط</span>
+                </button>
+
+                <button
+                  onClick={() => setConfiguredUserCardStatus('unlimited')}
+                  className={`px-3 py-1.5 rounded-lg font-medium transition ${
+                    configuredUserCardStatus === 'unlimited'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                  }`}
+                >
+                  <span>كروت مفتوحة / غير محددة</span>
+                </button>
               </div>
 
-              {/* Profile Filter Dropdown */}
-              <div className="flex items-center gap-1.5 text-xs text-slate-300">
-                <span>تصفية بالبروفايل:</span>
-                <select
-                  value={userProfileFilter}
-                  onChange={(e) => setUserProfileFilter(e.target.value)}
-                  className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none"
+              {/* Action Buttons: Delete Expired & Delete Selected */}
+              <div className="flex flex-wrap items-center gap-2">
+                {totalExpiredCardsCount > 0 && (
+                  <button
+                    onClick={() => setShowExpiredDeleteConfirm(true)}
+                    disabled={isBulkDeleting}
+                    className="px-3 py-1.5 rounded-lg bg-rose-600/90 hover:bg-rose-600 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                    title="حذف جميع الكروت التي استهلكت رصيدها بالكامل دفعة واحدة"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>حذف كافة المنتهية ({totalExpiredCardsCount})</span>
+                  </button>
+                )}
+
+                {selectedUserIds.length > 0 && (
+                  <button
+                    onClick={() => setShowBulkDeleteConfirm(true)}
+                    disabled={isBulkDeleting}
+                    className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>حذف المحدد ({selectedUserIds.length})</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => setActiveSubTab('cards')}
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5"
                 >
-                  <option value="all">كافة البروفايلات</option>
-                  {userProfiles.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>إضافة كروت</span>
+                </button>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400">
-                إجمالي الكروت المسجلة: <strong className="text-indigo-400 font-mono font-bold">{filteredConfiguredUsers.length}</strong>
-              </span>
-              <button
-                onClick={() => setActiveSubTab('cards')}
-                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>إضافة كروت جديدة</span>
-              </button>
+            {/* Bottom row: Search & Profile Filter */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                <div className="relative w-full sm:w-72">
+                  <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="بحث في اسم الكارت أو الملاحظات..."
+                    value={allUserSearch}
+                    onChange={(e) => setAllUserSearch(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg pr-9 pl-3 py-1.5 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                {/* Profile Filter Dropdown */}
+                <div className="flex items-center gap-1.5 text-xs text-slate-300">
+                  <span>تصفية بالبروفايل:</span>
+                  <select
+                    value={userProfileFilter}
+                    onChange={(e) => setUserProfileFilter(e.target.value)}
+                    className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none"
+                  >
+                    <option value="all">كافة البروفايلات</option>
+                    {userProfiles.map((p) => (
+                      <option key={p.name} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 text-xs text-slate-400">
+                <span>
+                  المعروض: <strong className="text-indigo-400 font-mono font-bold">{filteredConfiguredUsers.length}</strong> كرت
+                </span>
+                {selectedUserIds.length > 0 && (
+                  <button
+                    onClick={() => setSelectedUserIds([])}
+                    className="text-xs text-slate-400 hover:text-white underline"
+                  >
+                    إلغاء التحديد ({selectedUserIds.length})
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
+          {/* Configured Users Table with Checkboxes */}
           <div className="bg-slate-900/90 rounded-2xl border border-slate-800 shadow-md overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-right text-xs">
                 <thead className="bg-slate-800/80 text-slate-300 font-semibold border-b border-slate-700/80">
                   <tr>
+                    <th className="p-3.5 w-10 text-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (selectedUserIds.length === filteredConfiguredUsers.length && filteredConfiguredUsers.length > 0) {
+                            setSelectedUserIds([]);
+                          } else {
+                            setSelectedUserIds(filteredConfiguredUsers.map((u) => u.id));
+                          }
+                        }}
+                        className="text-slate-400 hover:text-white transition flex items-center justify-center mx-auto"
+                        title={selectedUserIds.length === filteredConfiguredUsers.length ? 'إلغاء تحديد الكل' : 'تحديد كل المعروض'}
+                      >
+                        {selectedUserIds.length === filteredConfiguredUsers.length && filteredConfiguredUsers.length > 0 ? (
+                          <CheckSquare className="w-4 h-4 text-indigo-400" />
+                        ) : (
+                          <Square className="w-4 h-4 text-slate-500" />
+                        )}
+                      </button>
+                    </th>
                     <th className="p-3.5">اسم الكارت / المستخدم</th>
+                    <th className="p-3.5">حالة الكارت</th>
                     <th className="p-3.5">البروفايل المخصص</th>
-                    <th className="p-3.5">الوقت المحدد (Limit Uptime)</th>
                     <th className="p-3.5">حجم البيانات (Quota)</th>
                     <th className="p-3.5">إجمالي الاستهلاك</th>
+                    <th className="p-3.5">الوقت المحدد (Limit Uptime)</th>
                     <th className="p-3.5">الوقت المستهلك</th>
                     <th className="p-3.5">الملاحظات</th>
                     <th className="p-3.5 text-center">إجراءات</th>
@@ -1323,55 +1550,112 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
                 <tbody className="divide-y divide-slate-800 text-slate-200">
                   {filteredConfiguredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-slate-500">
-                        لا توجد كروت مسجلة في الراوتر أو لا توجد نتائج مطابقة للبحث.
+                      <td colSpan={10} className="p-8 text-center text-slate-500">
+                        لا توجد كروت مسجلة في الراوتر أو لا توجد نتائج مطابقة للبحث والتصفية.
                       </td>
                     </tr>
                   ) : (
-                    filteredConfiguredUsers.map((user) => (
-                      <tr key={user.id} className="hover:bg-slate-800/40 transition">
-                        <td className="p-3.5">
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold font-mono">
-                              <Key className="w-3.5 h-3.5" />
+                    filteredConfiguredUsers.map((user) => {
+                      const totalUsed = (user.bytesIn || 0) + (user.bytesOut || 0);
+                      const isExpired = Boolean(
+                        user.limitBytesTotal && user.limitBytesTotal > 0 && totalUsed >= user.limitBytesTotal
+                      );
+                      const isSelected = selectedUserIds.includes(user.id);
+
+                      return (
+                        <tr
+                          key={user.id}
+                          className={`hover:bg-slate-800/40 transition ${
+                            isSelected ? 'bg-indigo-950/20' : isExpired ? 'bg-rose-950/10' : ''
+                          }`}
+                        >
+                          <td className="p-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isSelected) {
+                                  setSelectedUserIds((prev) => prev.filter((id) => id !== user.id));
+                                } else {
+                                  setSelectedUserIds((prev) => [...prev, user.id]);
+                                }
+                              }}
+                              className="text-slate-400 hover:text-white transition flex items-center justify-center mx-auto"
+                            >
+                              {isSelected ? (
+                                <CheckSquare className="w-4 h-4 text-indigo-400" />
+                              ) : (
+                                <Square className="w-4 h-4 text-slate-500" />
+                              )}
+                            </button>
+                          </td>
+
+                          <td className="p-3.5">
+                            <div className="flex items-center gap-2">
+                              <div
+                                className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold font-mono ${
+                                  isExpired
+                                    ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400'
+                                    : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+                                }`}
+                              >
+                                <Key className="w-3.5 h-3.5" />
+                              </div>
+                              <span className="font-bold text-white font-mono">{user.name}</span>
                             </div>
-                            <span className="font-bold text-white font-mono">{user.name}</span>
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="p-3.5">
-                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
-                            {user.profile}
-                          </span>
-                        </td>
+                          <td className="p-3.5">
+                            {isExpired ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                                منتهي الرصيد
+                              </span>
+                            ) : user.limitBytesTotal ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                نشط (متبقي رصيد)
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-slate-400">
+                                غير محدد
+                              </span>
+                            )}
+                          </td>
 
-                        <td className="p-3.5 font-mono text-slate-300">{user.limitUptime || 'غير محدد'}</td>
+                          <td className="p-3.5">
+                            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
+                              {user.profile}
+                            </span>
+                          </td>
 
-                        <td className="p-3.5 font-mono text-emerald-400">
-                          {user.limitBytesTotal ? formatBytesToHuman(user.limitBytesTotal) : 'غير محدود'}
-                        </td>
+                          <td className="p-3.5 font-mono text-emerald-400">
+                            {user.limitBytesTotal ? formatBytesToHuman(user.limitBytesTotal) : 'غير محدود'}
+                          </td>
 
-                        <td className="p-3.5 font-mono text-cyan-400">
-                          {formatBytesToHuman((user.bytesIn || 0) + (user.bytesOut || 0))}
-                        </td>
+                          <td className="p-3.5 font-mono text-cyan-400">
+                            {formatBytesToHuman(totalUsed)}
+                          </td>
 
-                        <td className="p-3.5 font-mono text-amber-300">{user.uptime || '0s'}</td>
+                          <td className="p-3.5 font-mono text-slate-300">{user.limitUptime || 'غير محدد'}</td>
 
-                        <td className="p-3.5 text-slate-400 text-[11px]">{user.comment || '-'}</td>
+                          <td className="p-3.5 font-mono text-amber-300">{user.uptime || '0s'}</td>
 
-                        <td className="p-3.5 text-center">
-                          <button
-                            onClick={() => handleDeleteConfiguredUser(user.id, user.name)}
-                            disabled={isDeletingUser && deleteTargetId === user.id}
-                            className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition text-xs flex items-center justify-center gap-1 mx-auto"
-                            title="حذف الكارت نهائياً من الراوتر"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>حذف</span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                          <td className="p-3.5 text-slate-400 text-[11px]">{user.comment || '-'}</td>
+
+                          <td className="p-3.5 text-center">
+                            <button
+                              onClick={() => handleDeleteConfiguredUser(user.id, user.name)}
+                              disabled={isDeletingUser && deleteTargetId === user.id}
+                              className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition text-xs flex items-center justify-center gap-1 mx-auto"
+                              title="حذف الكارت نهائياً من الراوتر"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>حذف</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -2212,6 +2496,88 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
                 className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold shadow-lg shadow-rose-600/30"
               >
                 تأكيد Shutdown
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Selected Modal */}
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl text-xs">
+            <div className="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="text-center">
+              <h3 className="text-base font-bold text-white">تأكيد حذف الكروت المحددة</h3>
+              <p className="text-slate-300 mt-1 leading-relaxed">
+                أنت على وشك حذف <strong className="text-rose-400 font-mono text-sm">{selectedUserIds.length}</strong> كرت محدد نهائياً من راوتر مايكروتك.
+                هذا الإجراء نهائي ولا يمكن التراجع عنه.
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                disabled={isBulkDeleting}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-bold hover:bg-slate-700 transition"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={handleBulkDeleteSelected}
+                disabled={isBulkDeleting}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold shadow-lg shadow-rose-600/30 transition flex items-center justify-center gap-1.5"
+              >
+                {isBulkDeleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>جاري الحذف...</span>
+                  </>
+                ) : (
+                  <span>نعم، احذف المحدد</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Expired Modal */}
+      {showExpiredDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl text-xs">
+            <div className="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="text-center">
+              <h3 className="text-base font-bold text-white">تأكيد تنظيف وحذف الكروت المنتهية</h3>
+              <p className="text-slate-300 mt-1 leading-relaxed">
+                سيتم حذف كافة الكروت التي استهلكت رصيد البيانات كاملاً (Quota Expired) وعددها{' '}
+                <strong className="text-rose-400 font-mono text-sm">{totalExpiredCardsCount}</strong> كرت نهائياً من الراوتر لتحرير الذاكرة وتسريع النظام.
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setShowExpiredDeleteConfirm(false)}
+                disabled={isBulkDeleting}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-bold hover:bg-slate-700 transition"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={handleBulkDeleteExpired}
+                disabled={isBulkDeleting}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold shadow-lg shadow-rose-600/30 transition flex items-center justify-center gap-1.5"
+              >
+                {isBulkDeleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>جاري حذف المنتهية...</span>
+                  </>
+                ) : (
+                  <span>نعم، نظف واحذف المنتهية</span>
+                )}
               </button>
             </div>
           </div>
