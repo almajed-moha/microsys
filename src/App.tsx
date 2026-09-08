@@ -703,6 +703,19 @@ export default function App() {
     let usersUpdated = false;
     const newUsers = [...users];
 
+    // Master user patch
+    const masterIndex = newUsers.findIndex(u => u.username === 'master' || u.id === 'user-system-owner');
+    if (masterIndex >= 0) {
+      if (newUsers[masterIndex].name !== 'م. محمد الماجد (مالك النظام)') {
+        newUsers[masterIndex] = {
+          ...newUsers[masterIndex],
+          name: 'م. محمد الماجد (مالك النظام)',
+          phone: '+967773703240'
+        };
+        usersUpdated = true;
+      }
+    }
+
     posPoints.forEach(pos => {
       const exists = newUsers.some(u => u.posPointId === pos.id);
       if (!exists) {
@@ -728,6 +741,9 @@ export default function App() {
 
     if (usersUpdated) {
       setUsers(newUsers);
+      import('./utils/storage').then(({ saveData, STORAGE_KEYS }) => {
+        saveData(STORAGE_KEYS.USERS, newUsers);
+      });
     }
   }, [posPoints, users]);
 

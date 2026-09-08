@@ -371,10 +371,11 @@ export const initialUsers: AppUser[] = [
   {
     id: "user-system-owner",
     networkId: "system",
-    name: "م. ماجد الورد (مالك النظام)",
+    name: "م. محمد الماجد (مالك النظام)",
     username: "master",
     password: "masterpassword",
     pinCode: "0000",
+    phone: "+967773703240",
     role: "system_owner",
     customRoleName: "المالك لـ SaaS",
     avatar: "🏢",
