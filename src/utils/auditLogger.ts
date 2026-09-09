@@ -17,6 +17,13 @@ export function buildActivityLog(
         title: string;
         details?: string;
         status?: UserActivityLog['status'];
+        deletedDataType?: string;
+        deletedDataCategory?: string;
+        deletedRecordId?: string;
+        deletedRecordTitle?: string;
+        deletedDataSummary?: string;
+        deletedSnapshot?: Record<string, any>;
+        deletionReason?: string;
       },
   targetModule?: UserActivityLog['targetModule'],
   targetModuleName?: string,
@@ -35,6 +42,13 @@ export function buildActivityLog(
   let itemTitle = '';
   let itemDetails: string | undefined = undefined;
   let itemStatus: UserActivityLog['status'] = 'success';
+  let deletedDataType: string | undefined = undefined;
+  let deletedDataCategory: string | undefined = undefined;
+  let deletedRecordId: string | undefined = undefined;
+  let deletedRecordTitle: string | undefined = undefined;
+  let deletedDataSummary: string | undefined = undefined;
+  let deletedSnapshot: Record<string, any> | undefined = undefined;
+  let deletionReason: string | undefined = undefined;
 
   if (typeof actionOrParams === 'object') {
     action = actionOrParams.action;
@@ -44,6 +58,13 @@ export function buildActivityLog(
     itemTitle = actionOrParams.title;
     itemDetails = actionOrParams.details;
     itemStatus = actionOrParams.status || (actType === 'delete' ? 'danger' : actType === 'security' ? 'warning' : 'success');
+    deletedDataType = actionOrParams.deletedDataType;
+    deletedDataCategory = actionOrParams.deletedDataCategory;
+    deletedRecordId = actionOrParams.deletedRecordId;
+    deletedRecordTitle = actionOrParams.deletedRecordTitle;
+    deletedDataSummary = actionOrParams.deletedDataSummary;
+    deletedSnapshot = actionOrParams.deletedSnapshot;
+    deletionReason = actionOrParams.deletionReason;
   } else {
     action = actionOrParams;
     tModule = targetModule || 'system';
@@ -59,6 +80,7 @@ export function buildActivityLog(
     networkId: user.networkId && user.networkId !== 'system' ? user.networkId : 'net-microsys',
     userId: user.id,
     userName: user.name,
+    userUsername: user.username,
     userRole: user.role,
     userAvatar: user.avatar || '👤',
     userAvatarBg: user.avatarBgColor || 'bg-slate-700',
@@ -73,7 +95,68 @@ export function buildActivityLog(
     time: timeStr,
     ipAddress: '192.168.1.' + (Math.floor(Math.random() * 80) + 10),
     status: itemStatus,
+    deletedDataType,
+    deletedDataCategory,
+    deletedRecordId,
+    deletedRecordTitle,
+    deletedDataSummary,
+    deletedSnapshot,
+    deletionReason,
   };
+}
+
+/**
+ * Creates a specialized high-detail audit record specifically for deletion operations
+ */
+export function buildDeletionAuditLog(
+  user: AppUser,
+  params: {
+    targetModule: UserActivityLog['targetModule'];
+    targetModuleName: string;
+    deletedDataType: string;
+    deletedRecordId?: string;
+    deletedRecordTitle: string;
+    deletedDataSummary?: string;
+    deletedSnapshot?: Record<string, any>;
+    details?: string;
+    deletionReason?: string;
+    networkId?: string;
+  }
+): UserActivityLog {
+  const fullDetails = [
+    `نوع البيانات المحذوفة: ${params.deletedDataType}`,
+    params.deletedRecordTitle ? `السجل المحذوف: ${params.deletedRecordTitle}` : '',
+    params.deletedRecordId ? `معرّف السجل: ${params.deletedRecordId}` : '',
+    params.deletedDataSummary ? `تفاصيل المحتوى: ${params.deletedDataSummary}` : '',
+    params.deletionReason ? `سبب الحذف: ${params.deletionReason}` : '',
+    params.details ? `ملاحظات: ${params.details}` : '',
+    `قام بالحذف: ${user.name} (@${user.username || '-'}) - الدور: ${user.role}`,
+  ]
+    .filter(Boolean)
+    .join(' | ');
+
+  const log = buildActivityLog(user, {
+    action: `حذف ${params.deletedDataType}`,
+    actionType: 'delete',
+    targetModule: params.targetModule,
+    targetModuleName: params.targetModuleName,
+    title: `حذف نهائي: ${params.deletedRecordTitle || params.deletedDataType}`,
+    details: fullDetails,
+    status: 'danger',
+    deletedDataType: params.deletedDataType,
+    deletedDataCategory: params.targetModuleName,
+    deletedRecordId: params.deletedRecordId,
+    deletedRecordTitle: params.deletedRecordTitle,
+    deletedDataSummary: params.deletedDataSummary,
+    deletedSnapshot: params.deletedSnapshot,
+    deletionReason: params.deletionReason,
+  });
+
+  if (params.networkId) {
+    log.networkId = params.networkId;
+  }
+
+  return log;
 }
 
 /**
@@ -215,17 +298,20 @@ export function exportAuditLogsToExcel(logs: UserActivityLog[], settings?: Netwo
 
     const netName = (log.networkId && tenantNameMap && tenantNameMap[log.networkId]) || log.networkId || 'الرئيسية';
 
+    const actionDisplay = log.deletedDataType ? `حذف [${log.deletedDataType}]` : log.action;
+    const titleDisplay = log.deletedRecordTitle ? `${log.deletedRecordTitle} (${log.title})` : log.title;
+
     xml += `
    <Row ss:Height="24">
     <Cell ss:StyleID="${rowStyle}"><Data ss:Type="Number">${index + 1}</Data></Cell>
     <Cell ss:StyleID="${rowStyle}"><Data ss:Type="String">${log.date}</Data></Cell>
     <Cell ss:StyleID="${rowStyle}"><Data ss:Type="String">${log.time}</Data></Cell>
     <Cell ss:StyleID="${rowStyle}"><Data ss:Type="String">${escapeXml(netName)}</Data></Cell>
-    <Cell ss:StyleID="${rowStyle}"><Data ss:Type="String">${escapeXml(log.userName)}</Data></Cell>
+    <Cell ss:StyleID="${rowStyle}"><Data ss:Type="String">${escapeXml(log.userName)}${log.userUsername ? ` (@${escapeXml(log.userUsername)})` : ''}</Data></Cell>
     <Cell ss:StyleID="${rowStyle}"><Data ss:Type="String">${escapeXml(log.userRole || '-')}</Data></Cell>
     <Cell ss:StyleID="${rowStyle}"><Data ss:Type="String">${escapeXml(log.targetModuleName)}</Data></Cell>
-    <Cell ss:StyleID="${tagStyle}"><Data ss:Type="String">${escapeXml(log.action)}</Data></Cell>
-    <Cell ss:StyleID="${rowStyle}"><Data ss:Type="String">${escapeXml(log.title)}</Data></Cell>
+    <Cell ss:StyleID="${tagStyle}"><Data ss:Type="String">${escapeXml(actionDisplay)}</Data></Cell>
+    <Cell ss:StyleID="${rowStyle}"><Data ss:Type="String">${escapeXml(titleDisplay)}</Data></Cell>
     <Cell ss:StyleID="${rowStyle}"><Data ss:Type="String">${escapeXml(log.details || '-')}</Data></Cell>
     <Cell ss:StyleID="${rowStyle}"><Data ss:Type="String">${escapeXml(log.ipAddress || '-')}</Data></Cell>
    </Row>`;

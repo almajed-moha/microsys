@@ -824,6 +824,7 @@ export interface UserActivityLog {
   networkId?: string;
   userId: string;
   userName: string;
+  userUsername?: string;
   userRole?: UserRole | string;
   userAvatar?: string;
   userAvatarBg?: string;
@@ -838,6 +839,15 @@ export interface UserActivityLog {
   time: string; // HH:mm:ss
   ipAddress?: string;
   status?: 'success' | 'warning' | 'danger' | 'info';
+
+  // --- التفاصيل الرقابية لعمليات الحذف (Audit Trail for Deletions) ---
+  deletedDataType?: string; // نوع البيانات المحذوفة (e.g. 'فاتورة مبيعات', 'سند قبض', 'طلب كروت', 'سند صرف', 'نقطة بيع', 'فئة كروت', 'مستخدم', 'شبكة')
+  deletedDataCategory?: string; // التصنيف الوظيفي للبيانات المحذوفة
+  deletedRecordId?: string; // معرّف السجل المحذوف الفريد (ID)
+  deletedRecordTitle?: string; // رقم أو اسم السجل المحذوف للتعرف السريع
+  deletedDataSummary?: string; // ملخص تفصيلي عن القيم والأرقام الخاصة بالسجل المحذوف
+  deletedSnapshot?: Record<string, any>; // لقطة كاملة للسجل قبل حذفه للرجوع إليها عند التدقيق
+  deletionReason?: string; // سبب الحذف إن وجد
 }
 
 export interface SystemDatabaseBackupCounts {

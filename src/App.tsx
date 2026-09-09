@@ -450,7 +450,7 @@ export default function App() {
     [activityLogs, effectiveTenantId, getRecordTenantId]
   );
 
-  // Helper to log user activities
+  // Helper to log user activities with detailed deletion tracking
   const logUserActivity = useCallback(
     (
       action: string,
@@ -458,7 +458,15 @@ export default function App() {
       targetModuleName: string,
       title: string,
       details?: string,
-      actionType: UserActivityLog['actionType'] = 'create'
+      actionType: UserActivityLog['actionType'] = 'create',
+      deletionMetadata?: {
+        deletedDataType?: string;
+        deletedRecordId?: string;
+        deletedRecordTitle?: string;
+        deletedDataSummary?: string;
+        deletedSnapshot?: Record<string, any>;
+        deletionReason?: string;
+      }
     ) => {
       const newEntry = buildActivityLog(activeUser, {
         action,
@@ -467,6 +475,7 @@ export default function App() {
         title,
         details,
         actionType,
+        ...deletionMetadata,
       });
       newEntry.networkId = activeUser.networkId || currentTenantId;
       setActivityLogs((prev) => [newEntry, ...prev]);
@@ -1155,12 +1164,19 @@ export default function App() {
     }
 
     logUserActivity(
-      'حذف شبكة',
+      'حذف شبكة فرعية',
       'systemTenants',
       'إدارة جوار الشبكات (Multi-Tenant SaaS)',
       `تم حذف شبكة: ${tenantToDelete.name} مع جميع مستخدميها وبياناتها`,
-      undefined,
-      'delete'
+      `اسم مدير الشبكة: @${tenantToDelete.adminUsername} - تم مسح كافة الحسابات والعمليات المرتبطة`,
+      'delete',
+      {
+        deletedDataType: 'شبكة فرعية (Tenant)',
+        deletedRecordId: tenantId,
+        deletedRecordTitle: `شبكة ${tenantToDelete.name}`,
+        deletedDataSummary: `المعرف: ${tenantId} - مدير الشبكة: @${tenantToDelete.adminUsername} - النطاق: ${tenantToDelete.domain || 'محلي'}`,
+        deletedSnapshot: { ...tenantToDelete },
+      }
     );
   };
 
@@ -1352,21 +1368,28 @@ export default function App() {
         saveData(STORAGE_KEYS.CUSTOMERS, next);
         return next;
       });
-      return;
+    } else {
+      setPosPoints((prev) => {
+        const next = prev.filter((p) => p.id !== posId);
+        saveData(STORAGE_KEYS.POS_POINTS, next);
+        return next;
+      });
     }
-    setPosPoints((prev) => {
-      const next = prev.filter((p) => p.id !== posId);
-      saveData(STORAGE_KEYS.POS_POINTS, next);
-      return next;
-    });
 
     logUserActivity(
-      'حذف نقطة بيع',
+      'حذف نقطة بيع وموزع',
       'pos',
       'نقاط البيع والموزعين',
       `حذف نقطة البيع: ${target.name}`,
-      `تم حذف النقطة وحساب البوابة المرتبط بها`,
-      'delete'
+      `تم حذف النقطة وحساب البوابة المرتبط بها - الرصيد: ${(target.balance ?? 0).toLocaleString()} ${settings.currencySymbol} - الهاتف: ${target.phone || 'غير مسجل'}`,
+      'delete',
+      {
+        deletedDataType: 'نقطة بيع وموزع',
+        deletedRecordId: posId,
+        deletedRecordTitle: `نقطة بيع: ${target.name}`,
+        deletedDataSummary: `المسؤول: ${target.managerName || '-'} - الرصيد: ${(target.balance ?? 0).toLocaleString()} ${settings.currencySymbol} - الهاتف: ${target.phone || '-'} - اسم المستخدم: @${target.username || '-'} - الموقع: ${target.address || '-'}`,
+        deletedSnapshot: { ...target },
+      }
     );
   };
 
@@ -1516,14 +1539,28 @@ export default function App() {
     setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
     setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, payments));
 
-    // Audit Log
+    const invoiceTypeLabel = toDelete.type === 'return' ? 'فاتورة مردودات مبيعات' : 'فاتورة مبيعات كروت';
+    const targetPosName = posPoints.find((p) => p.id === toDelete.posPointId)?.name || toDelete.posPointId || 'مباشر';
+    const totalAmount = toDelete.totalWholesaleAmount ?? toDelete.finalAmount ?? 0;
+    const itemsSummary = (toDelete.items || [])
+      .map((i) => `${i.categoryName || i.categoryId}: ${i.quantity} كرت بسعر ${i.wholesalePrice}`)
+      .join('، ');
+
+    // Audit Log with comprehensive deletion forensics
     logUserActivity(
       'حذف فاتورة نهائياً',
       'invoices',
       'الفواتير والمبيعات',
-      `حذف الفاتورة رقم ${toDelete.invoiceNumber}`,
-      `تم حذف الفاتورة وقيمتها ${(toDelete.totalWholesaleAmount ?? 0).toLocaleString()} ${settings.currencySymbol}`,
-      'delete'
+      `حذف ${invoiceTypeLabel} رقم ${toDelete.invoiceNumber}`,
+      `القيمة الإجمالية: ${totalAmount.toLocaleString()} ${settings.currencySymbol} - نقطة البيع/العميل: ${targetPosName} - الأصناف: [${itemsSummary}]`,
+      'delete',
+      {
+        deletedDataType: invoiceTypeLabel,
+        deletedRecordId: invoiceId,
+        deletedRecordTitle: `فاتورة رقم ${toDelete.invoiceNumber}`,
+        deletedDataSummary: `القيمة: ${totalAmount.toLocaleString()} ${settings.currencySymbol} - نقطة البيع: ${targetPosName} - عدد الأصناف: ${toDelete.items?.length || 0} - التاريخ: ${toDelete.date}`,
+        deletedSnapshot: { ...toDelete },
+      }
     );
   };
 
@@ -1652,8 +1689,15 @@ export default function App() {
       'orders',
       'طلبات الكروت وبوابة الموزعين',
       `تم الحذف النهائي لطلب الكروت رقم ${target.orderNumber}`,
-      `قيمة الطلب المحذوف: ${target.totalWholesaleAmount} ${settings.currencySymbol}`,
-      'delete'
+      `قيمة الطلب: ${(target.totalWholesaleAmount ?? 0).toLocaleString()} ${settings.currencySymbol} - نقطة البيع: ${target.posPointName} - الكمية: ${target.totalQuantity} كرت - الحالة السابقة: ${target.status}`,
+      'delete',
+      {
+        deletedDataType: 'طلب كروت وباقة',
+        deletedRecordId: orderId,
+        deletedRecordTitle: `طلب كروت رقم ${target.orderNumber}`,
+        deletedDataSummary: `نقطة البيع: ${target.posPointName} (${target.posManagerName || 'المسؤول'}) - الكمية: ${target.totalQuantity} كرت - الإجمالي بالجملة: ${(target.totalWholesaleAmount ?? 0).toLocaleString()} ${settings.currencySymbol} - تاريخ الطلب: ${target.requestDate}`,
+        deletedSnapshot: { ...target },
+      }
     );
   };
 
@@ -1844,12 +1888,19 @@ export default function App() {
     });
     if (toDelete) {
       logUserActivity(
-        'حذف سند صرف',
+        'حذف سند صرف ومصروفات',
         'expenses',
         'المصروفات وسندات الصرف',
         `حذف سند الصرف رقم ${toDelete.voucherNumber}`,
-        `تم حذف المصروف وقيمته ${(toDelete.amount ?? 0).toLocaleString()} ${settings.currencySymbol} (البند: ${toDelete.categoryName})`,
-        'delete'
+        `المبلغ المحذوف: ${(toDelete.amount ?? 0).toLocaleString()} ${settings.currencySymbol} - البند: ${toDelete.categoryName} - المستفيد: ${toDelete.paidTo || 'عام'} - البيان: ${toDelete.notes || 'بدون بيان'}`,
+        'delete',
+        {
+          deletedDataType: 'سند صرف ومصروفات',
+          deletedRecordId: expenseId,
+          deletedRecordTitle: `سند صرف رقم ${toDelete.voucherNumber}`,
+          deletedDataSummary: `المبلغ: ${(toDelete.amount ?? 0).toLocaleString()} ${settings.currencySymbol} - البند: ${toDelete.categoryName} - المدفوع له: ${toDelete.paidTo || 'عام'} - التاريخ: ${toDelete.date}`,
+          deletedSnapshot: { ...toDelete },
+        }
       );
     }
   };
@@ -1884,12 +1935,30 @@ export default function App() {
   };
 
   const handleDeleteExpenseCategory = (catId: string) => {
+    const toDelete = expenseCategories.find((c) => c.id === catId);
     deleteDocumentFromFirestore(STORAGE_KEYS.EXPENSE_CATEGORIES, catId);
     setExpenseCategories((prev) => {
       const next = prev.filter((c) => c.id !== catId);
       saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, next);
       return next;
     });
+    if (toDelete) {
+      logUserActivity(
+        'حذف بند مصروفات',
+        'expenses',
+        'المصروفات وسندات الصرف',
+        `حذف بند المصروفات: ${toDelete.name}`,
+        `تم حذف بند المصروفات من قائمة التصنيفات`,
+        'delete',
+        {
+          deletedDataType: 'تصنيف وبند مصروفات',
+          deletedRecordId: catId,
+          deletedRecordTitle: `بند مصروفات: ${toDelete.name}`,
+          deletedDataSummary: `اسم البند: ${toDelete.name} - المعرف: ${catId}`,
+          deletedSnapshot: { ...toDelete },
+        }
+      );
+    }
   };
 
   // 4. Sales Actions (Legacy single-card sales support)
@@ -1924,12 +1993,31 @@ export default function App() {
   };
 
   const handleDeleteSale = (saleId: string) => {
+    const toDelete = sales.find((s) => s.id === saleId);
     deleteDocumentFromFirestore(STORAGE_KEYS.SALES, saleId);
     const nextSales = sales.filter((s) => s.id !== saleId);
     setSales(nextSales);
     saveData(STORAGE_KEYS.SALES, nextSales);
     setPosPoints((prev) => refreshPOSBalances(prev, invoices, nextSales, payments));
     setCustomers((prev) => refreshCustomerBalances(prev, invoices, payments));
+
+    if (toDelete) {
+      logUserActivity(
+        'حذف حركة مبيعات فردية',
+        'invoices',
+        'الفواتير والمبيعات',
+        `حذف حركة مبيعات رقم ${toDelete.invoiceNumber || toDelete.id}`,
+        `الكمية: ${toDelete.quantity} كرت - الإجمالي بالتجزئة: ${(toDelete.totalRetailAmount ?? 0).toLocaleString()} ${settings.currencySymbol} - نقطة البيع: ${toDelete.posPointName || toDelete.posPointId || '-'}`,
+        'delete',
+        {
+          deletedDataType: 'حركة مبيعات فردية',
+          deletedRecordId: saleId,
+          deletedRecordTitle: `مبيعات كروت: ${toDelete.invoiceNumber || toDelete.id}`,
+          deletedDataSummary: `الكمية: ${toDelete.quantity} كرت - المبلغ: ${(toDelete.totalRetailAmount ?? 0).toLocaleString()} ${settings.currencySymbol} - التاريخ: ${toDelete.date}`,
+          deletedSnapshot: { ...toDelete },
+        }
+      );
+    }
   };
 
   // 5. Category Actions
@@ -1987,8 +2075,15 @@ export default function App() {
         'categories',
         'فئات الكروت والمايكروتك',
         `حذف فئة الكروت: ${toDelete.name}`,
-        `تم حذف الفئة من النظام`,
-        'delete'
+        `سعر البيع تجزئة: ${toDelete.retailPrice} - جملة: ${toDelete.wholesalePrice} - الرصيد المتبقي بالمستودع: ${toDelete.warehouseStock} كرت`,
+        'delete',
+        {
+          deletedDataType: 'فئة كروت وباقة مايكروتك',
+          deletedRecordId: catId,
+          deletedRecordTitle: `فئة كروت: ${toDelete.name}`,
+          deletedDataSummary: `السعر تجزئة: ${toDelete.retailPrice} ${settings.currencySymbol} - سعر جملة: ${toDelete.wholesalePrice} ${settings.currencySymbol} - رصيد المستودع: ${toDelete.warehouseStock} كرت - الصلاحية: ${toDelete.validityDays || '-'} يوم`,
+          deletedSnapshot: { ...toDelete },
+        }
       );
     }
   };
@@ -2077,6 +2172,22 @@ export default function App() {
       saveData(STORAGE_KEYS.CATEGORIES, next);
       return next;
     });
+
+    logUserActivity(
+      'حذف إرسالية دفع كروت',
+      'categories',
+      'فئات الكروت والمايكروتك',
+      `حذف إرسالية دفع عدد ${toDelete.quantity} كرت`,
+      `الكمية: ${toDelete.quantity} كرت - المباع: ${toDelete.soldCount} كرت - نقطة البيع: ${toDelete.posPointId}`,
+      'delete',
+      {
+        deletedDataType: 'إرسالية دفع كروت',
+        deletedRecordId: dispatchId,
+        deletedRecordTitle: `إرسالية ${toDelete.quantity} كرت`,
+        deletedDataSummary: `الكمية: ${toDelete.quantity} كرت - نقطة البيع: ${toDelete.posPointId} - التاريخ: ${toDelete.date}`,
+        deletedSnapshot: { ...toDelete },
+      }
+    );
   };
 
   const handleReturnCards = (dispatchId: string, returnQty: number) => {
@@ -2188,13 +2299,21 @@ export default function App() {
     });
 
     if (toDelete) {
+      const posName = posPoints.find((p) => p.id === toDelete.posPointId)?.name || toDelete.posPointId || '-';
       logUserActivity(
-        'حذف سند قبض',
+        'حذف سند قبض وتحصيل',
         'payments',
         'المقبوضات والتحصيلات',
         `حذف سند القبض رقم ${toDelete.referenceNumber || toDelete.id.slice(-6)}`,
-        `تم حذف سند القبض وقيمته ${(toDelete.amount ?? 0).toLocaleString()} ${settings.currencySymbol}`,
-        'delete'
+        `المبلغ المحذوف: ${(toDelete.amount ?? 0).toLocaleString()} ${settings.currencySymbol} - نقطة البيع: ${posName} - طريقة الدفع: ${toDelete.paymentMethod === 'bank_transfer' ? 'تحويل بنكي' : 'نقداً'}`,
+        'delete',
+        {
+          deletedDataType: 'سند قبض وتحصيل مالي',
+          deletedRecordId: paymentId,
+          deletedRecordTitle: `سند قبض رقم ${toDelete.referenceNumber || toDelete.id.slice(-6)}`,
+          deletedDataSummary: `المبلغ: ${(toDelete.amount ?? 0).toLocaleString()} ${settings.currencySymbol} - نقطة البيع: ${posName} - طريقة الدفع: ${toDelete.paymentMethod || 'كاش'} - التاريخ: ${toDelete.date}`,
+          deletedSnapshot: { ...toDelete },
+        }
       );
     }
   };
@@ -2313,12 +2432,19 @@ export default function App() {
     }
     if (targetUser) {
       logUserActivity(
-        'حذف حساب مستخدم',
+        'حذف حساب مستخدم وصلاحيات',
         'users',
         'المستخدمين والصلاحيات',
         `حذف حساب المستخدم: ${targetUser.name} (@${targetUser.username})`,
-        `تم إزالة الحساب نهائياً من قاعدة بيانات المستخدمين`,
-        'delete'
+        `تم إزالة الحساب نهائياً من قاعدة بيانات المستخدمين - الدور: ${targetUser.customRoleName || targetUser.role} - الشبكة: ${targetUser.networkId || 'الرئيسية'}`,
+        'delete',
+        {
+          deletedDataType: 'حساب مستخدم وصلاحيات',
+          deletedRecordId: userId,
+          deletedRecordTitle: `مستخدم: ${targetUser.name} (@${targetUser.username})`,
+          deletedDataSummary: `الاسم: ${targetUser.name} - اسم الدخول: @${targetUser.username} - الدور: ${targetUser.customRoleName || targetUser.role} - الشبكة: ${targetUser.networkId || 'الرئيسية'}`,
+          deletedSnapshot: { ...targetUser },
+        }
       );
     }
   };

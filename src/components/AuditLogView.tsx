@@ -195,6 +195,7 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
         if (searchTerm && searchTerm.trim()) {
           const term = (searchTerm || '').toLowerCase();
           const matchesUser = (log.userName || '').toLowerCase().includes(term);
+          const matchesUsername = (log.userUsername || '').toLowerCase().includes(term);
           const matchesAction = (log.action || '').toLowerCase().includes(term);
           const matchesModule = (log.targetModuleName || '').toLowerCase().includes(term);
           const matchesTitle = (log.title || '').toLowerCase().includes(term);
@@ -202,8 +203,25 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
           const matchesIp = (log.ipAddress || '').includes(term);
           const netName = (getLogNetworkName(log) || '').toLowerCase();
           const matchesNet = netName.includes(term);
+          const matchesDeletedType = (log.deletedDataType || '').toLowerCase().includes(term);
+          const matchesDeletedTitle = (log.deletedRecordTitle || '').toLowerCase().includes(term);
+          const matchesDeletedId = (log.deletedRecordId || '').toLowerCase().includes(term);
+          const matchesDeletedSummary = (log.deletedDataSummary || '').toLowerCase().includes(term);
 
-          if (!matchesUser && !matchesAction && !matchesModule && !matchesTitle && !matchesDetails && !matchesIp && !matchesNet) {
+          if (
+            !matchesUser &&
+            !matchesUsername &&
+            !matchesAction &&
+            !matchesModule &&
+            !matchesTitle &&
+            !matchesDetails &&
+            !matchesIp &&
+            !matchesNet &&
+            !matchesDeletedType &&
+            !matchesDeletedTitle &&
+            !matchesDeletedId &&
+            !matchesDeletedSummary
+          ) {
             return false;
           }
         }
@@ -465,16 +483,26 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
           <span className="text-[10px] text-blue-400/80">تحديث أسعار وبيانات</span>
         </div>
 
-        {/* Deletions / Cancellations */}
-        <div className="bg-slate-900/90 border border-slate-800 p-3.5 rounded-2xl shadow-sm">
+        {/* Deletions / Cancellations - Quick Clickable Filter */}
+        <div
+          onClick={() => setSelectedActionTypeFilter((prev) => (prev === 'delete' ? 'all' : 'delete'))}
+          className={`border p-3.5 rounded-2xl shadow-sm cursor-pointer transition select-none ${
+            selectedActionTypeFilter === 'delete'
+              ? 'bg-rose-950/70 border-rose-500 ring-2 ring-rose-500/40'
+              : 'bg-slate-900/90 border-slate-800 hover:border-rose-700/60 hover:bg-slate-800/80'
+          }`}
+          title="انقر لتصفية سجلات عمليات الحذف فقط"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-400">الحذف والإلغاء</span>
-            <div className="w-7 h-7 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center">
+            <span className="text-[11px] font-bold text-slate-400">سجل المحذوفات الرقابي</span>
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${selectedActionTypeFilter === 'delete' ? 'bg-rose-500 text-white' : 'bg-rose-500/10 text-rose-400'}`}>
               <Trash2 className="w-4 h-4" />
             </div>
           </div>
           <p className="text-lg sm:text-xl font-black text-rose-400 font-mono mt-1">{metrics.deletes}</p>
-          <span className="text-[10px] text-rose-400/80">عمليات حساسة ومحذوفات</span>
+          <span className="text-[10px] text-rose-400/80 font-medium">
+            {selectedActionTypeFilter === 'delete' ? '● تصفية الحذف مفعلة (انقر للإلغاء)' : 'عمليات حساسة (انقر للتصفية)'}
+          </span>
         </div>
 
         {/* Security & Roles */}
@@ -846,6 +874,9 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
                           <div>
                             <div className="flex items-center gap-1.5">
                               <span className="font-bold text-white text-xs">{log.userName}</span>
+                              {log.userUsername && (
+                                <span className="text-[10px] text-slate-400 font-mono">@{log.userUsername}</span>
+                              )}
                               {isManager && (
                                 <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold border border-amber-500/30 flex items-center gap-0.5">
                                   <Crown className="w-2.5 h-2.5" />
@@ -876,20 +907,39 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
 
                       {/* Action Type Badge */}
                       <td className="py-3 px-3 whitespace-nowrap">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${badge.bg}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${badge.dot} animate-pulse`} />
-                          {log.action}
-                        </span>
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${badge.bg}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${badge.dot} animate-pulse`} />
+                            {log.action}
+                          </span>
+                          {log.deletedDataType && (
+                            <span className="px-1.5 py-0.5 rounded-md bg-rose-950/80 border border-rose-700/50 text-rose-300 text-[10px] font-bold flex items-center gap-1">
+                              <Trash2 className="w-2.5 h-2.5 shrink-0 text-rose-400" />
+                              <span className="truncate max-w-[120px]">{log.deletedDataType}</span>
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Title & Details snippet */}
                       <td className="py-3 px-3 max-w-xs sm:max-w-md">
-                        <div className="font-bold text-slate-100 text-xs line-clamp-1">{log.title}</div>
-                        {log.details && (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-slate-100 text-xs">{log.title}</span>
+                          {log.deletedRecordTitle && (
+                            <span className="shrink-0 px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-300 text-[10px] font-mono border border-rose-500/30">
+                              {log.deletedRecordTitle}
+                            </span>
+                          )}
+                        </div>
+                        {log.deletedDataSummary ? (
+                          <div className="text-[11px] text-rose-200 line-clamp-1 mt-0.5 font-sans bg-rose-950/30 px-2 py-0.5 rounded border border-rose-900/40">
+                            {log.deletedDataSummary}
+                          </div>
+                        ) : log.details ? (
                           <div className="text-[11px] text-slate-400 line-clamp-1 mt-0.5 font-sans">
                             {log.details}
                           </div>
-                        )}
+                        ) : null}
                       </td>
 
                       {/* IP Address */}
@@ -1022,7 +1072,70 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
             </div>
 
             {/* Modal Body */}
-            <div className="p-5 space-y-4 text-xs">
+            <div className="p-5 space-y-4 text-xs max-h-[80vh] overflow-y-auto">
+              {/* Deletion Forensics Audit Section (إذا كانت العملية عملية حذف) */}
+              {(selectedLogForDetails.actionType === 'delete' || selectedLogForDetails.deletedDataType) && (
+                <div className="bg-rose-950/40 border-2 border-rose-800/80 rounded-xl p-4 space-y-3 shadow-lg shadow-rose-950/40">
+                  <div className="flex items-center gap-2 text-rose-400 font-bold pb-2 border-b border-rose-800/50">
+                    <Trash2 className="w-4 h-4 text-rose-400 animate-pulse" />
+                    <span className="text-sm text-white">تقرير تدقيق عملية الحذف (Deletion Forensics Record)</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="bg-slate-950/80 p-2.5 rounded-lg border border-rose-900/50">
+                      <span className="text-[10px] text-rose-400 font-medium block">نوع البيانات المحذوفة:</span>
+                      <span className="font-bold text-white text-xs mt-0.5 block">
+                        {selectedLogForDetails.deletedDataType || selectedLogForDetails.targetModuleName}
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-950/80 p-2.5 rounded-lg border border-rose-900/50">
+                      <span className="text-[10px] text-rose-400 font-medium block">معرف السجل في النظام:</span>
+                      <span className="font-mono text-slate-300 text-xs mt-0.5 block truncate">
+                        {selectedLogForDetails.deletedRecordId || selectedLogForDetails.id}
+                      </span>
+                    </div>
+                  </div>
+
+                  {selectedLogForDetails.deletedRecordTitle && (
+                    <div className="bg-slate-950/80 p-2.5 rounded-lg border border-rose-900/50">
+                      <span className="text-[10px] text-rose-400 font-medium block">عنوان / رقم السجل المحذوف:</span>
+                      <span className="font-bold text-white text-xs mt-0.5 block">
+                        {selectedLogForDetails.deletedRecordTitle}
+                      </span>
+                    </div>
+                  )}
+
+                  {selectedLogForDetails.deletedDataSummary && (
+                    <div className="bg-slate-950/80 p-2.5 rounded-lg border border-rose-900/50">
+                      <span className="text-[10px] text-rose-400 font-medium block">ملخص وتفاصيل البيانات المحذوفة:</span>
+                      <p className="text-xs text-rose-200 mt-1 leading-relaxed font-sans">
+                        {selectedLogForDetails.deletedDataSummary}
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedLogForDetails.deletionReason && (
+                    <div className="bg-slate-950/80 p-2.5 rounded-lg border border-rose-900/50">
+                      <span className="text-[10px] text-rose-400 font-medium block">سبب الحذف المدون:</span>
+                      <p className="text-xs text-slate-300 mt-1">{selectedLogForDetails.deletionReason}</p>
+                    </div>
+                  )}
+
+                  {selectedLogForDetails.deletedSnapshot && (
+                    <div className="bg-slate-950/90 p-3 rounded-lg border border-rose-900/50 space-y-1.5">
+                      <div className="flex items-center justify-between text-[10px] text-rose-400">
+                        <span>لقطة البيانات قبل الحذف (Data Snapshot):</span>
+                        <span className="font-mono">JSON Archive</span>
+                      </div>
+                      <pre className="text-[11px] text-slate-300 bg-slate-950 p-2.5 rounded border border-slate-800 overflow-x-auto max-h-48 font-mono leading-tight" dir="ltr">
+                        {JSON.stringify(selectedLogForDetails.deletedSnapshot, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* User Identity Card */}
               <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -1032,6 +1145,9 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
                   <div>
                     <div className="flex items-center gap-1.5">
                       <h4 className="text-sm font-bold text-white">{selectedLogForDetails.userName}</h4>
+                      {selectedLogForDetails.userUsername && (
+                        <span className="text-xs text-slate-400 font-mono">@{selectedLogForDetails.userUsername}</span>
+                      )}
                       {isManagerLog(selectedLogForDetails) && (
                         <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30 flex items-center gap-0.5">
                           <Crown className="w-2.5 h-2.5" />
