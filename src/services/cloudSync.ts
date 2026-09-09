@@ -214,12 +214,11 @@ export function subscribeToCloudUpdates(
             snapshot.forEach((d) => {
               items.push({ id: d.id, ...d.data() });
             });
-            if (items.length > 0) {
-              lastKnownState[storageKey] = [...items];
-              setIsReceivingRemote(true);
-              onUpdate(storageKey, items);
-              setTimeout(() => setIsReceivingRemote(false), 200);
-            }
+            
+            lastKnownState[storageKey] = [...items];
+            setIsReceivingRemote(true);
+            onUpdate(storageKey, items);
+            setTimeout(() => setIsReceivingRemote(false), 200);
           },
           (error) => {
             console.warn(`Live listener error on ${collectionName}:`, error);

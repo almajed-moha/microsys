@@ -425,7 +425,9 @@ export default function App() {
   );
 
   // Authentication & Login Modal State
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => 
+    localStorage.getItem('IS_LOGGED_IN') === 'true'
+  );
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [loginModalTargetUser, setLoginModalTargetUser] = useState<AppUser | undefined>(undefined);
@@ -612,18 +614,18 @@ export default function App() {
       .then((cloudData) => {
         if (!isMounted) return;
         if (cloudData && Object.keys(cloudData).length > 0) {
-          if (cloudData[STORAGE_KEYS.USERS]?.length) setUsers(cloudData[STORAGE_KEYS.USERS]);
-          if (cloudData[STORAGE_KEYS.CUSTOMERS]?.length) setCustomers(cloudData[STORAGE_KEYS.CUSTOMERS]);
-          if (cloudData[STORAGE_KEYS.CATEGORIES]?.length) setCategories(cloudData[STORAGE_KEYS.CATEGORIES]);
-          if (cloudData[STORAGE_KEYS.POS_POINTS]?.length) setPosPoints(cloudData[STORAGE_KEYS.POS_POINTS]);
-          if (cloudData[STORAGE_KEYS.INVOICES]?.length) setInvoices(cloudData[STORAGE_KEYS.INVOICES]);
-          if (cloudData[STORAGE_KEYS.PAYMENTS]?.length) setPayments(cloudData[STORAGE_KEYS.PAYMENTS]);
-          if (cloudData[STORAGE_KEYS.EXPENSES]?.length) setExpenses(cloudData[STORAGE_KEYS.EXPENSES]);
-          if (cloudData[STORAGE_KEYS.EXPENSE_CATEGORIES]?.length) setExpenseCategories(cloudData[STORAGE_KEYS.EXPENSE_CATEGORIES]);
-          if (cloudData[STORAGE_KEYS.DISPATCHES]?.length) setDispatches(cloudData[STORAGE_KEYS.DISPATCHES]);
-          if (cloudData[STORAGE_KEYS.SALES]?.length) setSales(cloudData[STORAGE_KEYS.SALES]);
-          if (cloudData[STORAGE_KEYS.ORDERS]?.length) setOrders(cloudData[STORAGE_KEYS.ORDERS]);
-          if (cloudData[STORAGE_KEYS.TENANTS]?.length) setTenants(cloudData[STORAGE_KEYS.TENANTS]);
+          if (cloudData[STORAGE_KEYS.USERS] !== undefined) setUsers(cloudData[STORAGE_KEYS.USERS]);
+          if (cloudData[STORAGE_KEYS.CUSTOMERS] !== undefined) setCustomers(cloudData[STORAGE_KEYS.CUSTOMERS]);
+          if (cloudData[STORAGE_KEYS.CATEGORIES] !== undefined) setCategories(cloudData[STORAGE_KEYS.CATEGORIES]);
+          if (cloudData[STORAGE_KEYS.POS_POINTS] !== undefined) setPosPoints(cloudData[STORAGE_KEYS.POS_POINTS]);
+          if (cloudData[STORAGE_KEYS.INVOICES] !== undefined) setInvoices(cloudData[STORAGE_KEYS.INVOICES]);
+          if (cloudData[STORAGE_KEYS.PAYMENTS] !== undefined) setPayments(cloudData[STORAGE_KEYS.PAYMENTS]);
+          if (cloudData[STORAGE_KEYS.EXPENSES] !== undefined) setExpenses(cloudData[STORAGE_KEYS.EXPENSES]);
+          if (cloudData[STORAGE_KEYS.EXPENSE_CATEGORIES] !== undefined) setExpenseCategories(cloudData[STORAGE_KEYS.EXPENSE_CATEGORIES]);
+          if (cloudData[STORAGE_KEYS.DISPATCHES] !== undefined) setDispatches(cloudData[STORAGE_KEYS.DISPATCHES]);
+          if (cloudData[STORAGE_KEYS.SALES] !== undefined) setSales(cloudData[STORAGE_KEYS.SALES]);
+          if (cloudData[STORAGE_KEYS.ORDERS] !== undefined) setOrders(cloudData[STORAGE_KEYS.ORDERS]);
+          if (cloudData[STORAGE_KEYS.TENANTS] !== undefined) setTenants(cloudData[STORAGE_KEYS.TENANTS]);
         } else {
           // If Firestore is empty, seed current initial data to the cloud so all devices get it
           syncArrayToFirestore(STORAGE_KEYS.USERS, users);
@@ -2191,6 +2193,7 @@ export default function App() {
 
     setActiveUserId(user.id);
     saveData(STORAGE_KEYS.ACTIVE_USER_ID, user.id);
+    localStorage.setItem('IS_LOGGED_IN', 'true');
     setIsLoggedIn(true);
     setIsLoginModalOpen(false);
     setActiveView(targetView);
@@ -2279,6 +2282,7 @@ export default function App() {
     setIsLoginModalOpen(false);
     setActiveUserId('');
     localStorage.removeItem('ACTIVE_USER_ID');
+    localStorage.removeItem('IS_LOGGED_IN');
   };
 
   // Fast switch handler with auto-redirect

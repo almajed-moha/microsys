@@ -275,6 +275,17 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
+            {/* 4.5. Refresh Data Button */}
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition shadow-sm"
+              title="تحديث البيانات وجلب أحدث التغييرات من السيرفر"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">تحديث البيانات</span>
+            </button>
+
             {/* 5. Quick Payment Button (Desktop & Tablet) */}
             {onOpenQuickPayment && hasPermission(activeUser, 'payments', 'addPayment', activeTenant) && (
               <button
