@@ -31,31 +31,23 @@ export const STORAGE_KEYS = {
   CUSTOMERS: 'mikrotik_pos_customers',
 };
 
-// Determine if we are in development environment (to isolate dev data from real prod data)
-const isDevEnv = typeof window !== 'undefined' && (
-  window.location.hostname.includes('localhost') ||
-  window.location.hostname.includes('127.0.0.1') ||
-  window.location.hostname.includes('ais-dev')
-);
-
-// We add a 'dev_' prefix to all collection names in development environments
-// so that testing and code changes don't overwrite or mix with the user's real data.
-const DEV_PREFIX = isDevEnv ? 'dev_' : '';
+// Unified collections for both desktop and mobile/preview environments to ensure zero desynchronization
+const DEV_PREFIX = '';
 
 export const COLLECTION_MAP: Record<string, string> = {
-  [STORAGE_KEYS.USERS]: `${DEV_PREFIX}users`,
-  [STORAGE_KEYS.TENANTS]: `${DEV_PREFIX}tenants`,
-  [STORAGE_KEYS.CATEGORIES]: `${DEV_PREFIX}categories`,
-  [STORAGE_KEYS.POS_POINTS]: `${DEV_PREFIX}posPoints`,
-  [STORAGE_KEYS.DISPATCHES]: `${DEV_PREFIX}dispatches`,
-  [STORAGE_KEYS.SALES]: `${DEV_PREFIX}sales`,
-  [STORAGE_KEYS.PAYMENTS]: `${DEV_PREFIX}payments`,
-  [STORAGE_KEYS.INVOICES]: `${DEV_PREFIX}invoices`,
-  [STORAGE_KEYS.EXPENSES]: `${DEV_PREFIX}expenses`,
-  [STORAGE_KEYS.EXPENSE_CATEGORIES]: `${DEV_PREFIX}expenseCategories`,
-  [STORAGE_KEYS.ACTIVITY_LOGS]: `${DEV_PREFIX}activityLogs`,
-  [STORAGE_KEYS.ORDERS]: `${DEV_PREFIX}orders`,
-  [STORAGE_KEYS.CUSTOMERS]: `${DEV_PREFIX}customers`,
+  [STORAGE_KEYS.USERS]: 'users',
+  [STORAGE_KEYS.TENANTS]: 'tenants',
+  [STORAGE_KEYS.CATEGORIES]: 'categories',
+  [STORAGE_KEYS.POS_POINTS]: 'posPoints',
+  [STORAGE_KEYS.DISPATCHES]: 'dispatches',
+  [STORAGE_KEYS.SALES]: 'sales',
+  [STORAGE_KEYS.PAYMENTS]: 'payments',
+  [STORAGE_KEYS.INVOICES]: 'invoices',
+  [STORAGE_KEYS.EXPENSES]: 'expenses',
+  [STORAGE_KEYS.EXPENSE_CATEGORIES]: 'expenseCategories',
+  [STORAGE_KEYS.ACTIVITY_LOGS]: 'activityLogs',
+  [STORAGE_KEYS.ORDERS]: 'orders',
+  [STORAGE_KEYS.CUSTOMERS]: 'customers',
 };
 
 // Keep track of the last known state to prevent unnecessary loops and writes
@@ -180,19 +172,24 @@ export async function fetchUsersFromCloud(): Promise<any[]> {
 }
 
 /**
- * Synchronize settings object to Firestore cloud storage
+ * Synchronize tenant-specific settings object to Firestore cloud storage
  */
-export async function syncSettingsToFirestore(settings: any): Promise<void> {
+export async function syncSettingsToFirestore(settings: any, tenantId?: string): Promise<void> {
   if (!db || isReceivingRemoteUpdate || !settings || typeof settings !== 'object') return;
   try {
     await ensureAuthenticatedSession();
-    emitSyncStatus('syncing');
-    const settingsDocRef = doc(db, `${DEV_PREFIX}system_settings`, 'global');
-    await setDoc(settingsDocRef, {
-      ...settings,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
-    emitSyncStatus('synced');
+    // In multi-tenant architecture, settings are strictly isolated and synchronized via the tenants collection
+    if (tenantId && tenantId !== 'system') {
+      emitSyncStatus('syncing');
+      const tenantDocRef = doc(db, 'tenants', tenantId);
+      await setDoc(tenantDocRef, {
+        settings: {
+          ...settings,
+          updatedAt: new Date().toISOString(),
+        },
+      }, { merge: true });
+      emitSyncStatus('synced');
+    }
   } catch (err) {
     console.warn('Failed to sync settings to Firestore:', err);
     emitSyncStatus('error');
@@ -202,14 +199,14 @@ export async function syncSettingsToFirestore(settings: any): Promise<void> {
 /**
  * Load settings object from Firestore cloud storage
  */
-export async function loadSettingsFromFirestore(): Promise<any | null> {
-  if (!db) return null;
+export async function loadSettingsFromFirestore(tenantId?: string): Promise<any | null> {
+  if (!db || !tenantId) return null;
   try {
     await ensureAuthenticatedSession();
-    const settingsDocRef = doc(db, `${DEV_PREFIX}system_settings`, 'global');
-    const snap = await getDoc(settingsDocRef);
+    const tenantDocRef = doc(db, 'tenants', tenantId);
+    const snap = await getDoc(tenantDocRef);
     if (snap.exists()) {
-      return snap.data();
+      return snap.data()?.settings || null;
     }
     return null;
   } catch (err) {
@@ -243,19 +240,6 @@ export async function loadAllDataFromFirestore(): Promise<Record<string, any> | 
       } catch (collErr) {
         console.warn(`Could not read collection ${collectionName}:`, collErr);
       }
-    }
-
-    // Load global system settings & router credentials from cloud
-    try {
-      const settingsDocRef = doc(db, `${DEV_PREFIX}system_settings`, 'global');
-      const settingsSnap = await getDoc(settingsDocRef);
-      if (settingsSnap.exists()) {
-        const cloudSettings = settingsSnap.data();
-        results[STORAGE_KEYS.SETTINGS] = cloudSettings;
-        totalDocsFound++;
-      }
-    } catch (settErr) {
-      console.warn('Could not read global system settings:', settErr);
     }
 
     if (totalDocsFound === 0) {
@@ -304,28 +288,6 @@ export function subscribeToCloudUpdates(
       } catch (e) {
         console.warn(`Failed to set up listener for ${collectionName}:`, e);
       }
-    }
-
-    // Subscribe to real-time settings updates so IP/user changes are broadcast to all devices
-    try {
-      const settingsDocRef = doc(db, `${DEV_PREFIX}system_settings`, 'global');
-      const unsubSettings = onSnapshot(
-        settingsDocRef,
-        (snap) => {
-          if (snap.exists()) {
-            const cloudSettings = snap.data();
-            setIsReceivingRemote(true);
-            onUpdate(STORAGE_KEYS.SETTINGS, [cloudSettings]);
-            setTimeout(() => setIsReceivingRemote(false), 200);
-          }
-        },
-        (error) => {
-          console.warn('Live listener error on system_settings:', error);
-        }
-      );
-      unsubscribes.push(unsubSettings);
-    } catch (e) {
-      console.warn('Failed to set up listener for system_settings:', e);
     }
   });
 

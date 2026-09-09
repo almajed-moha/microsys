@@ -57,7 +57,74 @@ export const initialPayments: PaymentRecord[] = [];
 export const initialGeneratedVouchers: GeneratedVoucher[] = [];
 export const initialInvoices: InvoiceRecord[] = [];
 export const initialExpenses: ExpenseRecord[] = [];
-export const initialTenants: NetworkTenant[] = [];
+export const initialTenants: NetworkTenant[] = [
+  {
+    id: "net-612524",
+    name: "شبكة جلوبل نت | Global Net",
+    adminUsername: "admin",
+    status: "active",
+    subscriptionPlan: "lifetime",
+    createdAt: "2026-01-01",
+    settings: {
+      ...initialNetworkSettings,
+      networkName: "شبكة جلوبل نت | Global Net",
+      currency: "YER",
+      currencySymbol: "ر.ي",
+      supportPhone: "773703240",
+      whatsappNumber: "967773703240",
+      mikrotikIp: "hkc0ankrfk6.sn.mynetname.net",
+      hotspotDns: "global.net",
+      themeMode: "dark",
+      isLocked: true,
+      mikrotikConfig: {
+        host: "hkc0ankrfk6.sn.mynetname.net",
+        remoteHost: "hkc0ankrfk6.sn.mynetname.net",
+        localHost: "10.0.0.1",
+        port: 8728,
+        protocol: "auto",
+        username: "admin2026",
+        password: "admin2026**admin2026",
+        useSsl: false,
+        autoRefreshInterval: 5,
+        isLocked: true,
+        routerModel: "MikroTik RouterBOARD",
+      },
+    },
+  },
+  {
+    id: "net-634458",
+    name: "شبكة ميراب نت | Mirab Net",
+    adminUsername: "admin",
+    status: "active",
+    subscriptionPlan: "lifetime",
+    createdAt: "2026-01-01",
+    settings: {
+      ...initialNetworkSettings,
+      networkName: "شبكة ميراب نت | Mirab Net",
+      currency: "YER",
+      currencySymbol: "ر.ي",
+      supportPhone: "773703240",
+      whatsappNumber: "967773703240",
+      mikrotikIp: "d8550ff3e3b4.sn.mynetname.net",
+      hotspotDns: "mirab.net",
+      themeMode: "dark",
+      isLocked: true,
+      mikrotikConfig: {
+        host: "d8550ff3e3b4.sn.mynetname.net",
+        remoteHost: "d8550ff3e3b4.sn.mynetname.net",
+        localHost: "10.0.0.1",
+        port: 8728,
+        protocol: "api_binary",
+        username: "admin",
+        password: "allosh701905018",
+        useSsl: false,
+        autoRefreshInterval: 5,
+        isLocked: true,
+        routerModel: "MikroTik RouterBOARD",
+      },
+    },
+  },
+];
 export const initialCustomers: any[] = [];
 
 // Reusable Print Templates

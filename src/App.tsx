@@ -85,6 +85,7 @@ import {
   loadAllDataFromFirestore,
   subscribeToCloudUpdates,
   syncArrayToFirestore,
+  syncSettingsToFirestore,
   forceSyncAllToCloud,
 } from './services/cloudSync';
 import { initialActivityLogs, buildActivityLog } from './utils/auditLogger';
@@ -316,57 +317,70 @@ export default function App() {
   }, [effectiveTenantId, tenants, activeUser?.role]);
 
   const [settings, setSettings] = useState<NetworkSettings>(() => {
-    const loadedSettings = loadData<NetworkSettings>(STORAGE_KEYS.SETTINGS, defaultNetworkSettings);
-    if (currentTenant?.settings) {
-      return {
-        ...loadedSettings,
-        ...currentTenant.settings,
-        // Preserve saved mikrotikConfig if tenant does not have a customized one
-        mikrotikConfig: currentTenant.settings.mikrotikConfig || loadedSettings.mikrotikConfig || defaultNetworkSettings.mikrotikConfig,
-        mikrotikIp: currentTenant.settings.mikrotikIp || loadedSettings.mikrotikIp || defaultNetworkSettings.mikrotikIp,
-        networkName: currentTenant.name || currentTenant.settings.networkName || loadedSettings.networkName,
-      };
+    // 1. If effectiveTenantId is present and belongs to a specific tenant, load tenant's isolated settings
+    if (effectiveTenantId && effectiveTenantId !== 'system') {
+      const tenant = tenants.find((t) => t.id === effectiveTenantId);
+      if (tenant?.settings) {
+        return {
+          ...defaultNetworkSettings,
+          ...tenant.settings,
+          mikrotikConfig: tenant.settings.mikrotikConfig || {
+            host: tenant.settings.mikrotikIp || '192.168.88.1',
+            port: 8728,
+            protocol: 'auto',
+            username: 'admin',
+            password: '',
+            useSsl: false,
+            autoRefreshInterval: 5,
+          },
+          mikrotikIp: tenant.settings.mikrotikConfig?.host || tenant.settings.mikrotikIp || '192.168.88.1',
+          networkName: tenant.name || tenant.settings.networkName || 'شبكة لاسلكية',
+        };
+      }
+      const tenantSaved = loadData<NetworkSettings>(`mikrotik_pos_settings_${effectiveTenantId}`, null as any);
+      if (tenantSaved) return tenantSaved;
     }
-    return loadedSettings;
+    return loadData<NetworkSettings>(STORAGE_KEYS.SETTINGS, defaultNetworkSettings);
   });
 
-  // Keep settings automatically synchronized with active tenant without wiping router credentials
+  // Keep settings strictly isolated and synchronized with active tenant without cross-network pollution
   useEffect(() => {
     if (currentTenant && currentTenant.settings) {
-      // Look up tenant specific router profile or fallback to active credentials
-      const tenantRouterConfig = currentTenant.settings.mikrotikConfig ||
-        (settings.routerConfigsByNetwork && settings.routerConfigsByNetwork[currentTenant.id]) ||
-        settings.mikrotikConfig;
-
-      const targetSettings: NetworkSettings = {
-        ...settings,
-        ...currentTenant.settings,
-        mikrotikConfig: tenantRouterConfig,
-        mikrotikIp: tenantRouterConfig?.host || settings.mikrotikIp,
-        networkName: currentTenant.name || currentTenant.settings.networkName,
+      const tenantRouterConfig = currentTenant.settings.mikrotikConfig || {
+        host: currentTenant.settings.mikrotikIp || '192.168.88.1',
+        port: 8728,
+        protocol: 'auto',
+        username: 'admin',
+        password: '',
+        useSsl: false,
+        autoRefreshInterval: 5,
       };
 
-      const hasBrandingChanged =
+      const targetSettings: NetworkSettings = {
+        ...defaultNetworkSettings,
+        ...currentTenant.settings,
+        mikrotikConfig: tenantRouterConfig,
+        mikrotikIp: tenantRouterConfig?.host || currentTenant.settings.mikrotikIp || '192.168.88.1',
+        networkName: currentTenant.name || currentTenant.settings.networkName || 'شبكة لاسلكية',
+      };
+
+      const hasDiff =
         settings.networkName !== targetSettings.networkName ||
+        settings.mikrotikIp !== targetSettings.mikrotikIp ||
         settings.currency !== targetSettings.currency ||
         settings.currencySymbol !== targetSettings.currencySymbol ||
-        settings.networkSlogan !== targetSettings.networkSlogan ||
         settings.supportPhone !== targetSettings.supportPhone ||
         settings.whatsappNumber !== targetSettings.whatsappNumber ||
-        settings.hotspotDns !== targetSettings.hotspotDns;
+        settings.hotspotDns !== targetSettings.hotspotDns ||
+        JSON.stringify(settings.mikrotikConfig) !== JSON.stringify(targetSettings.mikrotikConfig);
 
-      const hasRouterConfigDiff =
-        currentTenant.settings.mikrotikConfig &&
-        JSON.stringify(settings.mikrotikConfig) !== JSON.stringify(currentTenant.settings.mikrotikConfig);
-
-      if (hasBrandingChanged || hasRouterConfigDiff) {
+      if (hasDiff) {
         setSettings(targetSettings);
         saveData(STORAGE_KEYS.SETTINGS, targetSettings);
+        localStorage.setItem(`mikrotik_pos_settings_${currentTenant.id}`, JSON.stringify(targetSettings));
       }
     }
-    // We intentionally DO NOT reset settings when selectedTenantFilter === 'all'
-    // This protects remote access credentials from being wiped!
-  }, [currentTenant, selectedTenantFilter]);
+  }, [currentTenant?.id, currentTenant?.name, JSON.stringify(currentTenant?.settings)]);
 
   // Scoped collections based on tenant isolation
   const scopedCategories = useMemo(() => 
@@ -659,22 +673,32 @@ export default function App() {
           if (cloudData[STORAGE_KEYS.DISPATCHES] !== undefined) setDispatches(cloudData[STORAGE_KEYS.DISPATCHES]);
           if (cloudData[STORAGE_KEYS.SALES] !== undefined) setSales(cloudData[STORAGE_KEYS.SALES]);
           if (cloudData[STORAGE_KEYS.ORDERS] !== undefined) setOrders(cloudData[STORAGE_KEYS.ORDERS]);
-          if (cloudData[STORAGE_KEYS.TENANTS] !== undefined) setTenants(cloudData[STORAGE_KEYS.TENANTS]);
-          // Load synced settings from cloud so that remote IP and credentials persist across all networks/devices
-          if (cloudData[STORAGE_KEYS.SETTINGS] !== undefined && cloudData[STORAGE_KEYS.SETTINGS]) {
-            const cloudSettings = cloudData[STORAGE_KEYS.SETTINGS];
-            setSettings((prev) => {
-              const merged: NetworkSettings = {
-                ...prev,
-                ...cloudSettings,
-                mikrotikConfig: {
-                  ...(prev.mikrotikConfig || defaultNetworkSettings.mikrotikConfig),
-                  ...(cloudSettings.mikrotikConfig || {}),
-                },
+          if (cloudData[STORAGE_KEYS.TENANTS] !== undefined) {
+            const loadedTenants: NetworkTenant[] = cloudData[STORAGE_KEYS.TENANTS];
+            setTenants(loadedTenants);
+            // Synchronize active tenant settings immediately
+            const activeTenant = loadedTenants.find((t) => t.id === effectiveTenantId);
+            if (activeTenant?.settings) {
+              const tenantRouter = activeTenant.settings.mikrotikConfig || {
+                host: activeTenant.settings.mikrotikIp || '192.168.88.1',
+                port: 8728,
+                protocol: 'auto',
+                username: 'admin',
+                password: '',
+                useSsl: false,
+                autoRefreshInterval: 5,
               };
-              localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(merged));
-              return merged;
-            });
+              const tenantSettings: NetworkSettings = {
+                ...defaultNetworkSettings,
+                ...activeTenant.settings,
+                mikrotikConfig: tenantRouter,
+                mikrotikIp: tenantRouter?.host || activeTenant.settings.mikrotikIp || '192.168.88.1',
+                networkName: activeTenant.name || activeTenant.settings.networkName || 'شبكة لاسلكية',
+              };
+              setSettings(tenantSettings);
+              saveData(STORAGE_KEYS.SETTINGS, tenantSettings);
+              localStorage.setItem(`mikrotik_pos_settings_${activeTenant.id}`, JSON.stringify(tenantSettings));
+            }
           }
         } else {
           // If Firestore is empty, seed current initial data to the cloud so all devices get it
@@ -693,22 +717,6 @@ export default function App() {
     // 2. Real-time Live Sync: Instantly updates whenever changes occur on other devices
     const unsubscribe = subscribeToCloudUpdates((key, items) => {
       if (!isMounted) return;
-      if (key === STORAGE_KEYS.SETTINGS && items && items[0]) {
-        const cloudSettings = items[0];
-        setSettings((prev) => {
-          const merged: NetworkSettings = {
-            ...prev,
-            ...cloudSettings,
-            mikrotikConfig: {
-              ...(prev.mikrotikConfig || defaultNetworkSettings.mikrotikConfig),
-              ...(cloudSettings.mikrotikConfig || {}),
-            },
-          };
-          localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(merged));
-          return merged;
-        });
-        return;
-      }
       if (!Array.isArray(items)) return;
       switch (key) {
         case STORAGE_KEYS.USERS:
@@ -885,27 +893,20 @@ export default function App() {
       : undefined;
 
     const targetTenantId = activeUser?.role === 'system_owner'
-      ? (selectedTenantFilter !== 'all' ? selectedTenantFilter : (tenants[0]?.id || 'net-microsys'))
-      : (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : (tenants[0]?.id || 'net-microsys'));
-
-    // Preserve router profile in routerConfigsByNetwork
-    const updatedProfiles = {
-      ...(settings.routerConfigsByNetwork || {}),
-      ...(newSettings.routerConfigsByNetwork || {}),
-      ...(targetTenantId && updatedMikrotikConfig ? { [targetTenantId]: updatedMikrotikConfig } : {}),
-    };
+      ? (selectedTenantFilter !== 'all' ? selectedTenantFilter : null)
+      : (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : null);
 
     const cleanSettings: NetworkSettings = {
       ...newSettings,
       mikrotikIp: cleanHost,
       mikrotikConfig: updatedMikrotikConfig,
-      routerConfigsByNetwork: updatedProfiles,
     };
 
     setSettings(cleanSettings);
     saveData(STORAGE_KEYS.SETTINGS, cleanSettings);
 
     if (targetTenantId) {
+      localStorage.setItem(`mikrotik_pos_settings_${targetTenantId}`, JSON.stringify(cleanSettings));
       const updatedTenants = tenants.map((t) =>
         t.id === targetTenantId
           ? {
@@ -922,6 +923,7 @@ export default function App() {
       );
       setTenants(updatedTenants);
       saveData(STORAGE_KEYS.TENANTS, updatedTenants);
+      syncSettingsToFirestore(cleanSettings, targetTenantId);
     }
 
     const isThemeChanged = prevSettings.themeMode !== newSettings.themeMode;
@@ -2270,10 +2272,11 @@ export default function App() {
   const [syncMessage, setSyncMessage] = useState('');
 
   const handleLoginSuccess = async (user: AppUser, targetView: NavView) => {
+    let results: any = null;
     if (user.networkId && user.networkId !== 'system') {
       setIsSyncing(true);
       try {
-        const results = await loadTenantDataFromFirestore(user.networkId, setSyncMessage);
+        results = await loadTenantDataFromFirestore(user.networkId, setSyncMessage);
         if (results) {
           if (results[STORAGE_KEYS.USERS]) { setUsers(results[STORAGE_KEYS.USERS]); saveData(STORAGE_KEYS.USERS, results[STORAGE_KEYS.USERS]); }
           if (results[STORAGE_KEYS.CATEGORIES]) { setCategories(results[STORAGE_KEYS.CATEGORIES]); saveData(STORAGE_KEYS.CATEGORIES, results[STORAGE_KEYS.CATEGORIES]); }
@@ -2311,16 +2314,28 @@ export default function App() {
     setActiveView(targetView);
 
     if (user.networkId && user.networkId !== 'system') {
-      const userTenant = tenants.find((t) => t.id === user.networkId);
+      const activeTenantsList = (results && results[STORAGE_KEYS.TENANTS]) || tenants;
+      const userTenant = activeTenantsList.find((t: NetworkTenant) => t.id === user.networkId);
       if (userTenant?.settings) {
-        const mergedSettings: NetworkSettings = {
-          ...settings,
-          ...userTenant.settings,
-          mikrotikConfig: userTenant.settings.mikrotikConfig || settings.mikrotikConfig,
-          mikrotikIp: userTenant.settings.mikrotikConfig?.host || userTenant.settings.mikrotikIp || settings.mikrotikIp,
+        const tenantRouter = userTenant.settings.mikrotikConfig || {
+          host: userTenant.settings.mikrotikIp || '192.168.88.1',
+          port: 8728,
+          protocol: 'auto',
+          username: 'admin',
+          password: '',
+          useSsl: false,
+          autoRefreshInterval: 5,
         };
-        setSettings(mergedSettings);
-        saveData(STORAGE_KEYS.SETTINGS, mergedSettings);
+        const tenantSettings: NetworkSettings = {
+          ...defaultNetworkSettings,
+          ...userTenant.settings,
+          mikrotikConfig: tenantRouter,
+          mikrotikIp: tenantRouter?.host || userTenant.settings.mikrotikIp || '192.168.88.1',
+          networkName: userTenant.name || userTenant.settings.networkName || 'شبكة لاسلكية',
+        };
+        setSettings(tenantSettings);
+        saveData(STORAGE_KEYS.SETTINGS, tenantSettings);
+        localStorage.setItem(`mikrotik_pos_settings_${user.networkId}`, JSON.stringify(tenantSettings));
       }
     }
 
@@ -2417,14 +2432,25 @@ export default function App() {
     if (targetUser.networkId && targetUser.networkId !== 'system') {
       const userTenant = tenants.find((t) => t.id === targetUser.networkId);
       if (userTenant?.settings) {
-        const mergedSettings: NetworkSettings = {
-          ...settings,
-          ...userTenant.settings,
-          mikrotikConfig: userTenant.settings.mikrotikConfig || settings.mikrotikConfig,
-          mikrotikIp: userTenant.settings.mikrotikConfig?.host || userTenant.settings.mikrotikIp || settings.mikrotikIp,
+        const tenantRouter = userTenant.settings.mikrotikConfig || {
+          host: userTenant.settings.mikrotikIp || '192.168.88.1',
+          port: 8728,
+          protocol: 'auto',
+          username: 'admin',
+          password: '',
+          useSsl: false,
+          autoRefreshInterval: 5,
         };
-        setSettings(mergedSettings);
-        saveData(STORAGE_KEYS.SETTINGS, mergedSettings);
+        const tenantSettings: NetworkSettings = {
+          ...defaultNetworkSettings,
+          ...userTenant.settings,
+          mikrotikConfig: tenantRouter,
+          mikrotikIp: tenantRouter?.host || userTenant.settings.mikrotikIp || '192.168.88.1',
+          networkName: userTenant.name || userTenant.settings.networkName || 'شبكة لاسلكية',
+        };
+        setSettings(tenantSettings);
+        saveData(STORAGE_KEYS.SETTINGS, tenantSettings);
+        localStorage.setItem(`mikrotik_pos_settings_${targetUser.networkId}`, JSON.stringify(tenantSettings));
       }
     }
 
@@ -3123,7 +3149,25 @@ export default function App() {
       {/* 6. Network Settings & Backup Modal */}
       {isSettingsModalOpen && (
         <NetworkSettingsModal
-          settings={settings}
+          settings={
+            currentTenant?.settings
+              ? {
+                  ...defaultNetworkSettings,
+                  ...currentTenant.settings,
+                  mikrotikConfig: currentTenant.settings.mikrotikConfig || {
+                    host: currentTenant.settings.mikrotikIp || '192.168.88.1',
+                    port: 8728,
+                    protocol: 'auto',
+                    username: 'admin',
+                    password: '',
+                    useSsl: false,
+                    autoRefreshInterval: 5,
+                  },
+                  mikrotikIp: currentTenant.settings.mikrotikConfig?.host || currentTenant.settings.mikrotikIp || '192.168.88.1',
+                  networkName: currentTenant.name || currentTenant.settings.networkName || 'شبكة لاسلكية',
+                }
+              : settings
+          }
           onSaveSettings={handleSaveSettings}
           onResetData={handleResetData}
           allAppData={{
