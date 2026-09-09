@@ -528,13 +528,13 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
             </div>
           </div>
 
-          {/* HOURLY DISTRIBUTION TIMELINE (00:00 - 23:00) */}
+          {/* HOURLY DISTRIBUTION TIMELINE (00:00:00 - 23:59:59) */}
           <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                   <BarChart3 size={16} className="text-teal-600" />
-                  توزيع السحب على مدار ساعات اليوم (24 ساعة)
+                  مراجعة استهلاك الإنترنت اليومي (00:00:00 صباحاً - 23:59:59)
                 </h4>
                 <p className="text-xs text-slate-500 mt-0.5">
                   تتبع حركة استهلاك الإنترنت في كل ساعة خلال اليوم الواحد لمعرفة أوقات الذروة
@@ -626,9 +626,9 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
                 })}
               </div>
               <div className="flex justify-between items-center text-[10px] text-slate-400 mt-2">
-                <span>00:00 (منتصف الليل)</span>
-                <span>12:00 (الظهيرة)</span>
-                <span>23:00 (نهاية اليوم)</span>
+                <span>00:00:00 (بداية اليوم)</span>
+                <span>12:00:00 (الظهيرة)</span>
+                <span>23:59:59 (نهاية اليوم)</span>
               </div>
             </div>
           </div>

@@ -135,10 +135,27 @@ export const MikrotikSalesComparisonModal: React.FC<MikrotikSalesComparisonModal
   const [activeTab, setActiveTab] = useState<'daily_table' | 'categories_breakdown' | 'diagnostics' | 'wan_three_way'>('daily_table');
   const [isExporting, setIsExporting] = useState(false);
 
-  // Interfaces for WAN 3-way check
+  // Interfaces for WAN/LAN check
   const [interfaces, setInterfaces] = useState<RouterInterface[]>([]);
   const [isLoadingInterfaces, setIsLoadingInterfaces] = useState(false);
   const [selectedWanInterface, setSelectedWanInterface] = useState<string>('');
+  
+  // Categorize Entry (Port 1) and Exit (Port 6+) interfaces
+  const entryInterfaces = useMemo(() => {
+    return interfaces.filter((i) => {
+      const n = i.name.toLowerCase();
+      return n.includes('ether1') || n.includes('sfp1') || n.includes('wan') || n.includes('starlink');
+    });
+  }, [interfaces]);
+
+  const exitInterfaces = useMemo(() => {
+    return interfaces.filter((i) => {
+      const match = i.name.match(/ether(\d+)/i);
+      if (match && parseInt(match[1]) >= 6) return true;
+      const n = i.name.toLowerCase();
+      return n.includes('bridge') || n.includes('hotspot') || n.includes('lan');
+    });
+  }, [interfaces]);
 
   const currency = settings?.currencySymbol || 'ريال';
 
@@ -1213,28 +1230,11 @@ export const MikrotikSalesComparisonModal: React.FC<MikrotikSalesComparisonModal
                 <div>
                   <h4 className="text-sm font-bold text-white flex items-center gap-2">
                     <Zap size={16} className="text-cyan-400" />
-                    المقارنة الثلاثية: عداد منفذ الإنترنت (WAN / Starlink) مقابل الجلسات والمبيعات
+                    مراجعة استهلاك الإنترنت اليومي (دخول Starlink مقابل الخروج)
                   </h4>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    مقارنة السحب الفيزيائي على المنفذ (مثل عداد ستارلينك) مع جلسات الهوتسبوت ومع مبيعات الكروت
+                    حساب واستهلاك النت الدخل إلى المايكروتك حيث يبدأ اليوم في 00:00:00 صباحاً وينتهي 23:59:59
                   </p>
-                </div>
-
-                {/* WAN Interface Selector */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400">منفذ الإنترنت (WAN):</span>
-                  <select
-                    value={selectedWanInterface}
-                    onChange={(e) => setSelectedWanInterface(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 text-cyan-300 text-xs rounded-xl px-3 py-1.5 focus:outline-none focus:border-cyan-500 font-mono"
-                  >
-                    {interfaces.map((iface) => (
-                      <option key={iface.id || iface.name} value={iface.name}>
-                        {iface.name} ({iface.type})
-                      </option>
-                    ))}
-                    {interfaces.length === 0 && <option value="">جاري قراءة المنافذ...</option>}
-                  </select>
                 </div>
               </div>
 
@@ -1245,38 +1245,45 @@ export const MikrotikSalesComparisonModal: React.FC<MikrotikSalesComparisonModal
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-cyan-400 flex items-center gap-1.5">
                       <Zap size={15} />
-                      1. سحب الكيبل (Starlink WAN)
+                      1. كيبل الدخول (Starlink)
                     </span>
                     <span className="text-[10px] bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded font-mono">
-                      {selectedWanInterface || 'WAN'}
+                      Port 1
                     </span>
                   </div>
                   <div className="text-2xl font-black text-white font-mono" dir="ltr">
-                    {wanInterfaceData ? wanInterfaceData.totalGb.toFixed(2) : periodSummary.totalRouterGb.toFixed(2)}{' '}
+                    {entryInterfaces.length > 0 
+                      ? (entryInterfaces.reduce((sum, i) => sum + (i.rxByte || 0) + (i.txByte || 0), 0) / (1024 ** 3)).toFixed(2)
+                      : periodSummary.totalRouterGb.toFixed(2)}{' '}
                     <span className="text-sm font-normal text-cyan-400">GB</span>
                   </div>
-                  <p className="text-[11px] text-slate-400">
-                    إجمالي كل بايت مر عبر الكيبل الفيزيائي (مطابق لتطبيق ستارلينك).
+                  <p className="text-[10px] text-slate-400">
+                    ملاحظة: عداد المنفذ تراكمي. للمراجعة الدقيقة (00:00:00 إلى 23:59:59) استخدم تقارير الجلسات اليومية أو فعل الجدولة.
                   </p>
                 </div>
 
-                {/* Level 2: Active Hotspot Sessions Traffic */}
+                {/* Level 1.5: Egress Interfaces Traffic */}
+                <div className="bg-slate-950 p-5 rounded-2xl border border-teal-800/40 relative space-y-3 hidden md:block absolute opacity-0 -z-10">
+                  {/* Kept out of view to stick to the 3 grid layout, but data available if needed */}
+                </div>
+
+                {/* Level 2: Active Hotspot Sessions Traffic (Egress) */}
                 <div className="bg-slate-950 p-5 rounded-2xl border border-purple-800/40 relative space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-purple-400 flex items-center gap-1.5">
                       <Activity size={15} />
-                      2. سحب جلسات الهوتسبوت
+                      2. سحب جلسات الخروج
                     </span>
                     <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded font-mono">
-                      Sessions
+                      Port 6+ / Sessions
                     </span>
                   </div>
                   <div className="text-2xl font-black text-white font-mono" dir="ltr">
                     {periodSummary.totalRouterGb.toFixed(2)}{' '}
                     <span className="text-sm font-normal text-purple-400">GB</span>
                   </div>
-                  <p className="text-[11px] text-slate-400">
-                    السحب المسجل للمشتركين الذين سجلوا دخول بالكروت فقط.
+                  <p className="text-[10px] text-slate-400">
+                    السحب المسجل للمشتركين على منافذ الخروج (الهوتسبوت) في الفترة (00:00:00 إلى 23:59:59).
                   </p>
                 </div>
 
