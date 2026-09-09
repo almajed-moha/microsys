@@ -33,7 +33,9 @@ import {
   SystemTenantsView,
   AboutProgramModal,
   DatabaseBackupModal,
-CustomersView } from './components';
+  CustomersView,
+  CardUsageTrackerView,
+} from './components';
 import {
   CardCategory,
   POSPoint,
@@ -2697,6 +2699,7 @@ export default function App() {
       payments: 'payments',
       pos: 'pos',
       categories: 'categories',
+      card_usage_tracker: 'mikrotik',
       mikrotik: 'mikrotik',
       mikrotik_sessions: 'mikrotik',
       users: 'usersAndPermissions',
@@ -3134,6 +3137,15 @@ export default function App() {
                 />
               )}
 
+              {activeView === 'card_usage_tracker' && (
+                <CardUsageTrackerView
+                  settings={settings}
+                  categories={scopedCategories}
+                  sales={scopedSales}
+                  activeNetworkId={currentTenant?.id}
+                  onUpdateSettings={(newSettings) => handleSaveSettings(newSettings)}
+                />
+              )}
 
               {activeView === 'mikrotik_sessions' && (
                 <MikrotikSessionsView

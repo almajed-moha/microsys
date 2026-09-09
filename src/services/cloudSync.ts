@@ -29,6 +29,8 @@ export const STORAGE_KEYS = {
   ACTIVITY_LOGS: 'mikrotik_pos_activity_logs',
   ORDERS: 'mikrotik_pos_card_orders',
   CUSTOMERS: 'mikrotik_pos_customers',
+  CARD_USAGE_LOGS: 'mikrotik_pos_card_usage_logs',
+  ISP_TRAFFIC_LOGS: 'mikrotik_pos_isp_traffic_logs',
 };
 
 // Unified collections for both desktop and mobile/preview environments to ensure zero desynchronization
@@ -48,6 +50,8 @@ export const COLLECTION_MAP: Record<string, string> = {
   [STORAGE_KEYS.ACTIVITY_LOGS]: 'activityLogs',
   [STORAGE_KEYS.ORDERS]: 'orders',
   [STORAGE_KEYS.CUSTOMERS]: 'customers',
+  [STORAGE_KEYS.CARD_USAGE_LOGS]: 'cardUsageLogs',
+  [STORAGE_KEYS.ISP_TRAFFIC_LOGS]: 'ispTrafficLogs',
 };
 
 // Keep track of the last known state to prevent unnecessary loops and writes

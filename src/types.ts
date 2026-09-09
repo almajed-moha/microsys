@@ -628,6 +628,79 @@ export interface MaintenanceSettings {
   updatedBy?: string;
 }
 
+export interface ISPSettings {
+  providerName: string; // اسم مزود الخدمة e.g. "يمن نت" أو "Starlink"
+  wanInterface: string; // منفذ مزود الخدمة في الراوتر e.g. "ether1" أو "ether1-WAN"
+  monthlyQuotaGB: number; // حجم الباقة بالجيجابايت e.g. 500
+  monthlyCost: number; // تكلفة الباقة الشهرية
+  billingCycleStartDay: number; // يوم تجديد الباقة (1-31)
+  pollingIntervalSeconds: number; // تردد الاستعلام بالثواني (15, 30, 60, 120, 300)
+  isContinuousPollingActive: boolean; // تشغيل/إيقاف الاستعلام المستمر
+  expectedOverheadPercent?: number; // نسبة الهدر الطبيعي المتوقعة (افتراضياً 12%)
+  leakageAlertThresholdPercent?: number; // حد التنبيه للاشتباه بالتسريب (افتراضياً 20%)
+  notes?: string;
+}
+
+export interface CardDailyUsageRecord {
+  id: string; // unique ID: `${date}_${username}`
+  networkId?: string;
+  date: string; // YYYY-MM-DD
+  cardUsername: string;
+  firstSeenTime: string; // ISO date string
+  lastSeenTime: string; // ISO date string
+  downloadBytes: number; // total bytes downloaded today
+  uploadBytes: number; // total bytes uploaded today
+  totalBytes: number; // download + upload
+  currentDownloadRateBps?: number;
+  currentUploadRateBps?: number;
+  peakRateBps?: number;
+  isActive: boolean; // currently online
+  ipAddress: string;
+  macAddress: string;
+  hostName?: string;
+  uptime: string;
+  sessionCount: number;
+  server?: string;
+  comment?: string;
+  categoryId?: string;
+  categoryName?: string;
+  categoryPrice?: number;
+  cardQuotaBytes?: number;
+  source?: 'hotspot' | 'user-manager' | 'dhcp';
+}
+
+export interface ISPComparisonDaySummary {
+  date: string; // YYYY-MM-DD
+  networkId?: string;
+  clientTotalDownloadBytes: number;
+  clientTotalUploadBytes: number;
+  clientTotalBytes: number;
+  clientActiveCardsCount: number;
+  clientTotalCardsCount: number;
+  ispWanDownloadBytes: number;
+  ispWanUploadBytes: number;
+  ispWanTotalBytes: number;
+  varianceBytes: number; // ISP - Client
+  variancePercentage: number;
+  varianceStatus: 'optimal' | 'moderate' | 'high_leakage';
+  estimatedCostOfConsumedGB?: number;
+  cardsSoldRevenueToday?: number;
+  quotaRemainingGB?: number;
+  lastUpdated: string;
+}
+
+export interface ContinuousPollingStatus {
+  isPolling: boolean;
+  intervalSeconds: number;
+  lastPolledAt: string | null;
+  pollCount: number;
+  successCount: number;
+  errorCount: number;
+  lastError: string | null;
+  activeCardsNow: number;
+  totalCardsToday: number;
+}
+
 export interface NetworkSettings {
   autoBackupToDrive?: boolean;
   autoBackupIntervalHours?: number;
@@ -651,6 +724,7 @@ export interface NetworkSettings {
   cashierFooterText?: string; // نص تذييل إيصالات الكاشير الحرارية (80mm)
   statementFooterText?: string; // نص تذييل كشوفات الحسابات والتقارير المالية
   maintenanceSettings?: MaintenanceSettings; // إعدادات وضع الصيانة والتحكم بحالة الشبكة
+  ispSettings?: ISPSettings; // إعدادات مزود الخدمة والاستعلام المستمر
 }
 
 export interface POSCardInventory {

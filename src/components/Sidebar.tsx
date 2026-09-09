@@ -48,6 +48,7 @@ import { hasPermission, ROLE_DEFINITIONS } from '../utils/permissions';
 export type NavView =
   | 'system_tenants'
   | 'dashboard'
+  | 'card_usage_tracker'
   | 'mikrotik'
   | 'mikrotik_sessions'
   | 'invoices'
@@ -258,6 +259,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: `${categoriesCount}`,
       color: 'text-blue-400',
       activeBg: 'bg-blue-600 text-white shadow-lg shadow-blue-600/30',
+    },
+    {
+      id: 'card_usage_tracker' as NavView,
+      permissionModule: 'mikrotik' as const,
+      label: 'استهلاك الكروت ومطابقة المزود',
+      icon: TrendingUp,
+      badge: 'مستمر ⚡',
+      color: 'text-amber-400',
+      activeBg: 'bg-amber-600 text-white shadow-lg shadow-amber-600/30',
     },
     {
       id: 'mikrotik_sessions' as NavView,

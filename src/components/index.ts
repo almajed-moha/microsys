@@ -40,3 +40,4 @@ export { EntityAuditHistoryModal } from './EntityAuditHistoryModal';
 export * from "./PrintableCard";
 export { CustomersView } from './CustomersView';
 export * from './MikrotikSessionsView';
+export { CardUsageTrackerView } from './CardUsageTrackerView';

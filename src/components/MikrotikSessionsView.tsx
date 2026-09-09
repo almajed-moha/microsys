@@ -57,6 +57,7 @@ import { RemoteMikrotikWizardModal } from './RemoteMikrotikWizardModal';
 import { MikrotikExpiredCardsModal } from './MikrotikExpiredCardsModal';
 import { MikrotikDailyUsageModal } from './MikrotikDailyUsageModal';
 import { MikrotikSalesComparisonModal, parseQuotaToBytes } from './MikrotikSalesComparisonModal';
+import { CardUsageTrackerView } from './CardUsageTrackerView';
 
 const formatBytes = (bytes: number) => {
   if (!bytes || bytes <= 0) return '0 B';
@@ -129,6 +130,8 @@ export const MikrotikSessionsView: React.FC<MikrotikSessionsViewProps> = ({
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   // Sales Comparison Modal state
   const [isComparisonModalOpen, setIsComparisonModalOpen] = useState(false);
+  // Continuous Polling and ISP Reconciliation Modal state
+  const [isContinuousTrackerModalOpen, setIsContinuousTrackerModalOpen] = useState(false);
 
   // Data states
   const [sessions, setSessions] = useState<MikrotikCallerSession[]>([]);
@@ -531,6 +534,16 @@ export const MikrotikSessionsView: React.FC<MikrotikSessionsViewProps> = ({
                 {countdown}s
               </span>
             )}
+          </button>
+
+          {/* Continuous Polling & ISP Reconciliation Button */}
+          <button
+            onClick={() => setIsContinuousTrackerModalOpen(true)}
+            className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl transition-all shadow-md shadow-amber-500/20 flex items-center gap-2 text-sm font-bold"
+            title="الاستعلام المستمر وتسجيل بيانات الكروت ومقارنتها مع مزود الخدمة"
+          >
+            <Activity size={16} className="animate-pulse" />
+            <span>الاستعلام المستمر ومطابقة المزود ⚡</span>
           </button>
 
           {/* Daily Internet Bandwidth Pull Button */}
@@ -1452,6 +1465,19 @@ export const MikrotikSessionsView: React.FC<MikrotikSessionsViewProps> = ({
         settings={settings}
         routerIdentity={routerIdentity}
       />
+
+      {/* Continuous Card Usage & ISP Tracker Modal */}
+      {isContinuousTrackerModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-6 animate-fade-in">
+          <CardUsageTrackerView
+            settings={settings}
+            categories={categories}
+            sales={sales}
+            isModal={true}
+            onClose={() => setIsContinuousTrackerModalOpen(false)}
+          />
+        </div>
+      )}
     </div>
   );
 };

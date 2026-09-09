@@ -1527,6 +1527,8 @@ export function getViewNameArabic(view: string): string {
     payments: 'سندات القبض والتحصيلات',
     pos: 'نقاط التوزيع والموزعين',
     categories: 'فئات الكروت والطباعة والمخزون',
+    card_usage_tracker: 'استهلاك الكروت ومطابقة المزود',
+    mikrotik_sessions: 'إحصائيات المتصلين',
     mikrotik: 'المايكروتك والمشتركين المباشر',
     users: 'إدارة المستخدمين والصلاحيات',
     sales: 'المبيعات',

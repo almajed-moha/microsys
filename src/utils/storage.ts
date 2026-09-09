@@ -49,6 +49,8 @@ export const STORAGE_KEYS = {
   ACTIVITY_LOGS: 'mikrotik_pos_activity_logs',
   ORDERS: 'mikrotik_pos_card_orders',
   CUSTOMERS: 'mikrotik_pos_customers',
+  CARD_USAGE_LOGS: 'mikrotik_pos_card_usage_logs',
+  ISP_TRAFFIC_LOGS: 'mikrotik_pos_isp_traffic_logs',
 };
 
 // Safe JSON load from LocalStorage
