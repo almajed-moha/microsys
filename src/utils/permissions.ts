@@ -947,6 +947,7 @@ export const PERMISSION_MODULES_CONFIG: PermissionModuleMeta[] = [
       { key: 'createOrder', label: 'إنشاء وإرسال طلب كروت جديد', description: 'تقديم طلب كروت رسمي وتحديد الفئات والكميات', actionType: 'add' },
       { key: 'processOrder', label: 'الموافقة على الطلب وتجهيزه وتحويله لفاتورة', description: 'قبول الطلب وإنشاء فاتورة مبيعات وتسليم الكروت آلياً', isDanger: true, actionType: 'edit' },
       { key: 'rejectOrder', label: 'رفض أو إلغاء طلب الكروت', description: 'رفض الطلب مع إرسال سبب الرفض لصاحب نقطة البيع', actionType: 'delete' },
+      { key: 'deleteOrder', label: 'الحذف النهائي للطلبات', description: 'حذف طلبات الكروت نهائياً من قاعدة البيانات', isDanger: true, actionType: 'delete' },
       { key: 'exportOrders', label: 'تصدير وطباعة كشف الطلبات', description: 'تصدير سجل طلبات الكروت إلى ملف Excel أو طباعته', actionType: 'special' },
     ],
   },
@@ -1385,13 +1386,20 @@ export function hasPermission(
   }
 
   if (!modulePerms) return false;
-  if (!modulePerms.view) return false;
+  if (modulePerms.view === false) return false;
 
   if (!action) {
-    return Boolean((modulePerms as any).view);
+    return Boolean(modulePerms.view);
   }
 
-  return Boolean((modulePerms as any)[action]);
+  const explicitAction = (modulePerms as any)[action];
+  if (explicitAction !== undefined) {
+    return Boolean(explicitAction);
+  }
+
+  // Fallback to role defaults for newly added permission keys (e.g. deleteOrder)
+  const defaultRolePerms = getRoleDefaultPermissions(user.role);
+  return Boolean((defaultRolePerms[module] as any)?.[action]);
 }
 
 export function countPermissions(permissions: UserPermissions | undefined): {
