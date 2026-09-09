@@ -30,20 +30,31 @@ export const STORAGE_KEYS = {
   CUSTOMERS: 'mikrotik_pos_customers',
 };
 
+// Determine if we are in development environment (to isolate dev data from real prod data)
+const isDevEnv = typeof window !== 'undefined' && (
+  window.location.hostname.includes('localhost') ||
+  window.location.hostname.includes('127.0.0.1') ||
+  window.location.hostname.includes('ais-dev')
+);
+
+// We add a 'dev_' prefix to all collection names in development environments
+// so that testing and code changes don't overwrite or mix with the user's real data.
+const DEV_PREFIX = isDevEnv ? 'dev_' : '';
+
 export const COLLECTION_MAP: Record<string, string> = {
-  [STORAGE_KEYS.USERS]: 'users',
-  [STORAGE_KEYS.TENANTS]: 'tenants',
-  [STORAGE_KEYS.CATEGORIES]: 'categories',
-  [STORAGE_KEYS.POS_POINTS]: 'posPoints',
-  [STORAGE_KEYS.DISPATCHES]: 'dispatches',
-  [STORAGE_KEYS.SALES]: 'sales',
-  [STORAGE_KEYS.PAYMENTS]: 'payments',
-  [STORAGE_KEYS.INVOICES]: 'invoices',
-  [STORAGE_KEYS.EXPENSES]: 'expenses',
-  [STORAGE_KEYS.EXPENSE_CATEGORIES]: 'expenseCategories',
-  [STORAGE_KEYS.ACTIVITY_LOGS]: 'activityLogs',
-  [STORAGE_KEYS.ORDERS]: 'orders',
-  [STORAGE_KEYS.CUSTOMERS]: 'customers',
+  [STORAGE_KEYS.USERS]: `${DEV_PREFIX}users`,
+  [STORAGE_KEYS.TENANTS]: `${DEV_PREFIX}tenants`,
+  [STORAGE_KEYS.CATEGORIES]: `${DEV_PREFIX}categories`,
+  [STORAGE_KEYS.POS_POINTS]: `${DEV_PREFIX}posPoints`,
+  [STORAGE_KEYS.DISPATCHES]: `${DEV_PREFIX}dispatches`,
+  [STORAGE_KEYS.SALES]: `${DEV_PREFIX}sales`,
+  [STORAGE_KEYS.PAYMENTS]: `${DEV_PREFIX}payments`,
+  [STORAGE_KEYS.INVOICES]: `${DEV_PREFIX}invoices`,
+  [STORAGE_KEYS.EXPENSES]: `${DEV_PREFIX}expenses`,
+  [STORAGE_KEYS.EXPENSE_CATEGORIES]: `${DEV_PREFIX}expenseCategories`,
+  [STORAGE_KEYS.ACTIVITY_LOGS]: `${DEV_PREFIX}activityLogs`,
+  [STORAGE_KEYS.ORDERS]: `${DEV_PREFIX}orders`,
+  [STORAGE_KEYS.CUSTOMERS]: `${DEV_PREFIX}customers`,
 };
 
 // Keep track of the last known state to prevent unnecessary loops and writes
