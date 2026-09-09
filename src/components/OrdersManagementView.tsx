@@ -24,6 +24,7 @@ import {
   ArrowRight,
   UserCheck,
   Check,
+  Trash2,
 } from 'lucide-react';
 import {
   CardOrder,
@@ -37,6 +38,7 @@ import {
   InvoiceRecord,
 } from '../types';
 import { RecordAuditInfo } from './RecordAuditInfo';
+import { hasPermission } from '../utils/permissions';
 
 interface OrdersManagementViewProps {
   orders: CardOrder[];
@@ -50,6 +52,7 @@ interface OrdersManagementViewProps {
   onApproveAndConvertOrder?: (order: CardOrder) => void;
   onCreateOrder?: (orderData: Omit<CardOrder, 'id' | 'orderNumber' | 'timestamp' | 'status' | 'requestDate'> & { requestDate?: string; timestamp?: string }) => void;
   onCancelOrder?: (orderId: string, reason?: string) => void;
+  onDeleteOrder?: (orderId: string) => void;
 }
 
 export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
@@ -64,6 +67,7 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
   onApproveAndConvertOrder,
   onCreateOrder,
   onCancelOrder,
+  onDeleteOrder,
 }) => {
   const handleApproveOrder = (order: CardOrder) => {
     if (onConvertToInvoice) {
@@ -592,6 +596,21 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
                       >
                         <FileCheck className="w-3.5 h-3.5" />
                         <span>تأكيد التسليم وإنشاء الفاتورة</span>
+                      </button>
+                    )}
+
+                    {onDeleteOrder && hasPermission(activeUser, 'orders', 'deleteOrder') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm('هل أنت متأكد من حذف هذا الطلب نهائياً؟')) {
+                            onDeleteOrder(order.id);
+                          }
+                        }}
+                        className="p-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold transition flex items-center justify-center border border-red-500/20"
+                        title="حذف الطلب نهائياً"
+                      >
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     )}
 

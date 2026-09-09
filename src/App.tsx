@@ -1522,6 +1522,22 @@ export default function App() {
     );
   };
 
+  const handleDeleteOrder = (orderId: string) => {
+    const target = orders.find((o) => o.id === orderId);
+    if (!target) return;
+
+    setOrders((prev) => prev.filter((ord) => ord.id !== orderId));
+
+    logUserActivity(
+      'حذف طلب كروت',
+      'orders',
+      'طلبات الكروت وبوابة الموزعين',
+      `تم الحذف النهائي لطلب الكروت رقم ${target.orderNumber}`,
+      `قيمة الطلب المحذوف: ${target.totalWholesaleAmount} ${settings.currencySymbol}`,
+      'delete'
+    );
+  };
+
   const handleUpdateOrderStatus = (orderId: string, status: CardOrder['status'], adminNotes?: string) => {
     const target = orders.find((o) => o.id === orderId);
     if (!target) return;
@@ -2709,6 +2725,7 @@ export default function App() {
                   onConvertToInvoice={handleConvertOrderToInvoice}
                   onCreateOrder={handleCreateOrder}
                   onCancelOrder={handleCancelOrder}
+                  onDeleteOrder={handleDeleteOrder}
                 />
               )}
 

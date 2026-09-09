@@ -675,6 +675,7 @@ export interface OrdersPermissions {
   createOrder: boolean;           // إنشاء طلب كروت جديد
   processOrder: boolean;          // معالجة وتحويل الطلب إلى فاتورة وتسليم
   rejectOrder: boolean;           // رفض أو إلغاء الطلب
+  deleteOrder: boolean;           // حذف طلب كروت
   exportOrders: boolean;          // تصدير الطلبات
 }
 
