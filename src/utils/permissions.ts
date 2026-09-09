@@ -1422,8 +1422,12 @@ export function countPermissions(permissions: UserPermissions | undefined): {
  * Determine the best default landing view for a user based on their role, granted permissions, and tenant modules.
  */
 export function getDefaultLandingViewForUser(user: AppUser | null | undefined, activeTenant?: NetworkTenant | null)
-: 'dashboard' | 'orders' | 'pos_portal' | 'invoices' | 'expenses' | 'payments' | 'pos' | 'categories' | 'mikrotik' | 'users' {
+: 'system_tenants' | 'dashboard' | 'orders' | 'pos_portal' | 'invoices' | 'expenses' | 'payments' | 'pos' | 'categories' | 'mikrotik' | 'users' {
   if (!user) return 'invoices';
+
+  if (user.role === 'system_owner') {
+    return 'system_tenants';
+  }
 
   // POS Agent defaults to POS portal
   if (user.role === 'pos_agent') {

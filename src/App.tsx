@@ -111,7 +111,27 @@ if (typeof window !== 'undefined' && !localStorage.getItem(MASTER_ONLY_RESET_FLA
 
 export default function App() {
   // Navigation View State
-  const [activeView, setActiveView] = useState<NavView>('system_tenants');
+  const [activeView, setActiveView] = useState<NavView>(() => {
+    if (typeof window === 'undefined') return 'invoices';
+    
+    // We must find out who the active user is first to determine their permitted view.
+    try {
+      const savedUserId = localStorage.getItem('mikrotik_pos_active_user_id');
+      const parsedUserId = savedUserId ? JSON.parse(savedUserId) : 'user-system-owner';
+      
+      const savedUsers = localStorage.getItem('mikrotik_pos_users');
+      const parsedUsers = savedUsers ? JSON.parse(savedUsers) : null;
+      
+      let initialUser = null;
+      if (Array.isArray(parsedUsers) && parsedUsers.length > 0) {
+        initialUser = parsedUsers.find(u => u.id === parsedUserId) || parsedUsers[0];
+      }
+      
+      return getDefaultLandingViewForUser(initialUser) as NavView;
+    } catch (err) {
+      return 'invoices';
+    }
+  });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
