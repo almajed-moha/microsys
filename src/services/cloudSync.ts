@@ -65,14 +65,11 @@ export function getIsCloudHydrated(): boolean {
 
 /**
  * Detect whether the app is currently running inside Google AI Studio / Development environment.
- * When in Google Studio / Dev, all write operations to the live cloud database are completely blocked.
- * The synchronization in Google Studio is exclusively for interfaces, UI, features, and code development.
  */
 export function isStudioDevEnvironment(): boolean {
-  if (typeof window === 'undefined') return true;
+  if (typeof window === 'undefined') return false;
   const host = window.location.hostname || '';
   return (
-    Boolean((import.meta as any)?.env?.DEV) ||
     host.includes('ais-dev-') ||
     host === 'localhost' ||
     host === '127.0.0.1' ||
@@ -92,20 +89,71 @@ export function setIsReceivingRemote(status: boolean) {
 }
 
 /**
+ * Permanently delete an individual document from Firestore and update memory tracking state
+ */
+export async function deleteDocumentFromFirestore(storageKey: string, docId: string): Promise<boolean> {
+  const collectionName = COLLECTION_MAP[storageKey];
+  if (!collectionName || !db || !docId) return false;
+
+  // 1. Immediately prune from lastKnownState to prevent diff collision
+  if (lastKnownState[storageKey]) {
+    lastKnownState[storageKey] = lastKnownState[storageKey].filter((item) => String(item?.id) !== String(docId));
+  }
+
+  try {
+    emitSyncStatus('syncing');
+    await ensureAuthenticatedSession();
+    const docRef = doc(db, collectionName, String(docId));
+    await deleteDoc(docRef);
+    console.log(`[CloudSync] Document ${docId} permanently deleted from ${collectionName} in Firestore.`);
+    emitSyncStatus('synced');
+    return true;
+  } catch (err) {
+    console.error(`[CloudSync] Error deleting document ${docId} from ${collectionName}:`, err);
+    emitSyncStatus('error');
+    return false;
+  }
+}
+
+/**
+ * Completely clear all documents in a collection in Firestore
+ */
+export async function clearCollectionInFirestore(storageKey: string): Promise<void> {
+  const collectionName = COLLECTION_MAP[storageKey];
+  if (!collectionName || !db) return;
+
+  lastKnownState[storageKey] = [];
+  try {
+    emitSyncStatus('syncing');
+    await ensureAuthenticatedSession();
+    const snap = await getDocs(collection(db, collectionName));
+    const batch = writeBatch(db);
+    let count = 0;
+    for (const d of snap.docs) {
+      batch.delete(d.ref);
+      count++;
+      if (count === 490) {
+        await batch.commit();
+        count = 0;
+      }
+    }
+    if (count > 0) {
+      await batch.commit();
+    }
+    console.log(`[CloudSync] All documents cleared from ${collectionName} in Firestore.`);
+    emitSyncStatus('synced');
+  } catch (err) {
+    console.error(`[CloudSync] Error clearing collection ${collectionName}:`, err);
+    emitSyncStatus('error');
+  }
+}
+
+/**
  * Synchronize a state array to Firestore
  * Enforces session authentication and atomic batch updates
  */
 export async function syncArrayToFirestore(storageKey: string, currentArray: any[]) {
-  // 1. Protection Lock: Never allow Google AI Studio / Development environment to overwrite live cloud database!
-  if (isStudioDevEnvironment()) {
-    console.info(
-      `[حماية حسابات السحابة - Google Studio] تم حظر مزامنة بيانات (${storageKey}) من بيئة التطوير للحفاظ على حساباتك سليمة ومنع أي لخبطة في البيانات. التزامن محصور على الواجهات والبرمجة والتطوير فقط.`
-    );
-    emitSyncStatus('dev-locked');
-    return;
-  }
-
-  // 2. Hydration Lock: Never write to cloud before remote data has finished loading initially
+  // Hydration Lock: Never write to cloud before remote data has finished loading initially
   if (!isCloudHydrated) {
     console.warn(`[CloudSync Safety] Skipping sync for ${storageKey} because cloud data has not finished loading.`);
     return;
@@ -121,13 +169,6 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
   await ensureAuthenticatedSession();
 
   const previousArray = lastKnownState[storageKey] || [];
-  
-  // 3. Accidental Wipe Prevention: If local array is empty but remote had items, block mass deletion!
-  if (currentArray.length === 0 && previousArray.length > 0) {
-    console.warn(`[CloudSync Protection] Mass deletion blocked for ${collectionName}. Local array is empty while remote had ${previousArray.length} records.`);
-    emitSyncStatus('synced');
-    return;
-  }
 
   // Create maps for lookup
   const currentMap = new Map(currentArray.map(item => [item?.id || String(Math.random()), item]));
@@ -224,27 +265,20 @@ export async function fetchUsersFromCloud(): Promise<any[]> {
  */
 export async function syncSettingsToFirestore(settings: any, tenantId?: string): Promise<void> {
   if (!db || isReceivingRemoteUpdate || !settings || typeof settings !== 'object') return;
-  
-  // Guard: Never overwrite cloud settings from Google Studio / dev environment
-  if (isStudioDevEnvironment()) {
-    console.info('[حماية جوجل استوديو] تم إيقاف مزامنة الإعدادات للسحابة من بيئة التطوير.');
-    return;
-  }
 
   try {
     await ensureAuthenticatedSession();
-    // In multi-tenant architecture, settings are strictly isolated and synchronized via the tenants collection
-    if (tenantId && tenantId !== 'system') {
-      emitSyncStatus('syncing');
-      const tenantDocRef = doc(db, 'tenants', tenantId);
-      await setDoc(tenantDocRef, {
-        settings: {
-          ...settings,
-          updatedAt: new Date().toISOString(),
-        },
-      }, { merge: true });
-      emitSyncStatus('synced');
-    }
+    const effectiveId = (tenantId && tenantId !== 'system') ? tenantId : 'net-612524';
+    emitSyncStatus('syncing');
+    const tenantDocRef = doc(db, 'tenants', effectiveId);
+    await setDoc(tenantDocRef, {
+      settings: {
+        ...settings,
+        updatedAt: new Date().toISOString(),
+      },
+    }, { merge: true });
+    console.log(`[CloudSync] Settings successfully synchronized to Firestore for tenant ${effectiveId}.`);
+    emitSyncStatus('synced');
   } catch (err) {
     console.warn('Failed to sync settings to Firestore:', err);
     emitSyncStatus('error');

@@ -86,9 +86,12 @@ import {
   subscribeToCloudUpdates,
   syncSettingsToFirestore,
   forceSyncAllToCloud,
+  deleteDocumentFromFirestore,
+  clearCollectionInFirestore,
 } from './services/cloudSync';
 import { initialActivityLogs, buildActivityLog } from './utils/auditLogger';
 import { applyCreationAudit, applyUpdateAudit } from './utils/auditTrigger';
+import { isPrivateIp } from './utils/mikrotikApi';
 import {
   getDefaultLandingViewForUser,
   hasPermission,
@@ -847,6 +850,17 @@ export default function App() {
 
   // Save Settings handler
   const handleSaveSettings = (newSettings: NetworkSettings) => {
+    const isNetworkAdmin =
+      activeUser?.role === 'network_admin' ||
+      activeUser?.role === 'system_owner' ||
+      activeUser?.role === 'super_admin' ||
+      (activeUser?.permissions?.settings?.editNetworkProfile ?? true);
+
+    if (!isNetworkAdmin) {
+      alert('عذراً، بيانات وإعدادات الشبكة مثبتة وأساسية في النظام ولا يمكن تعديلها إلا بواسطة مدير الشبكة.');
+      return;
+    }
+
     const prevSettings = settings;
 
     // Ensure host and mikrotikIp are in lockstep
@@ -855,6 +869,8 @@ export default function App() {
       ? {
           ...newSettings.mikrotikConfig,
           host: cleanHost,
+          isLocked: true,
+          remoteHost: newSettings.mikrotikConfig.remoteHost || (isPrivateIp(cleanHost) ? undefined : cleanHost),
         }
       : undefined;
 
@@ -864,12 +880,15 @@ export default function App() {
 
     const cleanSettings: NetworkSettings = {
       ...newSettings,
+      isLocked: true,
       mikrotikIp: cleanHost,
       mikrotikConfig: updatedMikrotikConfig,
     };
 
     setSettings(cleanSettings);
     saveData(STORAGE_KEYS.SETTINGS, cleanSettings);
+
+    const effectiveTenantId = targetTenantId || currentTenantId || 'net-612524';
 
     if (targetTenantId) {
       localStorage.setItem(`mikrotik_pos_settings_${targetTenantId}`, JSON.stringify(cleanSettings));
@@ -889,8 +908,8 @@ export default function App() {
       );
       setTenants(updatedTenants);
       saveData(STORAGE_KEYS.TENANTS, updatedTenants);
-      syncSettingsToFirestore(cleanSettings, targetTenantId);
     }
+    syncSettingsToFirestore(cleanSettings, effectiveTenantId);
 
     const isThemeChanged = prevSettings.themeMode !== newSettings.themeMode;
     const log = buildActivityLog(activeUser, {
@@ -1059,6 +1078,8 @@ export default function App() {
   const handleDeleteTenant = (tenantId: string) => {
     const tenantToDelete = tenants.find((t) => t.id === tenantId);
     if (!tenantToDelete) return;
+
+    deleteDocumentFromFirestore(STORAGE_KEYS.TENANTS, tenantId);
 
     const updatedTenants = tenants.filter((t) => t.id !== tenantId);
     setTenants(updatedTenants);
@@ -1297,22 +1318,47 @@ export default function App() {
     const target = posPoints.find((p) => p.id === posId);
     if (!target) return;
 
+    deleteDocumentFromFirestore(STORAGE_KEYS.POS_POINTS, posId);
+
     // Remove associated portal user
-    setUsers((prev) => prev.filter((u) => u.posPointId !== posId));
+    setUsers((prev) => {
+      const remainingUsers = prev.filter((u) => u.posPointId !== posId);
+      saveData(STORAGE_KEYS.USERS, remainingUsers);
+      return remainingUsers;
+    });
 
     if (cascade) {
       const nextSales = sales.filter((s) => s.posPointId !== posId);
       const nextInvoices = invoices.filter((inv) => inv.posPointId !== posId);
       const nextPayments = payments.filter((p) => p.posPointId !== posId);
       setSales(nextSales);
+      saveData(STORAGE_KEYS.SALES, nextSales);
       setInvoices(nextInvoices);
+      saveData(STORAGE_KEYS.INVOICES, nextInvoices);
       setPayments(nextPayments);
-      setDispatches((prev) => prev.filter((d) => d.posPointId !== posId));
-      setPosPoints((prev) => refreshPOSBalances(prev.filter((p) => p.id !== posId), nextInvoices, nextSales, nextPayments));
-      setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, nextPayments));
+      saveData(STORAGE_KEYS.PAYMENTS, nextPayments);
+      setDispatches((prev) => {
+        const next = prev.filter((d) => d.posPointId !== posId);
+        saveData(STORAGE_KEYS.DISPATCHES, next);
+        return next;
+      });
+      setPosPoints((prev) => {
+        const next = refreshPOSBalances(prev.filter((p) => p.id !== posId), nextInvoices, nextSales, nextPayments);
+        saveData(STORAGE_KEYS.POS_POINTS, next);
+        return next;
+      });
+      setCustomers((prev) => {
+        const next = refreshCustomerBalances(prev, nextInvoices, nextPayments);
+        saveData(STORAGE_KEYS.CUSTOMERS, next);
+        return next;
+      });
       return;
     }
-    setPosPoints((prev) => prev.filter((p) => p.id !== posId));
+    setPosPoints((prev) => {
+      const next = prev.filter((p) => p.id !== posId);
+      saveData(STORAGE_KEYS.POS_POINTS, next);
+      return next;
+    });
 
     logUserActivity(
       'حذف نقطة بيع',
@@ -1462,8 +1508,11 @@ export default function App() {
       );
     }
 
+    deleteDocumentFromFirestore(STORAGE_KEYS.INVOICES, invoiceId);
+
     const nextInvoices = invoices.filter((inv) => inv.id !== invoiceId);
     setInvoices(nextInvoices);
+    saveData(STORAGE_KEYS.INVOICES, nextInvoices);
     setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
     setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, payments));
 
@@ -1590,7 +1639,13 @@ export default function App() {
     const target = orders.find((o) => o.id === orderId);
     if (!target) return;
 
-    setOrders((prev) => prev.filter((ord) => ord.id !== orderId));
+    deleteDocumentFromFirestore(STORAGE_KEYS.ORDERS, orderId);
+
+    setOrders((prev) => {
+      const next = prev.filter((ord) => ord.id !== orderId);
+      saveData(STORAGE_KEYS.ORDERS, next);
+      return next;
+    });
 
     logUserActivity(
       'حذف طلب كروت',
@@ -1781,7 +1836,12 @@ export default function App() {
 
   const handleDeleteExpense = (expenseId: string) => {
     const toDelete = expenses.find((e) => e.id === expenseId);
-    setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
+    deleteDocumentFromFirestore(STORAGE_KEYS.EXPENSES, expenseId);
+    setExpenses((prev) => {
+      const next = prev.filter((e) => e.id !== expenseId);
+      saveData(STORAGE_KEYS.EXPENSES, next);
+      return next;
+    });
     if (toDelete) {
       logUserActivity(
         'حذف سند صرف',
@@ -1824,7 +1884,12 @@ export default function App() {
   };
 
   const handleDeleteExpenseCategory = (catId: string) => {
-    setExpenseCategories((prev) => prev.filter((c) => c.id !== catId));
+    deleteDocumentFromFirestore(STORAGE_KEYS.EXPENSE_CATEGORIES, catId);
+    setExpenseCategories((prev) => {
+      const next = prev.filter((c) => c.id !== catId);
+      saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, next);
+      return next;
+    });
   };
 
   // 4. Sales Actions (Legacy single-card sales support)
@@ -1859,8 +1924,10 @@ export default function App() {
   };
 
   const handleDeleteSale = (saleId: string) => {
+    deleteDocumentFromFirestore(STORAGE_KEYS.SALES, saleId);
     const nextSales = sales.filter((s) => s.id !== saleId);
     setSales(nextSales);
+    saveData(STORAGE_KEYS.SALES, nextSales);
     setPosPoints((prev) => refreshPOSBalances(prev, invoices, nextSales, payments));
     setCustomers((prev) => refreshCustomerBalances(prev, invoices, payments));
   };
@@ -1908,7 +1975,12 @@ export default function App() {
 
   const handleDeleteCategory = (catId: string) => {
     const toDelete = categories.find((c) => c.id === catId);
-    setCategories((prev) => prev.filter((c) => c.id !== catId));
+    deleteDocumentFromFirestore(STORAGE_KEYS.CATEGORIES, catId);
+    setCategories((prev) => {
+      const next = prev.filter((c) => c.id !== catId);
+      saveData(STORAGE_KEYS.CATEGORIES, next);
+      return next;
+    });
     if (toDelete) {
       logUserActivity(
         'حذف فئة كروت',
@@ -1988,15 +2060,23 @@ export default function App() {
     const toDelete = dispatches.find((d) => d.id === dispatchId);
     if (!toDelete) return;
 
-    setDispatches((prev) => prev.filter((d) => d.id !== dispatchId));
+    deleteDocumentFromFirestore(STORAGE_KEYS.DISPATCHES, dispatchId);
 
-    setCategories((prev) =>
-      prev.map((c) =>
+    setDispatches((prev) => {
+      const next = prev.filter((d) => d.id !== dispatchId);
+      saveData(STORAGE_KEYS.DISPATCHES, next);
+      return next;
+    });
+
+    setCategories((prev) => {
+      const next = prev.map((c) =>
         c.id === toDelete.categoryId
           ? { ...c, warehouseStock: c.warehouseStock + toDelete.quantity }
           : c
-      )
-    );
+      );
+      saveData(STORAGE_KEYS.CATEGORIES, next);
+      return next;
+    });
   };
 
   const handleReturnCards = (dispatchId: string, returnQty: number) => {
@@ -2092,10 +2172,20 @@ export default function App() {
 
   const handleDeletePayment = (paymentId: string) => {
     const toDelete = payments.find((p) => p.id === paymentId);
+    deleteDocumentFromFirestore(STORAGE_KEYS.PAYMENTS, paymentId);
     const nextPayments = payments.filter((p) => p.id !== paymentId);
     setPayments(nextPayments);
-    setPosPoints((prev) => refreshPOSBalances(prev, invoices, sales, nextPayments));
-    setCustomers((prev) => refreshCustomerBalances(prev, invoices, nextPayments));
+    saveData(STORAGE_KEYS.PAYMENTS, nextPayments);
+    setPosPoints((prev) => {
+      const next = refreshPOSBalances(prev, invoices, sales, nextPayments);
+      saveData(STORAGE_KEYS.POS_POINTS, next);
+      return next;
+    });
+    setCustomers((prev) => {
+      const next = refreshCustomerBalances(prev, invoices, nextPayments);
+      saveData(STORAGE_KEYS.CUSTOMERS, next);
+      return next;
+    });
 
     if (toDelete) {
       logUserActivity(
@@ -2211,7 +2301,13 @@ export default function App() {
       return;
     }
 
-    setUsers((prev) => prev.filter((u) => u.id !== userId));
+    deleteDocumentFromFirestore(STORAGE_KEYS.USERS, userId);
+
+    setUsers((prev) => {
+      const next = prev.filter((u) => u.id !== userId);
+      saveData(STORAGE_KEYS.USERS, next);
+      return next;
+    });
     if (activeUserId === userId) {
       setActiveUserId('user-system-owner');
     }
@@ -3169,6 +3265,7 @@ export default function App() {
             alert('تم رفع جميع بيانات هذا الجهاز إلى التخزين السحابي بنجاح!');
           }}
           onClose={() => setIsSettingsModalOpen(false)}
+          activeUser={activeUser}
         />
       )}
 

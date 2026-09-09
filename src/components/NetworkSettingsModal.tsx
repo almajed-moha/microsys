@@ -24,11 +24,12 @@ import {
   Lock,
   Unlock,
   ShieldCheck,
+  ShieldAlert,
   Activity,
   RefreshCw,
   AlertCircle
 } from 'lucide-react';
-import { NetworkSettings, MikroTikConfig } from '../types';
+import { NetworkSettings, MikroTikConfig, AppUser } from '../types';
 import { exportToJSON, downloadFile } from '../utils/storage';
 import { RemoteMikrotikWizardModal } from './RemoteMikrotikWizardModal';
 import { testMikroTikConnection, ConnectionTestResult, isPrivateIp } from '../utils/mikrotikApi';
@@ -42,6 +43,7 @@ interface NetworkSettingsModalProps {
   onOpenBackupModal?: () => void;
   onForceCloudSync?: () => void;
   onClose: () => void;
+  activeUser?: AppUser;
 }
 
 export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
@@ -53,9 +55,17 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
   onOpenBackupModal,
   onForceCloudSync,
   onClose,
+  activeUser,
 }) => {
+  const isNetworkAdmin =
+    activeUser?.role === 'network_admin' ||
+    activeUser?.role === 'system_owner' ||
+    activeUser?.role === 'super_admin' ||
+    (activeUser?.permissions?.settings?.editNetworkProfile ?? true);
+
   const [formData, setFormData] = useState<NetworkSettings>({
     ...settings,
+    isLocked: settings.isLocked ?? true,
     themeMode: settings.themeMode || 'dark',
     mikrotikConfig: settings.mikrotikConfig || {
       host: settings.mikrotikIp || '192.168.88.1',
@@ -64,9 +74,12 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
       username: 'admin',
       password: '',
       useSsl: false,
-      autoRefreshInterval: 5
+      autoRefreshInterval: 5,
+      isLocked: settings.isLocked ?? true,
     }
   });
+
+  const isFieldsDisabled = !isNetworkAdmin || formData.isLocked;
 
   const [showRemoteWizard, setShowRemoteWizard] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
@@ -91,14 +104,20 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isNetworkAdmin) {
+      alert('عذراً، بيانات وإعدادات الشبكة مثبتة وأساسية في النظام ولا يمكن تعديلها إلا بواسطة مدير الشبكة.');
+      return;
+    }
     const cleanHost = (formData.mikrotikConfig?.host || formData.mikrotikIp || '192.168.88.1').trim();
     const finalSettings: NetworkSettings = {
       ...formData,
+      isLocked: true, // Always locked and secured after saving
       mikrotikIp: cleanHost,
       mikrotikConfig: formData.mikrotikConfig
         ? {
             ...formData.mikrotikConfig,
             host: cleanHost,
+            isLocked: true,
             remoteHost: formData.mikrotikConfig.remoteHost || (isPrivateIp(cleanHost) ? undefined : cleanHost),
           }
         : undefined,
@@ -225,93 +244,176 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
             </div>
           </div>
 
+          {/* Network Settings Permanent Lock & Protection Banner */}
+          {!isNetworkAdmin ? (
+            <div className="bg-rose-950/40 border border-rose-500/30 rounded-xl p-3.5 text-rose-200 text-xs flex items-center gap-2.5 shadow-sm">
+              <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+              <div>
+                <p className="font-bold text-xs">بيانات وإعدادات الشبكة مثبتة وأساسية في النظام 🔒</p>
+                <p className="text-[11px] text-rose-300/80 mt-0.5">
+                  بيانات الشبكة والراوتر محمية ومقفلة. لا يمكن التعديل إلا بواسطة مدير الشبكة المعتمد حصراً.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className={`rounded-xl p-3.5 border transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm ${
+              formData.isLocked
+                ? 'bg-amber-950/30 border-amber-500/30 text-amber-200'
+                : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200'
+            }`}>
+              <div className="flex items-center gap-2.5">
+                {formData.isLocked ? (
+                  <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0" />
+                ) : (
+                  <Unlock className="w-5 h-5 text-emerald-400 shrink-0" />
+                )}
+                <div>
+                  <p className="font-bold text-xs">
+                    {formData.isLocked
+                      ? 'بيانات الشبكة الأساسية مثبتة ومحمية من التغيير 🔒'
+                      : 'وضع تعديل بيانات الشبكة مفعل حالياً 🔓'}
+                  </p>
+                  <p className="text-[11px] opacity-80 mt-0.5">
+                    {formData.isLocked
+                      ? 'الاسم، الشعار، العملة، الهواتف وبيانات راوتر مايكروتك محمية لمنع أي تعديل عشوائي.'
+                      : 'يمكنك الآن تعديل بيانات الشبكة والراوتر ثم الضغط على "حفظ الإعدادات" وسيتم إعادة القفل تلقائياً.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextState = !formData.isLocked;
+                  setFormData({
+                    ...formData,
+                    isLocked: nextState,
+                    mikrotikConfig: formData.mikrotikConfig
+                      ? { ...formData.mikrotikConfig, isLocked: nextState }
+                      : undefined,
+                  });
+                }}
+                className={`px-3 py-1.5 rounded-lg font-bold text-xs shrink-0 flex items-center justify-center gap-1.5 transition border ${
+                  formData.isLocked
+                    ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/40'
+                    : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/40'
+                }`}
+              >
+                {formData.isLocked ? (
+                  <>
+                    <Unlock className="w-3.5 h-3.5" />
+                    <span>فك القفل للتعديل</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>قفل وتثبيت البيانات</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
           <div>
-            <label className="block text-slate-300 font-semibold mb-1">
-              اسم شبكة الواي فاي / المايكروتك:
+            <label className="block text-slate-300 font-semibold mb-1 flex items-center justify-between">
+              <span>اسم شبكة الواي فاي / المايكروتك:</span>
+              {isFieldsDisabled && <span className="text-[10px] text-amber-400 flex items-center gap-1"><Lock className="w-3 h-3" /> مثبت ومحمي</span>}
             </label>
             <input
               type="text"
               required
+              disabled={isFieldsDisabled}
               value={formData.networkName}
               onChange={(e) => setFormData({ ...formData, networkName: e.target.value })}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-indigo-500"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-slate-800/60"
             />
           </div>
 
           <div>
-            <label className="block text-slate-300 font-semibold mb-1">
-              شعار الشبكة أو الوصف:
+            <label className="block text-slate-300 font-semibold mb-1 flex items-center justify-between">
+              <span>شعار الشبكة أو الوصف:</span>
+              {isFieldsDisabled && <span className="text-[10px] text-amber-400 flex items-center gap-1"><Lock className="w-3 h-3" /> مثبت ومحمي</span>}
             </label>
             <input
               type="text"
+              disabled={isFieldsDisabled}
               value={formData.networkSlogan}
               onChange={(e) => setFormData({ ...formData, networkSlogan: e.target.value })}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-indigo-500"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-slate-800/60"
             />
           </div>
 
           <div>
-            <label className="block text-slate-300 font-semibold mb-1">
-              رابط الشعار (لوجو - اختياري):
+            <label className="block text-slate-300 font-semibold mb-1 flex items-center justify-between">
+              <span>رابط الشعار (لوجو - اختياري):</span>
+              {isFieldsDisabled && <span className="text-[10px] text-amber-400 flex items-center gap-1"><Lock className="w-3 h-3" /> مثبت ومحمي</span>}
             </label>
             <input
               type="text"
+              disabled={isFieldsDisabled}
               placeholder="مثال: https://example.com/logo.png"
               value={formData.logoUrl || ''}
               onChange={(e) => setFormData({ ...formData, logoUrl: e.target.value })}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-indigo-500 text-left"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-indigo-500 text-left disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-slate-800/60"
               dir="ltr"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">
-                عملة الحسابات:
+              <label className="block text-slate-300 font-semibold mb-1 flex items-center justify-between">
+                <span>عملة الحسابات:</span>
+                {isFieldsDisabled && <span className="text-[10px] text-amber-400"><Lock className="w-3 h-3 inline" /></span>}
               </label>
               <input
                 type="text"
+                disabled={isFieldsDisabled}
                 value={formData.currencySymbol}
                 onChange={(e) => setFormData({ ...formData, currencySymbol: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-indigo-500"
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-slate-800/60"
               />
             </div>
 
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">
-                هاتف الدعم الفني:
+              <label className="block text-slate-300 font-semibold mb-1 flex items-center justify-between">
+                <span>هاتف الدعم الفني:</span>
+                {isFieldsDisabled && <span className="text-[10px] text-amber-400"><Lock className="w-3 h-3 inline" /></span>}
               </label>
               <input
                 type="text"
+                disabled={isFieldsDisabled}
                 value={formData.supportPhone}
                 onChange={(e) => setFormData({ ...formData, supportPhone: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-indigo-500"
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-slate-800/60"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">
-                عنوان IP راوتر مايكروتك:
+              <label className="block text-slate-300 font-semibold mb-1 flex items-center justify-between">
+                <span>عنوان IP راوتر مايكروتك:</span>
+                {isFieldsDisabled && <span className="text-[10px] text-amber-400"><Lock className="w-3 h-3 inline" /></span>}
               </label>
               <input
                 type="text"
+                disabled={isFieldsDisabled}
                 value={formData.mikrotikIp}
                 onChange={(e) => setFormData({ ...formData, mikrotikIp: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-indigo-500"
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-slate-800/60"
               />
             </div>
 
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">
-                رابط صفحة الدخول (DNS):
+              <label className="block text-slate-300 font-semibold mb-1 flex items-center justify-between">
+                <span>رابط صفحة الدخول (DNS):</span>
+                {isFieldsDisabled && <span className="text-[10px] text-amber-400"><Lock className="w-3 h-3 inline" /></span>}
               </label>
               <input
                 type="text"
+                disabled={isFieldsDisabled}
                 value={formData.hotspotDns}
                 onChange={(e) => setFormData({ ...formData, hotspotDns: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-indigo-500"
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-slate-800/60"
               />
             </div>
           </div>
@@ -764,7 +866,8 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center gap-1.5"
+              disabled={!isNetworkAdmin}
+              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center gap-1.5"
             >
               <Save className="w-4 h-4" />
               <span>حفظ الإعدادات</span>
