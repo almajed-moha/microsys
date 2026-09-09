@@ -84,7 +84,6 @@ import {
   loadTenantDataFromFirestore,
   loadAllDataFromFirestore,
   subscribeToCloudUpdates,
-  syncArrayToFirestore,
   syncSettingsToFirestore,
   forceSyncAllToCloud,
 } from './services/cloudSync';
@@ -529,31 +528,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [isGlobalSearchOpen]);
 
-  // Persist whenever state changes
-  useEffect(() => {
-    saveData(STORAGE_KEYS.CATEGORIES, categories);
-  }, [categories]);
-
-  useEffect(() => {
-    saveData(STORAGE_KEYS.POS_POINTS, posPoints);
-  }, [posPoints]);
-
-  useEffect(() => {
-    saveData(STORAGE_KEYS.INVOICES, invoices);
-  }, [invoices]);
-
-  useEffect(() => {
-    saveData(STORAGE_KEYS.EXPENSES, expenses);
-  }, [expenses]);
-
-  useEffect(() => {
-    saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, expenseCategories);
-  }, [expenseCategories]);
-
-  useEffect(() => {
-    saveData(STORAGE_KEYS.DISPATCHES, dispatches);
-  }, [dispatches]);
-
   const refreshCustomerBalances = useCallback(
     (
       currentCustomers: Customer[] = [],
@@ -700,14 +674,6 @@ export default function App() {
               localStorage.setItem(`mikrotik_pos_settings_${activeTenant.id}`, JSON.stringify(tenantSettings));
             }
           }
-        } else {
-          // If Firestore is empty, seed current initial data to the cloud so all devices get it
-          syncArrayToFirestore(STORAGE_KEYS.USERS, users);
-          syncArrayToFirestore(STORAGE_KEYS.CATEGORIES, categories);
-          syncArrayToFirestore(STORAGE_KEYS.POS_POINTS, posPoints);
-          syncArrayToFirestore(STORAGE_KEYS.TENANTS, tenants);
-          if (customers.length > 0) syncArrayToFirestore(STORAGE_KEYS.CUSTOMERS, customers);
-          if (invoices.length > 0) syncArrayToFirestore(STORAGE_KEYS.INVOICES, invoices);
         }
       })
       .catch((err) => {

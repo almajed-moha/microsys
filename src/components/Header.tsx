@@ -34,6 +34,7 @@ import {
 import { NetworkSettings, POSPoint, SalesRecord, PaymentRecord, AppUser, NetworkTenant } from '../types';
 import { NavView } from './Sidebar';
 import { ROLE_DEFINITIONS, hasPermission } from '../utils/permissions';
+import { isStudioDevEnvironment } from '../services/cloudSync';
 
 interface HeaderProps {
   currentTab: NavView;
@@ -96,8 +97,10 @@ export const Header: React.FC<HeaderProps> = ({
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isQuickToolsOpen, setIsQuickToolsOpen] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<'online' | 'offline' | 'syncing' | 'error'>(
-    typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'online'
+  const [syncStatus, setSyncStatus] = useState<'online' | 'offline' | 'syncing' | 'error' | 'dev-locked'>(
+    typeof navigator !== 'undefined' && navigator.onLine === false
+      ? 'offline'
+      : (isStudioDevEnvironment() ? 'dev-locked' : 'online')
   );
   const userMenuRef = useRef<HTMLDivElement>(null);
   const quickToolsRef = useRef<HTMLDivElement>(null);
@@ -114,12 +117,13 @@ export const Header: React.FC<HeaderProps> = ({
       }
     };
 
-    const handleOnline = () => setSyncStatus('online');
+    const handleOnline = () => setSyncStatus(isStudioDevEnvironment() ? 'dev-locked' : 'online');
     const handleOffline = () => setSyncStatus('offline');
     const handleSyncStatus = (e: Event) => {
       const customEvent = e as CustomEvent;
-      if (customEvent.detail === 'syncing') setSyncStatus('syncing');
-      else if (customEvent.detail === 'synced') setSyncStatus('online');
+      if (customEvent.detail === 'dev-locked') setSyncStatus('dev-locked');
+      else if (customEvent.detail === 'syncing') setSyncStatus('syncing');
+      else if (customEvent.detail === 'synced') setSyncStatus(isStudioDevEnvironment() ? 'dev-locked' : 'online');
       else if (customEvent.detail === 'error') setSyncStatus('error');
     };
 
@@ -299,23 +303,34 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* 4.5. Cloud Sync Indicator */}
-            <div className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all shadow-sm ${
-              syncStatus === 'syncing' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
-              syncStatus === 'offline' ? 'bg-rose-500/10 border-rose-500/30 text-rose-400' :
-              syncStatus === 'error' ? 'bg-red-500/10 border-red-500/30 text-red-400' :
-              'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-            }`} title="حالة المزامنة السحابية للبيانات">
-              {syncStatus === 'syncing' && <Cloud className="w-3.5 h-3.5 animate-pulse" />}
-              {syncStatus === 'offline' && <Wifi className="w-3.5 h-3.5 opacity-50" />}
-              {syncStatus === 'error' && <X className="w-3.5 h-3.5" />}
-              {syncStatus === 'online' && <CheckCircle2 className="w-3.5 h-3.5" />}
-              <span className="hidden md:inline">
-                {syncStatus === 'syncing' ? 'جاري المزامنة...' : 
-                 syncStatus === 'offline' ? 'غير متصل' : 
-                 syncStatus === 'error' ? 'خطأ مزامنة' : 
-                 'متصل ومحدث'}
-              </span>
-            </div>
+            {syncStatus === 'dev-locked' ? (
+              <div
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all shadow-sm bg-cyan-500/10 border-cyan-500/30 text-cyan-300"
+                title="بيئة جوجل استوديو: تم إيقاف مزامنة وتعديل قواعد البيانات السحابية لحماية حساباتك المنظمة. المزامنة محصورة على الواجهات والبرمجة والتطوير فقط."
+              >
+                <Shield className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span className="hidden md:inline">جوجل استوديو: حماية الحسابات (قراءة فقط)</span>
+                <span className="md:hidden">محمي</span>
+              </div>
+            ) : (
+              <div className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all shadow-sm ${
+                syncStatus === 'syncing' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+                syncStatus === 'offline' ? 'bg-rose-500/10 border-rose-500/30 text-rose-400' :
+                syncStatus === 'error' ? 'bg-red-500/10 border-red-500/30 text-red-400' :
+                'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+              }`} title="حالة المزامنة السحابية للبيانات">
+                {syncStatus === 'syncing' && <Cloud className="w-3.5 h-3.5 animate-pulse" />}
+                {syncStatus === 'offline' && <Wifi className="w-3.5 h-3.5 opacity-50" />}
+                {syncStatus === 'error' && <X className="w-3.5 h-3.5" />}
+                {syncStatus === 'online' && <CheckCircle2 className="w-3.5 h-3.5" />}
+                <span className="hidden md:inline">
+                  {syncStatus === 'syncing' ? 'جاري المزامنة...' : 
+                   syncStatus === 'offline' ? 'غير متصل' : 
+                   syncStatus === 'error' ? 'خطأ مزامنة' : 
+                   'متصل ومحدث'}
+                </span>
+              </div>
+            )}
 
             {/* 4.6. Refresh Data Button */}
             <button

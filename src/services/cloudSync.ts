@@ -53,9 +53,35 @@ export const COLLECTION_MAP: Record<string, string> = {
 // Keep track of the last known state to prevent unnecessary loops and writes
 const lastKnownState: Record<string, any[]> = {};
 let isReceivingRemoteUpdate = false;
+let isCloudHydrated = false;
+
+export function setCloudHydrated(val: boolean) {
+  isCloudHydrated = val;
+}
+
+export function getIsCloudHydrated(): boolean {
+  return isCloudHydrated;
+}
+
+/**
+ * Detect whether the app is currently running inside Google AI Studio / Development environment.
+ * When in Google Studio / Dev, all write operations to the live cloud database are completely blocked.
+ * The synchronization in Google Studio is exclusively for interfaces, UI, features, and code development.
+ */
+export function isStudioDevEnvironment(): boolean {
+  if (typeof window === 'undefined') return true;
+  const host = window.location.hostname || '';
+  return (
+    Boolean((import.meta as any)?.env?.DEV) ||
+    host.includes('ais-dev-') ||
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    localStorage.getItem('mikrotik_pos_disable_cloud_write') === 'true'
+  );
+}
 
 // Global event emitter helper for sync status
-export const emitSyncStatus = (status: 'syncing' | 'synced' | 'error') => {
+export const emitSyncStatus = (status: 'syncing' | 'synced' | 'error' | 'dev-locked') => {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('cloud-sync-status', { detail: status }));
   }
@@ -70,6 +96,21 @@ export function setIsReceivingRemote(status: boolean) {
  * Enforces session authentication and atomic batch updates
  */
 export async function syncArrayToFirestore(storageKey: string, currentArray: any[]) {
+  // 1. Protection Lock: Never allow Google AI Studio / Development environment to overwrite live cloud database!
+  if (isStudioDevEnvironment()) {
+    console.info(
+      `[حماية حسابات السحابة - Google Studio] تم حظر مزامنة بيانات (${storageKey}) من بيئة التطوير للحفاظ على حساباتك سليمة ومنع أي لخبطة في البيانات. التزامن محصور على الواجهات والبرمجة والتطوير فقط.`
+    );
+    emitSyncStatus('dev-locked');
+    return;
+  }
+
+  // 2. Hydration Lock: Never write to cloud before remote data has finished loading initially
+  if (!isCloudHydrated) {
+    console.warn(`[CloudSync Safety] Skipping sync for ${storageKey} because cloud data has not finished loading.`);
+    return;
+  }
+
   const collectionName = COLLECTION_MAP[storageKey];
   if (!collectionName || !db || isReceivingRemoteUpdate) return;
   if (!Array.isArray(currentArray)) return;
@@ -81,6 +122,13 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
 
   const previousArray = lastKnownState[storageKey] || [];
   
+  // 3. Accidental Wipe Prevention: If local array is empty but remote had items, block mass deletion!
+  if (currentArray.length === 0 && previousArray.length > 0) {
+    console.warn(`[CloudSync Protection] Mass deletion blocked for ${collectionName}. Local array is empty while remote had ${previousArray.length} records.`);
+    emitSyncStatus('synced');
+    return;
+  }
+
   // Create maps for lookup
   const currentMap = new Map(currentArray.map(item => [item?.id || String(Math.random()), item]));
   const previousMap = new Map(previousArray.map(item => [item?.id, item]));
@@ -97,7 +145,7 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
     }
   }
 
-  // Find deleted items
+  // Find deleted items (only if previous state was explicitly tracked and not a partial load)
   for (const id of previousMap.keys()) {
     if (!id) continue;
     if (!currentMap.has(id)) {
@@ -176,6 +224,13 @@ export async function fetchUsersFromCloud(): Promise<any[]> {
  */
 export async function syncSettingsToFirestore(settings: any, tenantId?: string): Promise<void> {
   if (!db || isReceivingRemoteUpdate || !settings || typeof settings !== 'object') return;
+  
+  // Guard: Never overwrite cloud settings from Google Studio / dev environment
+  if (isStudioDevEnvironment()) {
+    console.info('[حماية جوجل استوديو] تم إيقاف مزامنة الإعدادات للسحابة من بيئة التطوير.');
+    return;
+  }
+
   try {
     await ensureAuthenticatedSession();
     // In multi-tenant architecture, settings are strictly isolated and synchronized via the tenants collection
@@ -242,10 +297,8 @@ export async function loadAllDataFromFirestore(): Promise<Record<string, any> | 
       }
     }
 
-    if (totalDocsFound === 0) {
-      return null;
-    }
-
+    setCloudHydrated(true);
+    emitSyncStatus(isStudioDevEnvironment() ? 'dev-locked' : 'synced');
     return results;
   } catch (err) {
     console.warn('Failed to load online Firestore data:', err);
