@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDocs,
+  getDoc,
   writeBatch,
   onSnapshot,
   setDoc,
@@ -179,14 +180,53 @@ export async function fetchUsersFromCloud(): Promise<any[]> {
 }
 
 /**
+ * Synchronize settings object to Firestore cloud storage
+ */
+export async function syncSettingsToFirestore(settings: any): Promise<void> {
+  if (!db || isReceivingRemoteUpdate || !settings || typeof settings !== 'object') return;
+  try {
+    await ensureAuthenticatedSession();
+    emitSyncStatus('syncing');
+    const settingsDocRef = doc(db, `${DEV_PREFIX}system_settings`, 'global');
+    await setDoc(settingsDocRef, {
+      ...settings,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+    emitSyncStatus('synced');
+  } catch (err) {
+    console.warn('Failed to sync settings to Firestore:', err);
+    emitSyncStatus('error');
+  }
+}
+
+/**
+ * Load settings object from Firestore cloud storage
+ */
+export async function loadSettingsFromFirestore(): Promise<any | null> {
+  if (!db) return null;
+  try {
+    await ensureAuthenticatedSession();
+    const settingsDocRef = doc(db, `${DEV_PREFIX}system_settings`, 'global');
+    const snap = await getDoc(settingsDocRef);
+    if (snap.exists()) {
+      return snap.data();
+    }
+    return null;
+  } catch (err) {
+    console.warn('Failed to load settings from Firestore:', err);
+    return null;
+  }
+}
+
+/**
  * Load all collections from Firestore on startup
  */
-export async function loadAllDataFromFirestore(): Promise<Record<string, any[]> | null> {
+export async function loadAllDataFromFirestore(): Promise<Record<string, any> | null> {
   if (!db) return null;
 
   await ensureAuthenticatedSession();
 
-  const results: Record<string, any[]> = {};
+  const results: Record<string, any> = {};
   let totalDocsFound = 0;
 
   try {
@@ -205,6 +245,19 @@ export async function loadAllDataFromFirestore(): Promise<Record<string, any[]> 
       }
     }
 
+    // Load global system settings & router credentials from cloud
+    try {
+      const settingsDocRef = doc(db, `${DEV_PREFIX}system_settings`, 'global');
+      const settingsSnap = await getDoc(settingsDocRef);
+      if (settingsSnap.exists()) {
+        const cloudSettings = settingsSnap.data();
+        results[STORAGE_KEYS.SETTINGS] = cloudSettings;
+        totalDocsFound++;
+      }
+    } catch (settErr) {
+      console.warn('Could not read global system settings:', settErr);
+    }
+
     if (totalDocsFound === 0) {
       return null;
     }
@@ -220,7 +273,7 @@ export async function loadAllDataFromFirestore(): Promise<Record<string, any[]> 
  * Subscribe to real-time updates from Firestore across all connected devices
  */
 export function subscribeToCloudUpdates(
-  onUpdate: (key: string, items: any[]) => void
+  onUpdate: (key: string, items: any[] | any) => void
 ): () => void {
   if (!db) return () => {};
 
@@ -251,6 +304,28 @@ export function subscribeToCloudUpdates(
       } catch (e) {
         console.warn(`Failed to set up listener for ${collectionName}:`, e);
       }
+    }
+
+    // Subscribe to real-time settings updates so IP/user changes are broadcast to all devices
+    try {
+      const settingsDocRef = doc(db, `${DEV_PREFIX}system_settings`, 'global');
+      const unsubSettings = onSnapshot(
+        settingsDocRef,
+        (snap) => {
+          if (snap.exists()) {
+            const cloudSettings = snap.data();
+            setIsReceivingRemote(true);
+            onUpdate(STORAGE_KEYS.SETTINGS, [cloudSettings]);
+            setTimeout(() => setIsReceivingRemote(false), 200);
+          }
+        },
+        (error) => {
+          console.warn('Live listener error on system_settings:', error);
+        }
+      );
+      unsubscribes.push(unsubSettings);
+    } catch (e) {
+      console.warn('Failed to set up listener for system_settings:', e);
     }
   });
 

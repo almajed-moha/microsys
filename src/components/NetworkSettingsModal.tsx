@@ -20,11 +20,18 @@ import {
   AlignLeft,
   FileSignature,
   Sparkles,
-  Globe
+  Globe,
+  Lock,
+  Unlock,
+  ShieldCheck,
+  Activity,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
-import { NetworkSettings } from '../types';
+import { NetworkSettings, MikroTikConfig } from '../types';
 import { exportToJSON, downloadFile } from '../utils/storage';
 import { RemoteMikrotikWizardModal } from './RemoteMikrotikWizardModal';
+import { testMikroTikConnection, ConnectionTestResult, isPrivateIp } from '../utils/mikrotikApi';
 
 interface NetworkSettingsModalProps {
   settings: NetworkSettings;
@@ -62,10 +69,41 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
   });
 
   const [showRemoteWizard, setShowRemoteWizard] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
+
+  const handleTestConnection = async () => {
+    if (!formData.mikrotikConfig) return;
+    setTestingConnection(true);
+    setTestResult(null);
+    try {
+      const res = await testMikroTikConnection(formData.mikrotikConfig);
+      setTestResult(res);
+    } catch (err: any) {
+      setTestResult({
+        success: false,
+        error: err.message || 'فشل الاتصال بالمايكروتك',
+      });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveSettings(formData);
+    const cleanHost = (formData.mikrotikConfig?.host || formData.mikrotikIp || '192.168.88.1').trim();
+    const finalSettings: NetworkSettings = {
+      ...formData,
+      mikrotikIp: cleanHost,
+      mikrotikConfig: formData.mikrotikConfig
+        ? {
+            ...formData.mikrotikConfig,
+            host: cleanHost,
+            remoteHost: formData.mikrotikConfig.remoteHost || (isPrivateIp(cleanHost) ? undefined : cleanHost),
+          }
+        : undefined,
+    };
+    onSaveSettings(finalSettings);
     onClose();
   };
 
@@ -377,38 +415,182 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
             </div>
           </div>
 
-          {/* MikroTik API Connection Section */}
+          {/* MikroTik API Connection & Remote Access Section */}
           <div className="pt-4 border-t border-slate-800 space-y-3">
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-slate-300 font-bold text-xs flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+              <label className="text-slate-300 font-bold text-xs flex items-center gap-1.5">
                 <Server className="w-4 h-4 text-emerald-400" />
-                <span>إعدادات الربط مع سيرفر المايكروتك (MikroTik API):</span>
+                <span>إعدادات الربط والوصول عن بعد لسيرفر المايكروتك (MikroTik API):</span>
               </label>
-              <button
-                type="button"
-                onClick={() => setShowRemoteWizard(true)}
-                className="text-[11px] text-sky-400 hover:text-sky-300 font-bold flex items-center gap-1.5 bg-sky-500/10 hover:bg-sky-500/20 px-2.5 py-1 rounded-lg border border-sky-500/30 transition shadow-xs"
-              >
-                <Globe className="w-3.5 h-3.5 text-sky-400" />
-                <span>معالج الربط عن بعد 🌐</span>
-              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRemoteWizard(true)}
+                  className="text-[11px] text-sky-400 hover:text-sky-300 font-bold flex items-center gap-1.5 bg-sky-500/10 hover:bg-sky-500/20 px-2.5 py-1 rounded-lg border border-sky-500/30 transition shadow-xs"
+                >
+                  <Globe className="w-3.5 h-3.5 text-sky-400" />
+                  <span>معالج الربط عن بعد 🌐</span>
+                </button>
+
+                {/* Connection Lock Toggle */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextLocked = !formData.isLocked;
+                    setFormData({
+                      ...formData,
+                      isLocked: nextLocked,
+                      mikrotikConfig: {
+                        ...formData.mikrotikConfig!,
+                        isLocked: nextLocked,
+                      },
+                    });
+                  }}
+                  className={`text-[11px] font-bold flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition shadow-xs ${
+                    formData.isLocked
+                      ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                      : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="قفل وحماية بيانات الاتصال لمنع استبدالها عند التبديل بين الشبكات"
+                >
+                  {formData.isLocked ? (
+                    <>
+                      <Lock className="w-3.5 h-3.5 text-amber-400" />
+                      <span>بيانات الاتصال مثبتة ومحمية 🔒</span>
+                    </>
+                  ) : (
+                    <>
+                      <Unlock className="w-3.5 h-3.5 text-slate-400" />
+                      <span>تثبيت وقفل البيانات</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
-            <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1 text-[10px]">عنوان الـ API (IP أو DNS):</label>
+
+            {/* Lock Notice */}
+            {formData.isLocked && (
+              <div className="bg-amber-950/30 border border-amber-500/30 rounded-xl p-2.5 text-amber-200 text-[11px] flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>
+                  <strong>حماية الوصول عن بعد مفعلة:</strong> تم قفل بيانات الـ IP والمنفذ والمستخدم. لن يتم تغييرها أو إعادة ضبطها تلقائياً عند الاتصال بشبكات أخرى أو التبديل بين الفروع.
+                </span>
+              </div>
+            )}
+
+            <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 space-y-3.5">
+              {/* Host and Quick Selection */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-300 font-semibold text-[11px] flex items-center gap-1.5">
+                    <span>عنوان الراوتر (IP أو DNS السحابي DDNS):</span>
+                    {isPrivateIp(formData.mikrotikConfig?.host) ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 font-normal">
+                        شبكة محلية LAN
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-normal">
+                        وصول عن بعد WAN / Cloud
+                      </span>
+                    )}
+                  </label>
+                  {formData.mikrotikConfig?.remoteHost && formData.mikrotikConfig?.host !== formData.mikrotikConfig?.remoteHost && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = formData.mikrotikConfig?.remoteHost!;
+                        setFormData({
+                          ...formData,
+                          mikrotikIp: target,
+                          mikrotikConfig: { ...formData.mikrotikConfig!, host: target },
+                        });
+                      }}
+                      className="text-[10px] text-sky-400 hover:text-sky-300 font-bold underline"
+                    >
+                      استخدام عنوان DDNS المحفوظ
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
                   <input
                     type="text"
                     value={formData.mikrotikConfig?.host || ''}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      mikrotikConfig: { ...formData.mikrotikConfig!, host: e.target.value }
-                    })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-indigo-500 text-left"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormData({
+                        ...formData,
+                        mikrotikIp: val,
+                        mikrotikConfig: {
+                          ...formData.mikrotikConfig!,
+                          host: val,
+                          remoteHost: !isPrivateIp(val) ? val : formData.mikrotikConfig?.remoteHost,
+                          localHost: isPrivateIp(val) ? val : formData.mikrotikConfig?.localHost,
+                        },
+                      });
+                    }}
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-indigo-500 text-left"
                     dir="ltr"
-                    placeholder="مثال: 192.168.88.1"
+                    placeholder="مثال: myrouter.sn.mynetname.net أو 192.168.88.1"
                   />
+
+                  <button
+                    type="button"
+                    onClick={handleTestConnection}
+                    disabled={testingConnection || !formData.mikrotikConfig?.host}
+                    className="px-3 py-2 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 transition shrink-0"
+                  >
+                    {testingConnection ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>جاري الفحص...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Activity className="w-3.5 h-3.5" />
+                        <span>فحص الاتصال</span>
+                      </>
+                    )}
+                  </button>
                 </div>
+
+                {isPrivateIp(formData.mikrotikConfig?.host) && (
+                  <div className="mt-1.5 p-2 rounded-lg bg-amber-950/40 border border-amber-500/20 text-amber-300 text-[11px] flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="leading-relaxed">
+                      <strong>ملاحظة هامة:</strong> العنوان الحالي ({formData.mikrotikConfig?.host}) هو عنوان داخلي (LAN). لن يعمل في حال اتصلت من شبكة إنترنت أخرى أو عبر 4G. للحصول على وصول دائم من أي مكان، استخدم <strong>سحابة مايكروتك المجانية (Cloud DDNS)</strong> عبر معالج الربط عن بعد.
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Test Result Message */}
+              {testResult && (
+                <div
+                  className={`p-2.5 rounded-lg border text-xs flex items-start gap-2 ${
+                    testResult.success
+                      ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                      : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                  }`}
+                >
+                  {testResult.success ? (
+                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  )}
+                  <div className="space-y-0.5 leading-relaxed">
+                    <div className="font-bold">
+                      {testResult.success ? 'تم الاتصال بالراوتر بنجاح!' : 'تعذر الاتصال بالراوتر:'}
+                    </div>
+                    <div>{testResult.error || testResult.diagnostics || `زمن الاستجابة: ${testResult.latencyMs || 25}ms`}</div>
+                    {testResult.identity && <div>اسم الراوتر: <strong>{testResult.identity}</strong></div>}
+                  </div>
+                </div>
+              )}
+
+              {/* Port & Protocol */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-slate-400 font-semibold mb-1 text-[10px]">منفذ الـ API (Port):</label>
                   <input
@@ -422,10 +604,48 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
                     dir="ltr"
                   />
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1 text-[10px]">اسم مستخدم الـ API:</label>
+                  <label className="block text-slate-400 font-semibold mb-1 text-[10px]">بروتوكول الاتصال:</label>
+                  <select
+                    value={formData.mikrotikConfig?.protocol || 'auto'}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      mikrotikConfig: { ...formData.mikrotikConfig!, protocol: e.target.value as any }
+                    })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="auto">تلقائي ذكي (REST ثم API)</option>
+                    <option value="rest_http">REST API (RouterOS v7)</option>
+                    <option value="rest_https">REST API (SSL/HTTPS)</option>
+                    <option value="api_binary">Binary API (Port 8728)</option>
+                    <option value="api_ssl">Binary API SSL (Port 8729)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1 text-[10px]">تشفير SSL المشفر:</label>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({
+                      ...formData,
+                      mikrotikConfig: { ...formData.mikrotikConfig!, useSsl: !formData.mikrotikConfig?.useSsl }
+                    })}
+                    className={`w-full py-1.5 px-3 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                      formData.mikrotikConfig?.useSsl
+                        ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-300'
+                        : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {formData.mikrotikConfig?.useSsl ? 'مفعل (SSL آمن)' : 'معطل (عادي)'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Username & Password */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1 text-[10px]">اسم مستخدم الـ API بالراوتر:</label>
                   <input
                     type="text"
                     value={formData.mikrotikConfig?.username || ''}
@@ -435,7 +655,7 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
                     })}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-indigo-500 text-left"
                     dir="ltr"
-                    placeholder="مثال: api_user"
+                    placeholder="مثال: admin أو api_user"
                   />
                 </div>
                 <div>

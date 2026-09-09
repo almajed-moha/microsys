@@ -352,6 +352,10 @@ export interface GeneratedVoucher {
 
 export interface MikroTikConfig {
   host: string; // e.g. "192.168.88.1" or "10.0.0.1" or DNS
+  remoteHost?: string; // Dedicated Remote Host / DDNS (e.g. *.sn.mynetname.net or Public IP)
+  localHost?: string; // Local fallback IP (e.g. 192.168.88.1)
+  connectionMode?: 'remote_always' | 'local' | 'auto_switch'; // Connection mode
+  isLocked?: boolean; // Protect credentials from accidental resets or network-switching overrides
   port: number; // e.g. 8728 (API), 8729 (API-SSL), 80 (REST), 443 (REST-SSL)
   protocol: 'auto' | 'rest_http' | 'rest_https' | 'api_binary' | 'api_ssl' | 'demo';
   username: string;
@@ -640,6 +644,8 @@ export interface NetworkSettings {
   enableQrCodeOnCards: boolean;
   mikrotikIp?: string;
   mikrotikConfig?: MikroTikConfig;
+  routerConfigsByNetwork?: Record<string, MikroTikConfig>; // Specific router config per network ID to guarantee full multi-network isolation
+  isLocked?: boolean; // Protect settings from being overwritten when changing networks
   themeMode?: 'dark' | 'light' | 'system'; // الوضع الليلي أو النهاري
   invoiceFooterText?: string; // نص تذييل الفواتير وسندات القبض والصرف والتسليم الرسمية (ورق A4)
   cashierFooterText?: string; // نص تذييل إيصالات الكاشير الحرارية (80mm)

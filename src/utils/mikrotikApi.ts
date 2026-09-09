@@ -19,6 +19,16 @@ export interface ConnectionTestResult {
   diagnostics?: string;
 }
 
+export function isPrivateIp(host?: string): boolean {
+  if (!host) return false;
+  const clean = host.trim().toLowerCase();
+  if (clean === 'localhost' || clean === '127.0.0.1' || clean === '::1') return true;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(clean)) return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(clean)) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(clean)) return true;
+  return false;
+}
+
 export function formatBitsToSpeed(bitsPerSec?: number): string {
   if (!bitsPerSec || bitsPerSec <= 0) return '0 bps';
   if (bitsPerSec >= 1000000000) {

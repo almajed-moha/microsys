@@ -30,7 +30,7 @@ import {
   initialUsers,
   initialCardOrders,
 } from '../mockData';
-import { syncArrayToFirestore } from '../services/cloudSync';
+import { syncArrayToFirestore, syncSettingsToFirestore } from '../services/cloudSync';
 
 export const STORAGE_KEYS = {
   SETTINGS: 'mikrotik_pos_settings',
@@ -85,6 +85,8 @@ export function saveToStorage<T>(key: string, value: T): void {
     // Cloud sync if value is an array
     if (Array.isArray(value)) {
       syncArrayToFirestore(key, value).catch(err => console.warn('Cloud Sync Error:', err));
+    } else if (key === STORAGE_KEYS.SETTINGS && value && typeof value === 'object') {
+      syncSettingsToFirestore(value).catch(err => console.warn('Cloud Sync Error for settings:', err));
     }
   } catch (error) {
     console.error(`Error saving key ${key} to storage:`, error);
