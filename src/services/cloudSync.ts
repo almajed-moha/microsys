@@ -61,6 +61,13 @@ export const COLLECTION_MAP: Record<string, string> = {
 const lastKnownState: Record<string, any[]> = {};
 let isReceivingRemoteUpdate = false;
 
+// Global event emitter helper for sync status
+export const emitSyncStatus = (status: 'syncing' | 'synced' | 'error') => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('cloud-sync-status', { detail: status }));
+  }
+};
+
 export function setIsReceivingRemote(status: boolean) {
   isReceivingRemoteUpdate = status;
 }
@@ -73,6 +80,8 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
   const collectionName = COLLECTION_MAP[storageKey];
   if (!collectionName || !db || isReceivingRemoteUpdate) return;
   if (!Array.isArray(currentArray)) return;
+
+  emitSyncStatus('syncing');
 
   // Ensure client is authenticated before performing operations
   await ensureAuthenticatedSession();
@@ -105,6 +114,7 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
 
   if (toAddOrUpdate.length === 0 && toDelete.length === 0) {
     lastKnownState[storageKey] = [...currentArray];
+    emitSyncStatus('synced');
     return;
   }
 
@@ -147,8 +157,10 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
     }
     
     lastKnownState[storageKey] = [...currentArray];
+    emitSyncStatus('synced');
   } catch (error) {
     console.warn(`Cloud sync warning for ${collectionName}:`, error);
+    emitSyncStatus('error');
   }
 }
 
