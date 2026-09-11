@@ -567,6 +567,100 @@ export async function resetUserManagerUserCounters(config: Partial<MikroTikConfi
   }
 }
 
+// 21b. Update User Manager User (Edit card, password, profile, comment, disabled status)
+export async function updateUserManagerUser(
+  config: Partial<MikroTikConfig>,
+  userData: {
+    id?: string;
+    name: string;
+    password?: string;
+    actualProfile?: string;
+    disabled?: boolean;
+    comment?: string;
+    limitUptime?: string;
+    limitBytesTotal?: number;
+  }
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const res = await fetch('/api/mikrotik/um/update-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, userData }),
+    });
+    return await res.json();
+  } catch (error: any) {
+    return { success: false, error: error.message || 'تعذر تحديث الكارت في User Manager' };
+  }
+}
+
+// 21c. Fetch User Manager Sessions
+export async function fetchUserManagerSessions(
+  config: Partial<MikroTikConfig>,
+  userName?: string
+): Promise<any[]> {
+  try {
+    const res = await fetch('/api/mikrotik/um/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, userName }),
+    });
+    const data = await res.json();
+    return data.success ? data.data : [];
+  } catch (error) {
+    console.warn('fetchUserManagerSessions notice:', error);
+    return [];
+  }
+}
+
+// 21d. Fetch User Manager Daily Usage Report
+export async function fetchUserManagerDailyReport(
+  config: Partial<MikroTikConfig>,
+  date?: string
+): Promise<{
+  success: boolean;
+  data?: {
+    date: string;
+    summary: {
+      totalWanBytes: number;
+      wanDownloadBytes: number;
+      wanUploadBytes: number;
+      totalCardsBytes: number;
+      cardsDownloadBytes: number;
+      cardsUploadBytes: number;
+      overheadBytes: number;
+      matchPercentage: number;
+      activeCardsNow: number;
+      totalActiveCardsToday: number;
+      totalSessionsToday: number;
+      wanInterfaceName: string;
+    };
+    cardsUsage: Array<{
+      user: string;
+      profile: string;
+      sessionsCount: number;
+      downloadBytes: number;
+      uploadBytes: number;
+      totalBytes: number;
+      uptimeSeconds: number;
+      isActiveNow: boolean;
+      comment?: string;
+    }>;
+    sessions: any[];
+  };
+  error?: string;
+}> {
+  try {
+    const res = await fetch('/api/mikrotik/um/daily-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, date }),
+    });
+    return await res.json();
+  } catch (error: any) {
+    return { success: false, error: error.message || 'تعذر إعداد تقرير السحب اليومي' };
+  }
+}
+
 // 22. Generate User Manager Batch Script (.rsc) for v6 & v7
 export function generateUserManagerBatchRscScript(
   profileName: string,

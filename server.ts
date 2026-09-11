@@ -503,6 +503,48 @@ app.post("/api/mikrotik/um/reset-user", async (req, res) => {
   }
 });
 
+// 20b. Update UM User (Edit Card & Change Profile)
+app.post("/api/mikrotik/um/update-user", async (req, res) => {
+  try {
+    const { options, userData } = req.body;
+    if (!options?.host || !userData?.name) {
+      return res.status(400).json({ success: false, error: "بيانات الكارت والاتصال مطلوبان" });
+    }
+    const result = await MikroTikService.updateUserManagerUser(options, userData);
+    res.json(result);
+  } catch (error: any) {
+    res.json({ success: false, error: error.message || "تعذر تعديل الكارت في User Manager" });
+  }
+});
+
+// 20c. Get User Manager Sessions (Per User or All)
+app.post("/api/mikrotik/um/sessions", async (req, res) => {
+  try {
+    const { options, userName } = req.body;
+    if (!options?.host) {
+      return res.status(400).json({ success: false, error: "عنوان الراوتر غير محدد" });
+    }
+    const sessions = await MikroTikService.getUserManagerSessions(options, userName);
+    res.json({ success: true, data: sessions });
+  } catch (error: any) {
+    res.json({ success: false, error: error.message || "تعذر جلب جلسات User Manager" });
+  }
+});
+
+// 20d. Get User Manager Daily Usage Report (Reconciliation with WAN)
+app.post("/api/mikrotik/um/daily-report", async (req, res) => {
+  try {
+    const { options, date } = req.body;
+    if (!options?.host) {
+      return res.status(400).json({ success: false, error: "عنوان الراوتر غير محدد" });
+    }
+    const report = await MikroTikService.getUserManagerDailyReport(options, date);
+    res.json({ success: true, data: report });
+  } catch (error: any) {
+    res.json({ success: false, error: error.message || "تعذر إعداد تقرير السحب اليومي من User Manager" });
+  }
+});
+
 // 21. Get Hotspot Servers Status
 app.post("/api/mikrotik/hotspot-servers", async (req, res) => {
   try {

@@ -46,7 +46,10 @@ import {
   Scissors,
   Type,
   Palette,
-  FileDown
+  FileDown,
+  TrendingUp,
+  Sliders,
+  Filter
 } from 'lucide-react';
 import {
   NetworkSettings,
@@ -73,6 +76,9 @@ import {
   formatBytesToHuman
 } from '../utils/mikrotikApi';
 import { exportElementToPdf } from '../utils/pdfExport';
+import { UserManagerCardEditModal } from './UserManagerCardEditModal';
+import { UserManagerCardSessionsModal } from './UserManagerCardSessionsModal';
+import { UserManagerDailyUsageReportView } from './UserManagerDailyUsageReportView';
 
 interface UserManagerViewProps {
   settings: NetworkSettings;
@@ -96,7 +102,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
   onRefreshParent,
 }) => {
   // Navigation tabs inside User Manager
-  const [activeTab, setActiveTab] = useState<'users' | 'profiles' | 'batch' | 'templates' | 'routers' | 'script'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'daily-report' | 'profiles' | 'batch' | 'templates' | 'routers' | 'script'>('users');
 
   // Live Data State
   const [users, setUsers] = useState<UserManagerUser[]>([]);
@@ -109,8 +115,14 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
   // Search & Filters
   const [userSearch, setUserSearch] = useState('');
   const [profileFilter, setProfileFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active_now' | 'has_usage' | 'unused' | 'disabled'>('all');
+  const [userSortBy, setUserSortBy] = useState<'name' | 'usage_desc' | 'uptime_desc'>('usage_desc');
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Modals for Editing and Sessions
+  const [cardToEdit, setCardToEdit] = useState<UserManagerUser | null>(null);
+  const [cardForSessions, setCardForSessions] = useState<UserManagerUser | null>(null);
 
   // Actions Loading State
   const [isDeletingUser, setIsDeletingUser] = useState(false);
@@ -666,19 +678,44 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
 
   // Filtered Users
   const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
+    let list = users.filter((u) => {
       const q = (userSearch || '').toLowerCase();
       const matchesSearch =
         (u.name || '').toLowerCase().includes(q) ||
         (u.comment && (u.comment || '').toLowerCase().includes(q)) ||
         (u.actualProfile && (u.actualProfile || '').toLowerCase().includes(q));
       const matchesProfile = profileFilter === 'all' || u.actualProfile === profileFilter;
-      return matchesSearch && matchesProfile;
+      
+      let matchesStatus = true;
+      const totalBytes = u.totalBytes || ((u.downloadUsed || 0) + (u.uploadUsed || 0));
+      if (statusFilter === 'disabled') {
+        matchesStatus = Boolean(u.disabled);
+      } else if (statusFilter === 'has_usage') {
+        matchesStatus = totalBytes > 0;
+      } else if (statusFilter === 'unused') {
+        matchesStatus = totalBytes === 0 && !u.disabled;
+      } else if (statusFilter === 'active_now') {
+        matchesStatus = !u.disabled && (totalBytes > 0 || (u.uptimeUsed && u.uptimeUsed !== '0s'));
+      }
+
+      return matchesSearch && matchesProfile && matchesStatus;
     });
-  }, [users, userSearch, profileFilter]);
+
+    if (userSortBy === 'usage_desc') {
+      list.sort((a, b) => (b.totalBytes || 0) - (a.totalBytes || 0));
+    } else if (userSortBy === 'uptime_desc') {
+      list.sort((a, b) => (b.uptimeUsed || '').localeCompare(a.uptimeUsed || ''));
+    } else if (userSortBy === 'name') {
+      list.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    return list;
+  }, [users, userSearch, profileFilter, statusFilter, userSortBy]);
 
   // Aggregate stats
   const totalUMBytesUsed = users.reduce((acc, u) => acc + (u.totalBytes || 0), 0);
+  const totalCardsWithUsage = users.filter((u) => (u.totalBytes || 0) > 0).length;
+  const totalDisabledCards = users.filter((u) => u.disabled).length;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -812,6 +849,18 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
         </button>
 
         <button
+          onClick={() => setActiveTab('daily-report')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+            activeTab === 'daily-report'
+              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
+              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <TrendingUp className="w-4 h-4 text-emerald-400" />
+          <span>تقارير السحب اليومي وتدقيق الـ WAN</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('profiles')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
             activeTab === 'profiles'
@@ -877,10 +926,54 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
       {/* ========================================================================= */}
       {activeTab === 'users' && (
         <div className="space-y-4">
+          {/* Quick KPI Overview */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-slate-400 text-[11px] block">إجمالي الكروت</span>
+                <span className="text-lg font-black text-white font-mono">{users.length}</span>
+              </div>
+              <div className="w-9 h-9 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                <Users className="w-4 h-4" />
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-slate-400 text-[11px] block">كروت ذات استهلاك</span>
+                <span className="text-lg font-black text-emerald-400 font-mono">{totalCardsWithUsage}</span>
+              </div>
+              <div className="w-9 h-9 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <Activity className="w-4 h-4" />
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-slate-400 text-[11px] block">إجمالي السحب المتراكم</span>
+                <span className="text-base font-black text-cyan-300 font-mono">{formatBytesToHuman(totalUMBytesUsed)}</span>
+              </div>
+              <div className="w-9 h-9 rounded-xl bg-cyan-600/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                <HardDrive className="w-4 h-4" />
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-slate-400 text-[11px] block">كروت معطلة</span>
+                <span className="text-lg font-black text-rose-400 font-mono">{totalDisabledCards}</span>
+              </div>
+              <div className="w-9 h-9 rounded-xl bg-rose-600/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+            </div>
+          </div>
+
           {/* Filter / Search Bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
-            <div className="flex items-center gap-3 w-full sm:w-auto flex-1">
-              <div className="relative flex-1 max-w-md">
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
+            <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto flex-1">
+              {/* Search */}
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
                 <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
@@ -891,6 +984,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                 />
               </div>
 
+              {/* Profile Filter */}
               <select
                 value={profileFilter}
                 onChange={(e) => setProfileFilter(e.target.value)}
@@ -903,9 +997,33 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                   </option>
                 ))}
               </select>
+
+              {/* Status Filter */}
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as any)}
+                className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-purple-500"
+              >
+                <option value="all">كافة الحالات</option>
+                <option value="active_now">نشطة وغير معطلة</option>
+                <option value="has_usage">كروت سحبت بيانات</option>
+                <option value="unused">كروت جديدة لم تُستخدم</option>
+                <option value="disabled">كروت معطلة</option>
+              </select>
+
+              {/* Sort By */}
+              <select
+                value={userSortBy}
+                onChange={(e) => setUserSortBy(e.target.value as any)}
+                className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-purple-500 font-mono"
+              >
+                <option value="usage_desc">ترتيب: الأكثر استهلاكاً</option>
+                <option value="uptime_desc">ترتيب: أطول مدة اتصال</option>
+                <option value="name">ترتيب: أبجدياً بالاسم</option>
+              </select>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
               <button
                 onClick={() => setActiveTab('batch')}
                 className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-purple-600/20"
@@ -926,10 +1044,10 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                     <th className="p-3.5">كلمة المرور / PIN</th>
                     <th className="p-3.5">البروفايل</th>
                     <th className="p-3.5">الوقت المستهلك / المحدد</th>
-                    <th className="p-3.5">البيانات المستهلكة</th>
+                    <th className="p-3.5">البيانات المستهلكة / الرصيد</th>
                     <th className="p-3.5">المالك / الملاحظات</th>
                     <th className="p-3.5">الحالة</th>
-                    <th className="p-3.5 text-center">إجراءات</th>
+                    <th className="p-3.5 text-center">إجراءات وإحصائيات</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
@@ -947,137 +1065,218 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    filteredUsers.map((u, idx) => (
-                      <tr key={u.id || u.name || `um-user-row-${idx}`} className="hover:bg-slate-800/40 transition">
-                        {/* Username */}
-                        <td className="p-3.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-white text-sm">{u.name}</span>
-                            <button
-                              onClick={() => handleCopy(u.name, `name-${u.id}`)}
-                              className="p-1 rounded text-slate-500 hover:text-white"
-                              title="نسخ اسم الكارت"
-                            >
-                              {copiedId === `name-${u.id}` ? (
-                                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                              ) : (
-                                <Copy className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-                          </div>
-                        </td>
+                    filteredUsers.map((u, idx) => {
+                      const totalBytes = u.totalBytes || ((u.downloadUsed || 0) + (u.uploadUsed || 0));
+                      const hasLimit = u.limitBytesTotal && u.limitBytesTotal > 0;
+                      const percentUsed = hasLimit ? Math.min(100, Math.round((totalBytes / u.limitBytesTotal!) * 100)) : null;
 
-                        {/* Password */}
-                        <td className="p-3.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-purple-300 font-semibold">
-                              {visiblePasswords[u.id] ? u.password || 'لا يوجد' : '••••••'}
-                            </span>
-                            <button
-                              onClick={() => togglePasswordVisibility(u.id)}
-                              className="p-1 rounded text-slate-500 hover:text-white"
-                            >
-                              {visiblePasswords[u.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                            </button>
-                            {u.password && (
+                      return (
+                        <tr key={u.id || u.name || `um-user-row-${idx}`} className="hover:bg-slate-800/40 transition">
+                          {/* Username */}
+                          <td className="p-3.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-white text-sm">{u.name}</span>
                               <button
-                                onClick={() => handleCopy(u.password || '', `pass-${u.id}`)}
+                                onClick={() => handleCopy(u.name, `name-${u.id}`)}
                                 className="p-1 rounded text-slate-500 hover:text-white"
-                                title="نسخ كلمة المرور"
+                                title="نسخ اسم الكارت"
                               >
-                                {copiedId === `pass-${u.id}` ? (
+                                {copiedId === `name-${u.id}` ? (
                                   <Check className="w-3.5 h-3.5 text-emerald-400" />
                                 ) : (
                                   <Copy className="w-3.5 h-3.5" />
                                 )}
                               </button>
-                            )}
-                          </div>
-                        </td>
+                            </div>
+                          </td>
 
-                        {/* Profile */}
-                        <td className="p-3.5">
-                          <span className="px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-300 font-mono font-medium border border-indigo-500/20">
-                            {u.actualProfile || 'default'}
-                          </span>
-                        </td>
+                          {/* Password */}
+                          <td className="p-3.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-purple-300 font-semibold">
+                                {visiblePasswords[u.id] ? u.password || 'لا يوجد' : '••••••'}
+                              </span>
+                              <button
+                                onClick={() => togglePasswordVisibility(u.id)}
+                                className="p-1 rounded text-slate-500 hover:text-white"
+                              >
+                                {visiblePasswords[u.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              </button>
+                              {u.password && (
+                                <button
+                                  onClick={() => handleCopy(u.password || '', `pass-${u.id}`)}
+                                  className="p-1 rounded text-slate-500 hover:text-white"
+                                  title="نسخ كلمة المرور"
+                                >
+                                  {copiedId === `pass-${u.id}` ? (
+                                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  ) : (
+                                    <Copy className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </td>
 
-                        {/* Uptime */}
-                        <td className="p-3.5 font-mono text-slate-300">
-                          <div>
-                            <span className="font-bold">{u.uptimeUsed || '0s'}</span>
-                            {u.limitUptime && (
-                              <span className="text-slate-500 text-[10px] block">
-                                حد أقصى: {u.limitUptime}
+                          {/* Profile */}
+                          <td className="p-3.5">
+                            <button
+                              onClick={() => setCardToEdit(u)}
+                              className="px-2.5 py-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 font-mono font-medium border border-indigo-500/20 transition text-right"
+                              title="انقر لتعديل البروفايل"
+                            >
+                              {u.actualProfile || 'default'}
+                            </button>
+                          </td>
+
+                          {/* Uptime */}
+                          <td className="p-3.5 font-mono text-slate-300">
+                            <div>
+                              <span className="font-bold">{u.uptimeUsed || '0s'}</span>
+                              {u.limitUptime && (
+                                <span className="text-slate-500 text-[10px] block">
+                                  حد أقصى: {u.limitUptime}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Data Download / Upload & Progress */}
+                          <td className="p-3.5 font-mono text-slate-300">
+                            <div className="space-y-1 min-w-[130px]">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-emerald-400">
+                                  {formatBytesToHuman(totalBytes)}
+                                </span>
+                                {hasLimit && (
+                                  <span className="text-[10px] text-slate-400 font-semibold">
+                                    {percentUsed}%
+                                  </span>
+                                )}
+                              </div>
+                              {hasLimit ? (
+                                <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all ${
+                                      (percentUsed || 0) > 90
+                                        ? 'bg-rose-500'
+                                        : (percentUsed || 0) > 70
+                                        ? 'bg-amber-400'
+                                        : 'bg-emerald-400'
+                                    }`}
+                                    style={{ width: `${percentUsed}%` }}
+                                  />
+                                </div>
+                              ) : null}
+                              {hasLimit ? (
+                                <span className="text-slate-500 text-[10px] block">
+                                  من {formatBytesToHuman(u.limitBytesTotal!)}
+                                </span>
+                              ) : (
+                                <span className="text-slate-500 text-[10px] block">
+                                  سحب مفتوح
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Customer / Comment */}
+                          <td className="p-3.5 text-slate-400 text-xs">
+                            <div>
+                              <span className="font-medium text-slate-300">{u.customer || 'admin'}</span>
+                              {u.comment && <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">{u.comment}</p>}
+                            </div>
+                          </td>
+
+                          {/* Status */}
+                          <td className="p-3.5">
+                            {u.disabled ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                                معطل (Disabled)
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                نشط (Active)
                               </span>
                             )}
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* Data Download / Upload */}
-                        <td className="p-3.5 font-mono text-slate-300">
-                          <div>
-                            <span className="font-bold text-emerald-400">
-                              {formatBytesToHuman(u.totalBytes || 0)}
-                            </span>
-                            {u.limitBytesTotal && u.limitBytesTotal > 0 ? (
-                              <span className="text-slate-500 text-[10px] block">
-                                من {formatBytesToHuman(u.limitBytesTotal)}
-                              </span>
-                            ) : null}
-                          </div>
-                        </td>
+                          {/* Actions */}
+                          <td className="p-3.5 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {/* View Sessions & Stats */}
+                              <button
+                                onClick={() => setCardForSessions(u)}
+                                className="px-2 py-1 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/30 transition text-xs font-semibold flex items-center gap-1"
+                                title="عرض جلسات الكارت وسجل السحب"
+                              >
+                                <Activity className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">جلسات</span>
+                              </button>
 
-                        {/* Customer / Comment */}
-                        <td className="p-3.5 text-slate-400 text-xs">
-                          <div>
-                            <span className="font-medium text-slate-300">{u.customer || 'admin'}</span>
-                            {u.comment && <p className="text-[11px] text-slate-500 mt-0.5">{u.comment}</p>}
-                          </div>
-                        </td>
+                              {/* Edit Card & Profile */}
+                              <button
+                                onClick={() => setCardToEdit(u)}
+                                className="p-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 transition text-xs"
+                                title="تعديل الكارت، كلمة المرور، البروفايل، والصلاحيات"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
 
-                        {/* Status */}
-                        <td className="p-3.5">
-                          {u.disabled ? (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                              معطل (Disabled)
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                              نشط (Active)
-                            </span>
-                          )}
-                        </td>
+                              {/* Reset Counters */}
+                              <button
+                                onClick={() => handleResetCounters(u.id, u.name)}
+                                className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 transition text-xs"
+                                title="تصفير عدادات الاستهلاك للكارت"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
 
-                        {/* Actions */}
-                        <td className="p-3.5 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              onClick={() => handleResetCounters(u.id, u.name)}
-                              className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 transition text-xs"
-                              title="تصفير عدادات الاستهلاك للكارت"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                            </button>
-
-                            <button
-                              onClick={() => handleDeleteUser(u.id, u.name)}
-                              disabled={isDeletingUser}
-                              className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition text-xs"
-                              title="حذف الكارت نهائياً من الراوتر"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                              {/* Delete Card */}
+                              <button
+                                onClick={() => handleDeleteUser(u.id, u.name)}
+                                disabled={isDeletingUser}
+                                className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition text-xs"
+                                title="حذف الكارت نهائياً من الراوتر"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 1b: DAILY USAGE REPORT & WAN AUDIT */}
+      {/* ========================================================================= */}
+      {activeTab === 'daily-report' && (
+        <UserManagerDailyUsageReportView
+          config={config}
+          users={users}
+          onViewCardSessions={(userName) => {
+            const found = users.find((u) => u.name.toLowerCase() === userName.toLowerCase()) || {
+              id: `um-sess-${userName}`,
+              name: userName,
+              password: '',
+              actualProfile: '',
+              uptimeUsed: '0s',
+              downloadUsed: 0,
+              uploadUsed: 0,
+              totalBytes: 0,
+              disabled: false,
+            };
+            setCardForSessions(found);
+          }}
+          onEditCard={(u) => setCardToEdit(u)}
+        />
       )}
 
       {/* ========================================================================= */}
@@ -2513,6 +2712,48 @@ set [find] use-radius=yes radius-accounting=yes`}
           </div>
         </div>
       )}
+
+      {/* Card Edit Modal */}
+      <UserManagerCardEditModal
+        isOpen={Boolean(cardToEdit)}
+        user={cardToEdit}
+        profiles={profiles}
+        config={config}
+        onClose={() => setCardToEdit(null)}
+        onSaved={(updated) => {
+          setUsers((prev) =>
+            prev.map((u) => (u.id === updated.id || u.name === updated.name ? updated : u))
+          );
+          setActionFeedback({
+            success: true,
+            message: `تم تحديث بيانات الكارت (${updated.name}) بنجاح في اليوزر مانجر.`,
+          });
+        }}
+        onResetCounters={(userId, userName) => {
+          setUsers((prev) =>
+            prev.map((u) =>
+              u.id === userId || u.name === userName
+                ? { ...u, uptimeUsed: '0s', downloadUsed: 0, uploadUsed: 0, totalBytes: 0 }
+                : u
+            )
+          );
+          setActionFeedback({
+            success: true,
+            message: `تم تصفير عدادات استهلاك الكارت (${userName}) بنجاح.`,
+          });
+        }}
+      />
+
+      {/* Card Sessions & Statistics Modal */}
+      <UserManagerCardSessionsModal
+        isOpen={Boolean(cardForSessions)}
+        user={cardForSessions}
+        config={config}
+        onClose={() => setCardForSessions(null)}
+        onEditProfile={(u) => {
+          setCardToEdit(u);
+        }}
+      />
     </div>
   );
 };
