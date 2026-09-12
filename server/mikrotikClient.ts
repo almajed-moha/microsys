@@ -900,7 +900,7 @@ export class MikroTikService {
     const users = await client.sendSentence(['/ip/hotspot/active/print']);
     client.close();
 
-    return users.map(item => ({
+    return users.filter(u => u && (u['name'] || u['username'])).map(item => ({
       id: item['.id'] || item['user'],
       user: item['user'] || 'Unknown',
       address: item['address'] || '',
@@ -1556,11 +1556,11 @@ export class MikroTikService {
         const data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/ip/hotspot/user');
         const list = Array.isArray(data) ? data : [data];
 
-        return list.filter(u => u && u.name).map(u => ({
-          id: u['.id'] || u.id || u.name,
-          name: u.name,
+        return list.filter(u => u && (u.name || u.username)).map(u => ({
+          id: u['.id'] || u.id || u.name || u.username,
+          name: u.name || u.username,
           password: u.password,
-          profile: u.profile || 'default',
+          profile: u.profile || u.group || 'default',
           limitUptime: u['limit-uptime'] || u.limitUptime,
           limitBytesTotal: Number(u['limit-bytes-total']) || 0,
           bytesIn: Number(u['bytes-in']) || 0,
@@ -1584,11 +1584,11 @@ export class MikroTikService {
     const users = await client.sendSentence(['/ip/hotspot/user/print']);
     client.close();
 
-    return users.map(u => ({
-      id: u['.id'] || u['name'],
-      name: u['name'],
+    return users.filter(u => u && (u['name'] || u['username'])).map(u => ({
+      id: u['.id'] || u['name'] || u['username'],
+      name: u['name'] || u['username'],
       password: u['password'],
-      profile: u['profile'] || 'default',
+      profile: u['profile'] || u['group'] || 'default',
       limitUptime: u['limit-uptime'],
       limitBytesTotal: Number(u['limit-bytes-total']) || 0,
       bytesIn: Number(u['bytes-in']) || 0,
@@ -1933,11 +1933,11 @@ export class MikroTikService {
         }
 
         const list = Array.isArray(data) ? data : [data];
-        return list.filter(u => u && u.name).map(u => ({
-          id: u['.id'] || u.id || u.name,
-          name: u.name,
+        return list.filter(u => u && (u.name || u.username)).map(u => ({
+          id: u['.id'] || u.id || u.name || u.username,
+          name: u.name || u.username,
           password: u.password,
-          actualProfile: u['actual-profile'] || u.actualProfile || u.profile || 'default',
+          actualProfile: u['actual-profile'] || u.actualProfile || u.profile || u.group || 'default',
           customer: u.customer || 'admin',
           uptimeUsed: u['uptime-used'] || u.uptimeUsed || u.uptime || '0s',
           downloadUsed: Number(u['download-used'] || u.downloadUsed || u['bytes-out']) || 0,
@@ -1968,11 +1968,11 @@ export class MikroTikService {
     }
     client.close();
 
-    return users.map(u => ({
-      id: u['.id'] || u['name'],
-      name: u['name'],
+    return users.filter(u => u && (u['name'] || u['username'])).map(u => ({
+      id: u['.id'] || u['name'] || u['username'],
+      name: u['name'] || u['username'],
       password: u['password'],
-      actualProfile: u['actual-profile'] || u['profile'] || 'default',
+      actualProfile: u['actual-profile'] || u['profile'] || u['group'] || 'default',
       customer: u['customer'] || 'admin',
       uptimeUsed: u['uptime-used'] || u['uptime'] || '0s',
       downloadUsed: Number(u['download-used'] || u['bytes-out']) || 0,
