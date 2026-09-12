@@ -2691,6 +2691,55 @@ export class MikroTikService {
     return true;
   }
 
+  // 19b. Disconnect Active User Manager User (Terminate sessions)
+  public static async disconnectUserManagerUser(options: MikroTikConnectionOptions, userName: string): Promise<boolean> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      const idx = MikroTikService.demoUMSessions.findIndex(s => s.user === userName && s.active);
+      if (idx >= 0) {
+        MikroTikService.demoUMSessions[idx].active = false;
+        MikroTikService.demoUMSessions[idx].terminateCause = 'admin-reset';
+        MikroTikService.demoUMSessions[idx].tillTime = new Date().toISOString();
+      }
+      return true;
+    }
+
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    try {
+      // Hotspot active removal (often UM users are logged in via hotspot)
+      try {
+        await client.sendSentence(['/ip/hotspot/active/remove', `?user=${userName}`]);
+      } catch {}
+      // PPP active removal
+      try {
+        await client.sendSentence(['/ppp/active/remove', `?name=${userName}`]);
+      } catch {}
+      
+      // UM Session removal
+      try {
+        // v7
+        const sessions = await client.sendSentence(['/user-manager/session/print', `?user=${userName}`, '?active=true']);
+        for (const s of sessions) {
+          if (s['.id']) await client.sendSentence(['/user-manager/session/remove', `=numbers=${s['.id']}`]);
+        }
+      } catch {
+        try {
+          // v6
+          const sessions = await client.sendSentence(['/tool/user-manager/session/print', `?user=${userName}`, '?active=true']);
+          for (const s of sessions) {
+            if (s['.id']) await client.sendSentence(['/tool/user-manager/session/remove', `=numbers=${s['.id']}`]);
+          }
+        } catch {}
+      }
+    } finally {
+      client.close();
+    }
+    return true;
+  }
+
   // 20. Reset User Manager User Counters
   public static async resetUserManagerUserCounters(options: MikroTikConnectionOptions, userIdOrName: string): Promise<boolean> {
     if (options.protocol === 'demo' || options.host === 'demo') {

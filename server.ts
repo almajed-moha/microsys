@@ -503,6 +503,20 @@ app.post("/api/mikrotik/um/reset-user", async (req, res) => {
   }
 });
 
+// 20a. Disconnect Active User
+app.post("/api/mikrotik/um/disconnect-user", async (req, res) => {
+  try {
+    const { options, userName } = req.body;
+    if (!options?.host || !userName) {
+      return res.status(400).json({ success: false, error: "اسم الكارت والاتصال مطلوبان" });
+    }
+    const ok = await MikroTikService.disconnectUserManagerUser(options, userName);
+    res.json({ success: ok });
+  } catch (error: any) {
+    res.json({ success: false, error: error.message || "تعذر فصل الكارت" });
+  }
+});
+
 // 20b. Update UM User (Edit Card & Change Profile)
 app.post("/api/mikrotik/um/update-user", async (req, res) => {
   try {

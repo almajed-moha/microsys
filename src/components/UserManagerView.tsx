@@ -49,7 +49,8 @@ import {
   FileDown,
   TrendingUp,
   Sliders,
-  Filter
+  Filter,
+  PowerOff
 } from 'lucide-react';
 import {
   NetworkSettings,
@@ -72,6 +73,7 @@ import {
   deleteUserManagerProfile,
   deleteUserManagerUser,
   resetUserManagerUserCounters,
+  disconnectUserManagerUser,
   generateUserManagerBatchRscScript,
   formatBytesToHuman
 } from '../utils/mikrotikApi';
@@ -251,6 +253,17 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
       setTimeout(() => setActionFeedback(null), 3500);
     } else {
       setActionFeedback({ success: false, message: 'تعذر تصفير عدادات الكارت.' });
+    }
+  };
+
+  // Disconnect User
+  const handleDisconnectUser = async (userName: string) => {
+    const ok = await disconnectUserManagerUser(config, userName);
+    if (ok) {
+      setActionFeedback({ success: true, message: `تم فصل الكارت (${userName}) بنجاح وإغلاق الجلسة النشطة.` });
+      setTimeout(() => setActionFeedback(null), 3500);
+    } else {
+      setActionFeedback({ success: false, message: 'تعذر فصل الكارت، قد يكون غير متصل حالياً.' });
     }
   };
 
@@ -1230,6 +1243,15 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                                 title="تصفير عدادات الاستهلاك للكارت"
                               >
                                 <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Disconnect Card */}
+                              <button
+                                onClick={() => handleDisconnectUser(u.name)}
+                                className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition text-xs"
+                                title="فصل الكارت وإغلاق الجلسة النشطة"
+                              >
+                                <PowerOff className="w-3.5 h-3.5" />
                               </button>
 
                               {/* Delete Card */}

@@ -567,6 +567,22 @@ export async function resetUserManagerUserCounters(config: Partial<MikroTikConfi
   }
 }
 
+// 21a. Disconnect User Manager User
+export async function disconnectUserManagerUser(config: Partial<MikroTikConfig>, userName: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/mikrotik/um/disconnect-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, userName }),
+    });
+    const data = await res.json();
+    return Boolean(data.success);
+  } catch (error) {
+    console.warn('disconnectUserManagerUser notice:', error);
+    return false;
+  }
+}
+
 // 21b. Update User Manager User (Edit card, password, profile, comment, disabled status)
 export async function updateUserManagerUser(
   config: Partial<MikroTikConfig>,
