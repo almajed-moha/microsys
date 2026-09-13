@@ -602,6 +602,149 @@ app.post("/api/mikrotik/maintenance-state", async (req, res) => {
   }
 });
 
+// ==========================================
+// 23. MIKROTIK FILE & BACKUP MANAGEMENT ENDPOINTS
+// ==========================================
+
+// 23a. List All Files
+app.post("/api/mikrotik/files", async (req, res) => {
+  try {
+    const { options } = req.body;
+    if (!options?.host) {
+      return res.status(400).json({ success: false, error: "بيانات الراوتر وعنوان IP مطلوبة" });
+    }
+    const files = await MikroTikService.getFiles(options);
+    res.json({ success: true, data: files });
+  } catch (error: any) {
+    console.warn(`[MikroTik] Files notice (${req.body?.options?.host}): ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "تعذر جلب ملفات المايكروتك",
+      isPrivateIp: isPrivateIp(req.body?.options?.host),
+    });
+  }
+});
+
+// 23b. Get File Content
+app.post("/api/mikrotik/files/content", async (req, res) => {
+  try {
+    const { options, fileNameOrId } = req.body;
+    if (!options?.host || !fileNameOrId) {
+      return res.status(400).json({ success: false, error: "اسم الملف وبيانات الراوتر مطلوبة" });
+    }
+    const result = await MikroTikService.getFileContent(options, fileNameOrId);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    res.json({
+      success: false,
+      error: error.message || "تعذر قراءة محتوى الملف",
+    });
+  }
+});
+
+// 23c. Save File Content
+app.post("/api/mikrotik/files/save", async (req, res) => {
+  try {
+    const { options, fileNameOrId, contents } = req.body;
+    if (!options?.host || !fileNameOrId || contents === undefined) {
+      return res.status(400).json({ success: false, error: "اسم الملف والمحتوى الجديد مطلوبان" });
+    }
+    const result = await MikroTikService.saveFileContent(options, fileNameOrId, contents);
+    res.json(result);
+  } catch (error: any) {
+    res.json({
+      success: false,
+      error: error.message || "تعذر حفظ التعديلات على الملف",
+    });
+  }
+});
+
+// 23d. Delete File
+app.post("/api/mikrotik/files/delete", async (req, res) => {
+  try {
+    const { options, fileNameOrId } = req.body;
+    if (!options?.host || !fileNameOrId) {
+      return res.status(400).json({ success: false, error: "اسم الملف مطلوب لحذفه" });
+    }
+    const result = await MikroTikService.deleteFile(options, fileNameOrId);
+    res.json(result);
+  } catch (error: any) {
+    res.json({
+      success: false,
+      error: error.message || "تعذر حذف الملف من الراوتر",
+    });
+  }
+});
+
+// 23e. Upload / Add File
+app.post("/api/mikrotik/files/upload", async (req, res) => {
+  try {
+    const { options, fileName, fileContent, isBase64 } = req.body;
+    if (!options?.host || !fileName || fileContent === undefined) {
+      return res.status(400).json({ success: false, error: "اسم الملف ومحتواه مطلوبان للرفع" });
+    }
+    const result = await MikroTikService.uploadFile(options, fileName, fileContent, isBase64);
+    res.json(result);
+  } catch (error: any) {
+    res.json({
+      success: false,
+      error: error.message || "تعذر رفع الملف إلى الراوتر",
+    });
+  }
+});
+
+// 23f. Create Backup
+app.post("/api/mikrotik/files/backup", async (req, res) => {
+  try {
+    const { options, name, password, dontEncrypt } = req.body;
+    if (!options?.host) {
+      return res.status(400).json({ success: false, error: "بيانات الراوتر مطلوبة" });
+    }
+    const result = await MikroTikService.createBackup(options, { name, password, dontEncrypt });
+    res.json(result);
+  } catch (error: any) {
+    res.json({
+      success: false,
+      error: error.message || "تعذر إنشاء النسخة الاحتياطية",
+    });
+  }
+});
+
+// 23g. Export Router Configuration (.rsc)
+app.post("/api/mikrotik/files/export", async (req, res) => {
+  try {
+    const { options, filename, compact, hideSensitive } = req.body;
+    if (!options?.host) {
+      return res.status(400).json({ success: false, error: "بيانات الراوتر مطلوبة" });
+    }
+    const result = await MikroTikService.exportConfiguration(options, { filename, compact, hideSensitive });
+    res.json(result);
+  } catch (error: any) {
+    res.json({
+      success: false,
+      error: error.message || "تعذر تصدير إعدادات الراوتر",
+    });
+  }
+});
+
+// 23h. Run / Import Script (.rsc)
+app.post("/api/mikrotik/files/run-script", async (req, res) => {
+  try {
+    const { options, fileName } = req.body;
+    if (!options?.host || !fileName) {
+      return res.status(400).json({ success: false, error: "اسم السكربت والراوتر مطلوبان" });
+    }
+    const result = await MikroTikService.runScriptFile(options, fileName);
+    res.json(result);
+  } catch (error: any) {
+    res.json({
+      success: false,
+      error: error.message || "تعذر تشغيل السكربت في الراوتر",
+    });
+  }
+});
+
+
 // AI Sales & POS Analytics endpoint
 app.post("/api/ai/analyze-sales", async (req, res) => {
   try {

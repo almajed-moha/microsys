@@ -57,6 +57,8 @@ import {
   Square,
   Bookmark,
   Wrench,
+  Folder,
+  Archive,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -104,6 +106,7 @@ import { exportElementToPdf } from '../utils/pdfExport';
 import { UserManagerView } from './UserManagerView';
 import { MikrotikMaintenanceView } from './MikrotikMaintenanceView';
 import { RemoteMikrotikWizardModal } from './RemoteMikrotikWizardModal';
+import { MikrotikFilesManagerView } from './MikrotikFilesManagerView';
 
 function isPrivateIp(host?: string): boolean {
   if (!host) return false;
@@ -173,7 +176,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   useNetworkUsageTracker(activeUsers, isConnected, systemInfo?.model || config.routerModel);
 
   const [activeSubTab, setActiveSubTab] = useState<
-    'active_users' | 'all_users' | 'profiles' | 'user_manager' | 'maintenance' | 'interfaces' | 'remote_control' | 'hosts' | 'diagnostics' | 'ai_assistant' | 'settings' | 'daily_logs'
+    'active_users' | 'all_users' | 'profiles' | 'user_manager' | 'maintenance' | 'interfaces' | 'remote_control' | 'hosts' | 'diagnostics' | 'ai_assistant' | 'settings' | 'daily_logs' | 'files'
   >('active_users');
 
   // Search & Filter States
@@ -1264,6 +1267,19 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
         >
           <Database className="w-4 h-4 text-emerald-400" />
           <span>سجل الاستهلاك اليومي</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('files')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition border ${
+            activeSubTab === 'files'
+              ? 'bg-gradient-to-r from-indigo-600 via-indigo-700 to-sky-600 text-white border-indigo-500 shadow-md shadow-indigo-600/30'
+              : 'bg-slate-900 text-indigo-400 border-indigo-500/30 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <Folder className="w-4 h-4 text-indigo-400" />
+          <span>الملفات والنسخ الاحتياطية (Files & Backups)</span>
+          <span className="px-1.5 py-0.2 bg-indigo-500/20 text-indigo-300 text-[10px] font-bold rounded-full">جديد</span>
         </button>
 
         <button
@@ -2365,6 +2381,15 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {/* SUB-VIEW 13: MikroTik File System & Backup Management */}
+      {activeSubTab === 'files' && (
+        <MikrotikFilesManagerView
+          config={config}
+          isConnected={isConnected}
+          routerIdentity={config.routerIdentity || systemInfo?.model || 'MikroTik'}
+        />
       )}
 
       {/* Profile Edit / Add Modal */}

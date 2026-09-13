@@ -992,3 +992,16 @@ export interface Customer extends EntityAuditMetadata {
   totalPayments?: number;
   balance?: number;
 }
+
+export interface MikrotikFileItem {
+  id: string;
+  name: string;
+  type: string; // 'directory' | '.html file' | 'backup' | 'script' | '.txt file' | etc.
+  size: number;
+  creationTime: string;
+  contents?: string;
+  isDirectory?: boolean;
+}
+
+export type MikrotikFileCategory = 'all' | 'hotspot' | 'backup' | 'script' | 'other';
+

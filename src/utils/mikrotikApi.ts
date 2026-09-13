@@ -6,6 +6,7 @@ import {
   RouterInterface,
   DhcpLease,
   MikrotikCallerSession,
+  MikrotikFileItem,
 } from '../types';
 
 export interface ConnectionTestResult {
@@ -957,4 +958,149 @@ export function generateCaptivePortalMaintenanceHtml(
 </body>
 </html>`;
 }
+
+// ==========================================
+// MIKROTIK FILE & BACKUP CLIENT APIS
+// ==========================================
+
+// 1. Fetch All Files from Router
+export async function fetchMikrotikFiles(config: Partial<MikroTikConfig>): Promise<MikrotikFileItem[]> {
+  try {
+    const res = await fetch('/api/mikrotik/files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config }),
+    });
+    const data = await res.json();
+    return data.success ? data.data : [];
+  } catch (error) {
+    console.warn('fetchMikrotikFiles notice:', error);
+    return [];
+  }
+}
+
+// 2. Fetch File Content (Text/HTML/RSC)
+export async function fetchMikrotikFileContent(
+  config: Partial<MikroTikConfig>,
+  fileNameOrId: string
+): Promise<{ content: string; name: string; size: number } | null> {
+  try {
+    const res = await fetch('/api/mikrotik/files/content', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, fileNameOrId }),
+    });
+    const data = await res.json();
+    return data.success ? data.data : null;
+  } catch (error) {
+    console.warn('fetchMikrotikFileContent notice:', error);
+    return null;
+  }
+}
+
+// 3. Save File Content
+export async function saveMikrotikFile(
+  config: Partial<MikroTikConfig>,
+  fileNameOrId: string,
+  contents: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const res = await fetch('/api/mikrotik/files/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, fileNameOrId, contents }),
+    });
+    return await res.json();
+  } catch (error: any) {
+    return { success: false, message: error.message || 'تعذر حفظ محتوى الملف' };
+  }
+}
+
+// 4. Delete File from Router
+export async function deleteMikrotikFile(
+  config: Partial<MikroTikConfig>,
+  fileNameOrId: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const res = await fetch('/api/mikrotik/files/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, fileNameOrId }),
+    });
+    return await res.json();
+  } catch (error: any) {
+    return { success: false, message: error.message || 'تعذر حذف الملف من الراوتر' };
+  }
+}
+
+// 5. Upload New File to Router
+export async function uploadMikrotikFile(
+  config: Partial<MikroTikConfig>,
+  fileName: string,
+  fileContent: string,
+  isBase64?: boolean
+): Promise<{ success: boolean; message: string; file?: any }> {
+  try {
+    const res = await fetch('/api/mikrotik/files/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, fileName, fileContent, isBase64 }),
+    });
+    return await res.json();
+  } catch (error: any) {
+    return { success: false, message: error.message || 'تعذر رفع الملف' };
+  }
+}
+
+// 6. Create Backup (.backup)
+export async function createMikrotikBackup(
+  config: Partial<MikroTikConfig>,
+  params: { name: string; password?: string; dontEncrypt?: boolean }
+): Promise<{ success: boolean; message: string; filename?: string }> {
+  try {
+    const res = await fetch('/api/mikrotik/files/backup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, ...params }),
+    });
+    return await res.json();
+  } catch (error: any) {
+    return { success: false, message: error.message || 'تعذر أخذ النسخة الاحتياطية' };
+  }
+}
+
+// 7. Export Configuration (.rsc)
+export async function exportMikrotikConfig(
+  config: Partial<MikroTikConfig>,
+  params: { filename: string; compact?: boolean; hideSensitive?: boolean }
+): Promise<{ success: boolean; message: string; filename?: string; content?: string }> {
+  try {
+    const res = await fetch('/api/mikrotik/files/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, ...params }),
+    });
+    return await res.json();
+  } catch (error: any) {
+    return { success: false, message: error.message || 'تعذر تصدير إعدادات الراوتر' };
+  }
+}
+
+// 8. Run / Import Script (.rsc)
+export async function runMikrotikScript(
+  config: Partial<MikroTikConfig>,
+  fileName: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const res = await fetch('/api/mikrotik/files/run-script', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, fileName }),
+    });
+    return await res.json();
+  } catch (error: any) {
+    return { success: false, message: error.message || 'تعذر تشغيل السكربت' };
+  }
+}
+
 
