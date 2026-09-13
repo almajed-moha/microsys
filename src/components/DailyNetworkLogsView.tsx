@@ -108,19 +108,12 @@ export const DailyNetworkLogsView: React.FC<Props> = ({ currentDownloadBytes = 0
                 حذف المحدد ({selectedIds.length})
               </button>
             )}
-            <button
-              onClick={() => {
-                setDate(new Date().toISOString().split('T')[0]);
-                setDownBytes(currentDownloadBytes);
-                setUpBytes(currentUploadBytes);
-                setNotes('');
-                setShowModal(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-600/20 transition"
-            >
-              <Plus className="w-4 h-4" />
-              تسجيل استهلاك اليوم
-            </button>
+            
+  <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-400 rounded-xl text-xs font-bold border border-emerald-500/20">
+    <Activity className="w-4 h-4" />
+    تسجيل آلي فعّال
+  </div>
+  
           </div>
         </div>
 

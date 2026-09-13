@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useNetworkUsageTracker } from "../hooks/useNetworkUsageTracker";
 import {
   Server,
   Activity,
@@ -167,6 +168,10 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   const [trafficHistory, setTrafficHistory] = useState<{ time: string; rxMbps: number; txMbps: number }[]>([]);
 
   // Sub-tabs
+
+  // Auto-track network usage deltas and sync to Firebase
+  useNetworkUsageTracker(activeUsers, isConnected);
+
   const [activeSubTab, setActiveSubTab] = useState<
     'active_users' | 'all_users' | 'profiles' | 'user_manager' | 'maintenance' | 'interfaces' | 'remote_control' | 'hosts' | 'diagnostics' | 'ai_assistant' | 'settings' | 'daily_logs'
   >('active_users');
