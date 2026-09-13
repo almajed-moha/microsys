@@ -172,6 +172,62 @@ export function parseRouterOSDate(dateStr: string | undefined | null, fallbackMs
   return new Date(fallbackMs).toISOString();
 }
 
+// Parse RouterOS duration string (e.g., "1w2d3h4m5s", "03:15:20", "2h30m", "45s") to seconds
+export function parseUptimeToSeconds(uptimeStr: string | undefined | null): number {
+  if (!uptimeStr) return 0;
+  const str = String(uptimeStr).trim().toLowerCase();
+  if (!str) return 0;
+
+  // Format: "hh:mm:ss" or "mm:ss"
+  if (/^\d+:\d+(:\d+)?$/.test(str)) {
+    const parts = str.split(':').map(Number);
+    if (parts.length === 3) {
+      return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+    } else if (parts.length === 2) {
+      return (parts[0] * 60) + parts[1];
+    }
+  }
+
+  let totalSeconds = 0;
+  const weeks = str.match(/(\d+)\s*w/);
+  const days = str.match(/(\d+)\s*d/);
+  const hours = str.match(/(\d+)\s*h/);
+  const minutes = str.match(/(\d+)\s*m(?!s)/);
+  const seconds = str.match(/(\d+)\s*s/);
+
+  if (weeks) totalSeconds += parseInt(weeks[1], 10) * 7 * 86400;
+  if (days) totalSeconds += parseInt(days[1], 10) * 86400;
+  if (hours) totalSeconds += parseInt(hours[1], 10) * 3600;
+  if (minutes) totalSeconds += parseInt(minutes[1], 10) * 60;
+  if (seconds) totalSeconds += parseInt(seconds[1], 10);
+
+  // If simple numeric seconds
+  if (totalSeconds === 0 && /^\d+$/.test(str)) {
+    totalSeconds = parseInt(str, 10);
+  }
+
+  return totalSeconds;
+}
+
+// Format seconds to human RouterOS style uptime: "2d 4h 15m" or "45s"
+export function formatSecondsToUptime(sec: number): string {
+  if (!sec || isNaN(sec) || sec <= 0) return '0s';
+  const d = Math.floor(sec / 86400);
+  const rem1 = sec % 86400;
+  const h = Math.floor(rem1 / 3600);
+  const rem2 = rem1 % 3600;
+  const m = Math.floor(rem2 / 60);
+  const s = rem2 % 60;
+
+  const parts: string[] = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  if (s > 0 && d === 0) parts.push(`${s}s`);
+
+  return parts.length > 0 ? parts.join(' ') : '0s';
+}
+
 // -------------------------------------------------------------
 // RouterOS Binary API (Port 8728 / 8729) Length Encoder / Decoder
 // -------------------------------------------------------------
@@ -317,6 +373,7 @@ class RouterOSBinaryClient {
     return new Promise((resolve, reject) => {
       let buffer = Buffer.alloc(0);
       const results: Record<string, string>[] = [];
+      const traps: Record<string, string>[] = [];
       let currentSentence: string[] = [];
 
       const onData = (chunk: Buffer) => {
@@ -353,9 +410,18 @@ class RouterOSBinaryClient {
               if (sentenceType === '!re') {
                 results.push(itemObj);
               } else if (sentenceType === '!trap') {
-                results.push(itemObj);
+                traps.push(itemObj);
+              } else if (sentenceType === '!fatal') {
+                cleanup();
+                reject(new Error(itemObj.message || itemObj.category || 'خطأ فادح في اتصال المايكروتك (Fatal error)'));
+                return;
               } else if (sentenceType === '!done') {
                 cleanup();
+                if (traps.length > 0) {
+                  const errMsg = traps[0].message || traps[0].category || 'RouterOS error: !trap received';
+                  reject(new Error(errMsg));
+                  return;
+                }
                 resolve(results);
                 return;
               }
@@ -1924,7 +1990,7 @@ if (command === 'reboot') {
 
   public static demoUMSessions: any[] = [];
 
-  // 13. Get User Manager Users / Vouchers
+  // 13. Get User Manager Users / Vouchers (with full RouterOS v7 & v6 support + Hotspot fallback)
   public static async getUserManagerUsers(options: MikroTikConnectionOptions): Promise<any[]> {
     if (options.protocol === 'demo' || options.host === 'demo') {
       return [...MikroTikService.demoUMUsers];
@@ -1932,71 +1998,393 @@ if (command === 'reboot') {
 
     const proto = options.protocol || 'auto';
 
-    // Try REST API (v7 /user-manager/user or v6 /tool/user-manager/user)
+    // Helper: format bytes/seconds
+    const sumBytes = (a: any, b: any) => (Number(a) || 0) + (Number(b) || 0);
+
+    // =========================================================================
+    // 1. Try REST API (RouterOS v7 /user-manager/user or v6 /tool/user-manager/user)
+    // =========================================================================
     if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
       try {
         const isHttps = proto === 'rest_https' || options.useSsl;
         const port = options.port || (isHttps ? 443 : 80);
+        const restOpt = { ...options, protocol: (isHttps ? 'rest_https' : 'rest_http') as any, port };
 
-        let data: any = null;
+        let isV7 = false;
+        let rawUsers: any = null;
+
+        // Try v7 first
         try {
-          data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/user');
+          rawUsers = await fetchRestApi(restOpt, '/user-manager/user');
+          isV7 = true;
         } catch {
-          data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/user');
+          // Fallback to v6
+          try {
+            rawUsers = await fetchRestApi(restOpt, '/tool/user-manager/user');
+            isV7 = false;
+          } catch {
+            // User Manager package not installed or endpoints not accessible via REST
+            rawUsers = null;
+          }
         }
 
-        const list = Array.isArray(data) ? data : [data];
-        return list.filter(u => u).map(u => ({
-          id: u['.id'] || u.id || u.name || u.username,
-          name: u.name || u.username,
-          password: u.password,
-          actualProfile: u['actual-profile'] || u.actualProfile || u.profile || u.group || 'default',
-          customer: u.customer || 'admin',
-          uptimeUsed: u['uptime-used'] || u.uptimeUsed || u.uptime || '0s',
-          downloadUsed: Number(u['download-used'] || u.downloadUsed || u['bytes-out']) || 0,
-          uploadUsed: Number(u['upload-used'] || u.uploadUsed || u['bytes-in']) || 0,
-          totalBytes: (Number(u['download-used'] || u['bytes-out']) || 0) + (Number(u['upload-used'] || u['bytes-in']) || 0),
-          limitUptime: u['limit-uptime'] || u.limitUptime || u['uptime-limit'],
-          limitBytesTotal: Number(u['limit-bytes-total'] || u.limitBytesTotal || u['download-limit']) || 0,
-          disabled: u.disabled === 'true' || u.disabled === true,
-          comment: u.comment,
-          sharedUsers: Number(u['shared-users'] || u.sharedUsers) || 1,
-        }));
+        if (rawUsers && (Array.isArray(rawUsers) ? rawUsers.length >= 0 : rawUsers)) {
+          const userList = Array.isArray(rawUsers) ? rawUsers : [rawUsers];
+
+          if (isV7) {
+            // In v7, fetch profiles, user-profile assignments, sessions, and active hotspot users
+            let userProfiles: any[] = [];
+            let sessions: any[] = [];
+            let activeHotspots: any[] = [];
+            let limitations: any[] = [];
+
+            try {
+              const res = await fetchRestApi(restOpt, '/user-manager/user-profile');
+              userProfiles = Array.isArray(res) ? res : [res];
+            } catch {}
+
+            try {
+              const res = await fetchRestApi(restOpt, '/user-manager/session');
+              sessions = Array.isArray(res) ? res : [res];
+            } catch {}
+
+            try {
+              const res = await fetchRestApi(restOpt, '/ip/hotspot/active');
+              activeHotspots = Array.isArray(res) ? res : [res];
+            } catch {}
+
+            try {
+              const res = await fetchRestApi(restOpt, '/user-manager/limitation');
+              limitations = Array.isArray(res) ? res : [res];
+            } catch {}
+
+            // Build profile map (username -> profileName)
+            const profileMap = new Map<string, string>();
+            for (const up of userProfiles) {
+              if (up && up.user && up.profile) {
+                profileMap.set(up.user, up.profile);
+              }
+            }
+
+            // Build limitation map
+            const limMap = new Map<string, any>();
+            for (const lim of limitations) {
+              if (lim && lim.name) limMap.set(lim.name, lim);
+            }
+
+            // Build sessions usage map
+            const sessionUsage = new Map<string, { download: number; upload: number; uptimeSec: number; sessionsCount: number }>();
+            for (const s of sessions) {
+              const u = s?.user || s?.['user'];
+              if (!u) continue;
+              const dl = Number(s.download || s['download'] || s['bytes-out']) || 0;
+              const ul = Number(s.upload || s['upload'] || s['bytes-in']) || 0;
+              const upSec = parseUptimeToSeconds(s.uptime || s['uptime'] || '0s');
+              const cur = sessionUsage.get(u) || { download: 0, upload: 0, uptimeSec: 0, sessionsCount: 0 };
+              cur.download += dl;
+              cur.upload += ul;
+              cur.uptimeSec += upSec;
+              cur.sessionsCount++;
+              sessionUsage.set(u, cur);
+            }
+
+            // Build active hotspot map
+            const activeMap = new Map<string, any>();
+            for (const act of activeHotspots) {
+              const u = act?.user || act?.['user'];
+              if (u) activeMap.set(u, act);
+            }
+
+            return userList.filter(u => u && (u.name || u.username)).map(u => {
+              const username = u.name || u.username;
+              const assignedProfile = profileMap.get(username) || u['actual-profile'] || u.profile || u.group || 'default';
+              const usage = sessionUsage.get(username) || { download: 0, upload: 0, uptimeSec: 0, sessionsCount: 0 };
+              const act = activeMap.get(username);
+
+              const actDl = act ? (Number(act['bytes-out'] || act.bytesOut) || 0) : 0;
+              const actUl = act ? (Number(act['bytes-in'] || act.bytesIn) || 0) : 0;
+              const actUptimeSec = act ? parseUptimeToSeconds(act.uptime || '0s') : 0;
+
+              const totalDl = usage.download + actDl;
+              const totalUl = usage.upload + actUl;
+              const totalBytes = totalDl + totalUl;
+              const totalUptimeSec = usage.uptimeSec + actUptimeSec;
+
+              const lim = limMap.get(assignedProfile) || limMap.get(`Lim-${assignedProfile}`);
+
+              return {
+                id: u['.id'] || u.id || username,
+                name: username,
+                password: u.password || '',
+                actualProfile: assignedProfile,
+                customer: u.customer || 'admin',
+                uptimeUsed: formatSecondsToUptime(totalUptimeSec),
+                downloadUsed: totalDl,
+                uploadUsed: totalUl,
+                totalBytes,
+                limitUptime: u['limit-uptime'] || u.limitUptime || (lim ? lim['uptime-limit'] : undefined),
+                limitBytesTotal: Number(u['limit-bytes-total'] || u.limitBytesTotal) || (lim ? Number(lim['download-limit'] || lim['total-limit']) || 0 : 0),
+                disabled: u.disabled === 'true' || u.disabled === true || u.disabled === 'yes',
+                comment: u.comment || '',
+                sharedUsers: Number(u['shared-users'] || u.sharedUsers) || 1,
+                isActive: Boolean(act),
+                activeIp: act ? (act.address || act.userIp) : undefined,
+                activeMac: act ? (act['mac-address'] || act.macAddress) : undefined,
+                source: 'user-manager-v7',
+              };
+            });
+          } else {
+            // v6 User Manager
+            let activeHotspots: any[] = [];
+            try {
+              const res = await fetchRestApi(restOpt, '/ip/hotspot/active');
+              activeHotspots = Array.isArray(res) ? res : [res];
+            } catch {}
+            const activeMap = new Map<string, any>();
+            for (const act of activeHotspots) {
+              const u = act?.user || act?.['user'];
+              if (u) activeMap.set(u, act);
+            }
+
+            return userList.filter(u => u && (u.name || u.username)).map(u => {
+              const username = u.name || u.username;
+              const act = activeMap.get(username);
+              const dl = Number(u['download-used'] || u.downloadUsed || u['bytes-out']) || 0;
+              const ul = Number(u['upload-used'] || u.uploadUsed || u['bytes-in']) || 0;
+              return {
+                id: u['.id'] || u.id || username,
+                name: username,
+                password: u.password || '',
+                actualProfile: u['actual-profile'] || u.actualProfile || u.profile || 'default',
+                customer: u.customer || 'admin',
+                uptimeUsed: u['uptime-used'] || u.uptimeUsed || u.uptime || '0s',
+                downloadUsed: dl,
+                uploadUsed: ul,
+                totalBytes: dl + ul,
+                limitUptime: u['limit-uptime'] || u.limitUptime,
+                limitBytesTotal: Number(u['limit-bytes-total'] || u.limitBytesTotal) || 0,
+                disabled: u.disabled === 'true' || u.disabled === true,
+                comment: u.comment || '',
+                sharedUsers: Number(u['shared-users'] || u.sharedUsers) || 1,
+                isActive: Boolean(act),
+                activeIp: act ? (act.address || act.userIp) : undefined,
+                activeMac: act ? (act['mac-address'] || act.macAddress) : undefined,
+                source: 'user-manager-v6',
+              };
+            });
+          }
+        }
       } catch (err) {
         if (proto !== 'auto') throw err;
       }
     }
 
-    // Binary API
+    // =========================================================================
+    // 2. Binary API (RouterOS v7 & v6 + Hotspot Fallback)
+    // =========================================================================
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
     const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
-    let users: any[] = [];
     try {
-      users = await client.sendSentence(['/user-manager/user/print']);
-    } catch {
-      users = await client.sendSentence(['/tool/user-manager/user/print']);
-    }
-    client.close();
+      // -----------------------------------------------------------------------
+      // Attempt 2a: RouterOS v7 User Manager
+      // -----------------------------------------------------------------------
+      try {
+        const v7Users = await client.sendSentence(['/user-manager/user/print']);
+        
+        // Fetch profiles mapping
+        let userProfiles: any[] = [];
+        try {
+          userProfiles = await client.sendSentence(['/user-manager/user-profile/print']);
+        } catch {}
 
-    return users.filter(u => u).map(u => ({
-      id: u['.id'] || u['name'] || u['username'],
-      name: u['name'] || u['username'],
-      password: u['password'],
-      actualProfile: u['actual-profile'] || u['profile'] || u['group'] || 'default',
-      customer: u['customer'] || 'admin',
-      uptimeUsed: u['uptime-used'] || u['uptime'] || '0s',
-      downloadUsed: Number(u['download-used'] || u['bytes-out']) || 0,
-      uploadUsed: Number(u['upload-used'] || u['bytes-in']) || 0,
-      totalBytes: (Number(u['download-used'] || u['bytes-out']) || 0) + (Number(u['upload-used'] || u['bytes-in']) || 0),
-      limitUptime: u['limit-uptime'] || u['uptime-limit'],
-      limitBytesTotal: Number(u['limit-bytes-total'] || u['download-limit']) || 0,
-      disabled: u['disabled'] === 'true',
-      comment: u['comment'],
-      sharedUsers: Number(u['shared-users']) || 1,
-    }));
+        // Fetch sessions
+        let sessions: any[] = [];
+        try {
+          sessions = await client.sendSentence(['/user-manager/session/print']);
+        } catch {}
+
+        // Fetch active hotspot users
+        let activeHotspots: any[] = [];
+        try {
+          activeHotspots = await client.sendSentence(['/ip/hotspot/active/print']);
+        } catch {}
+
+        // Fetch limitations
+        let limitations: any[] = [];
+        try {
+          limitations = await client.sendSentence(['/user-manager/limitation/print']);
+        } catch {}
+
+        const profileMap = new Map<string, string>();
+        for (const up of userProfiles) {
+          if (up && up['user'] && up['profile']) {
+            profileMap.set(up['user'], up['profile']);
+          }
+        }
+
+        const limMap = new Map<string, any>();
+        for (const lim of limitations) {
+          if (lim && lim['name']) limMap.set(lim['name'], lim);
+        }
+
+        const sessionUsage = new Map<string, { download: number; upload: number; uptimeSec: number }>();
+        for (const s of sessions) {
+          const u = s['user'];
+          if (!u) continue;
+          const dl = Number(s['download'] || s['bytes-out']) || 0;
+          const ul = Number(s['upload'] || s['bytes-in']) || 0;
+          const upSec = parseUptimeToSeconds(s['uptime'] || '0s');
+          const cur = sessionUsage.get(u) || { download: 0, upload: 0, uptimeSec: 0 };
+          cur.download += dl;
+          cur.upload += ul;
+          cur.uptimeSec += upSec;
+          sessionUsage.set(u, cur);
+        }
+
+        const activeMap = new Map<string, any>();
+        for (const act of activeHotspots) {
+          if (act['user']) activeMap.set(act['user'], act);
+        }
+
+        return v7Users.filter(u => u && u['name']).map(u => {
+          const username = u['name'];
+          const assignedProfile = profileMap.get(username) || u['actual-profile'] || u['profile'] || u['group'] || 'default';
+          const usage = sessionUsage.get(username) || { download: 0, upload: 0, uptimeSec: 0 };
+          const act = activeMap.get(username);
+
+          const actDl = act ? (Number(act['bytes-out']) || 0) : 0;
+          const actUl = act ? (Number(act['bytes-in']) || 0) : 0;
+          const actUptimeSec = act ? parseUptimeToSeconds(act['uptime'] || '0s') : 0;
+
+          const totalDl = usage.download + actDl;
+          const totalUl = usage.upload + actUl;
+          const totalBytes = totalDl + totalUl;
+          const totalUptimeSec = usage.uptimeSec + actUptimeSec;
+
+          const lim = limMap.get(assignedProfile) || limMap.get(`Lim-${assignedProfile}`);
+
+          return {
+            id: u['.id'] || username,
+            name: username,
+            password: u['password'] || '',
+            actualProfile: assignedProfile,
+            customer: u['customer'] || 'admin',
+            uptimeUsed: formatSecondsToUptime(totalUptimeSec),
+            downloadUsed: totalDl,
+            uploadUsed: totalUl,
+            totalBytes,
+            limitUptime: u['limit-uptime'] || (lim ? lim['uptime-limit'] : undefined),
+            limitBytesTotal: Number(u['limit-bytes-total']) || (lim ? Number(lim['download-limit'] || lim['total-limit']) || 0 : 0),
+            disabled: u['disabled'] === 'true' || u['disabled'] === 'yes',
+            comment: u['comment'] || '',
+            sharedUsers: Number(u['shared-users']) || 1,
+            isActive: Boolean(act),
+            activeIp: act ? act['address'] : undefined,
+            activeMac: act ? act['mac-address'] : undefined,
+            source: 'user-manager-v7',
+          };
+        });
+      } catch (v7Err) {
+        // Not v7 User Manager, try v6
+      }
+
+      // -----------------------------------------------------------------------
+      // Attempt 2b: RouterOS v6 User Manager
+      // -----------------------------------------------------------------------
+      try {
+        const v6Users = await client.sendSentence(['/tool/user-manager/user/print']);
+        let activeHotspots: any[] = [];
+        try {
+          activeHotspots = await client.sendSentence(['/ip/hotspot/active/print']);
+        } catch {}
+
+        const activeMap = new Map<string, any>();
+        for (const act of activeHotspots) {
+          if (act['user']) activeMap.set(act['user'], act);
+        }
+
+        return v6Users.filter(u => u && (u['username'] || u['name'])).map(u => {
+          const username = u['username'] || u['name'];
+          const act = activeMap.get(username);
+          const dl = Number(u['download-used'] || u['bytes-out']) || 0;
+          const ul = Number(u['upload-used'] || u['bytes-in']) || 0;
+          return {
+            id: u['.id'] || username,
+            name: username,
+            password: u['password'] || '',
+            actualProfile: u['actual-profile'] || u['profile'] || 'default',
+            customer: u['customer'] || 'admin',
+            uptimeUsed: u['uptime-used'] || u['uptime'] || '0s',
+            downloadUsed: dl,
+            uploadUsed: ul,
+            totalBytes: dl + ul,
+            limitUptime: u['limit-uptime'],
+            limitBytesTotal: Number(u['limit-bytes-total']) || 0,
+            disabled: u['disabled'] === 'true',
+            comment: u['comment'] || '',
+            sharedUsers: Number(u['shared-users']) || 1,
+            isActive: Boolean(act),
+            activeIp: act ? act['address'] : undefined,
+            activeMac: act ? act['mac-address'] : undefined,
+            source: 'user-manager-v6',
+          };
+        });
+      } catch (v6Err) {
+        // Neither v7 nor v6 User Manager installed!
+      }
+
+      // -----------------------------------------------------------------------
+      // Attempt 2c: Fallback to Hotspot Users (/ip/hotspot/user)
+      // This ensures that even if User Manager package is not installed on the router,
+      // the user still sees their cards, can edit profiles, see consumption, and manage them!
+      // -----------------------------------------------------------------------
+      try {
+        const hsUsers = await client.sendSentence(['/ip/hotspot/user/print']);
+        let activeHotspots: any[] = [];
+        try {
+          activeHotspots = await client.sendSentence(['/ip/hotspot/active/print']);
+        } catch {}
+
+        const activeMap = new Map<string, any>();
+        for (const act of activeHotspots) {
+          if (act['user']) activeMap.set(act['user'], act);
+        }
+
+        return hsUsers.filter(u => u && u['name']).map(u => {
+          const username = u['name'];
+          const act = activeMap.get(username);
+          const dl = Number(u['bytes-out']) || 0;
+          const ul = Number(u['bytes-in']) || 0;
+          return {
+            id: u['.id'] || username,
+            name: username,
+            password: u['password'] || '',
+            actualProfile: u['profile'] || 'default',
+            customer: 'admin',
+            uptimeUsed: u['uptime'] || '0s',
+            downloadUsed: dl,
+            uploadUsed: ul,
+            totalBytes: dl + ul,
+            limitUptime: u['limit-uptime'],
+            limitBytesTotal: Number(u['limit-bytes-total']) || 0,
+            disabled: u['disabled'] === 'true',
+            comment: u['comment'] || '',
+            sharedUsers: 1,
+            isActive: Boolean(act),
+            activeIp: act ? act['address'] : undefined,
+            activeMac: act ? act['mac-address'] : undefined,
+            source: 'hotspot',
+          };
+        });
+      } catch (hsErr: any) {
+        throw new Error(`تعذر جلب المستخدمين من الراوتر: ${hsErr.message}`);
+      }
+    } finally {
+      client.close();
+    }
   }
 
   // Mutable Demo Storage for User Manager Profiles & Limitations
@@ -2014,7 +2402,7 @@ if (command === 'reboot') {
     { id: '*lim4', name: 'UM-Lim-1000', uptimeLimit: '3d', downloadLimit: '8G', rateLimitRx: '4M', rateLimitTx: '8M' },
   ];
 
-  // 14. Get User Manager Profiles
+  // 14. Get User Manager Profiles (with Limitations and Hotspot profile fallback)
   public static async getUserManagerProfiles(options: MikroTikConnectionOptions): Promise<any[]> {
     if (options.protocol === 'demo' || options.host === 'demo') {
       return [...MikroTikService.demoUMProfiles];
@@ -2026,25 +2414,35 @@ if (command === 'reboot') {
       try {
         const isHttps = proto === 'rest_https' || options.useSsl;
         const port = options.port || (isHttps ? 443 : 80);
+        const restOpt = { ...options, protocol: (isHttps ? 'rest_https' : 'rest_http') as any, port };
 
         let data: any = null;
         try {
-          data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/profile');
+          data = await fetchRestApi(restOpt, '/user-manager/profile');
         } catch {
-          data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/profile');
+          try {
+            data = await fetchRestApi(restOpt, '/tool/user-manager/profile');
+          } catch {
+            // Try hotspot user profiles as fallback
+            try {
+              data = await fetchRestApi(restOpt, '/ip/hotspot/user/profile');
+            } catch {}
+          }
         }
 
-        const list = Array.isArray(data) ? data : [data];
-        return list.filter(p => p && p.name).map(p => ({
-          id: p['.id'] || p.id || p.name,
-          name: p.name,
-          nameForUsers: p['name-for-users'] || p.nameForUsers || p.name,
-          price: Number(p.price) || 0,
-          validity: p.validity || '',
-          startsAt: p['starts-at'] || p.startsAt || 'logon',
-          overrideSharedUsers: p['override-shared-users'] || p.overrideSharedUsers || 1,
-          owner: p.owner || 'admin',
-        }));
+        if (data) {
+          const list = Array.isArray(data) ? data : [data];
+          return list.filter(p => p && p.name).map(p => ({
+            id: p['.id'] || p.id || p.name,
+            name: p.name,
+            nameForUsers: p['name-for-users'] || p.nameForUsers || p.name,
+            price: Number(p.price) || 0,
+            validity: p.validity || '',
+            startsAt: p['starts-at'] || p.startsAt || 'logon',
+            overrideSharedUsers: p['override-shared-users'] || p.overrideSharedUsers || 1,
+            owner: p.owner || 'admin',
+          }));
+        }
       } catch (err) {
         if (proto !== 'auto') throw err;
       }
@@ -2060,11 +2458,18 @@ if (command === 'reboot') {
     try {
       profiles = await client.sendSentence(['/user-manager/profile/print']);
     } catch {
-      profiles = await client.sendSentence(['/tool/user-manager/profile/print']);
+      try {
+        profiles = await client.sendSentence(['/tool/user-manager/profile/print']);
+      } catch {
+        // Fallback to hotspot profiles
+        try {
+          profiles = await client.sendSentence(['/ip/hotspot/user/profile/print']);
+        } catch {}
+      }
     }
     client.close();
 
-    return profiles.map(p => ({
+    return profiles.filter(p => p && p['name']).map(p => ({
       id: p['.id'] || p['name'],
       name: p['name'],
       nameForUsers: p['name-for-users'] || p['name'],
@@ -2222,32 +2627,61 @@ if (command === 'reboot') {
       try {
         const isHttps = proto === 'rest_https' || options.useSsl;
         const port = options.port || (isHttps ? 443 : 80);
+        const restOpt = { ...options, protocol: (isHttps ? 'rest_https' : 'rest_http') as any, port };
 
         for (const card of cards) {
           try {
-            // Check if v7 or v6 endpoint
-            const bodyV7: Record<string, any> = {
-              name: card.username,
-              profile: card.profile || 'default',
-              comment: card.comment || 'POS Batch',
-            };
-            if (card.password !== undefined && card.password !== '') {
-              bodyV7.password = card.password;
+            let created = false;
+            // Try v7 user-manager
+            try {
+              const bodyV7: Record<string, any> = {
+                name: card.username,
+                comment: card.comment || 'POS Batch',
+              };
+              if (card.password !== undefined && card.password !== '') {
+                bodyV7.password = card.password;
+              }
+              await fetchRestApi(restOpt, '/user-manager/user', 'PUT', bodyV7);
+              created = true;
+
+              // Assign profile in v7 if provided
+              if (card.profile) {
+                try {
+                  await fetchRestApi(restOpt, '/user-manager/user-profile', 'PUT', {
+                    user: card.username,
+                    profile: card.profile,
+                  });
+                } catch {}
+              }
+            } catch {
+              // Try v6 user-manager
+              try {
+                const bodyV6 = {
+                  customer: card.customer || 'admin',
+                  username: card.username,
+                  password: card.password || '',
+                  'actual-profile': card.profile,
+                  comment: card.comment,
+                };
+                await fetchRestApi(restOpt, '/tool/user-manager/user', 'PUT', bodyV6);
+                created = true;
+              } catch {
+                // Fallback to Hotspot user
+                try {
+                  await fetchRestApi(restOpt, '/ip/hotspot/user', 'PUT', {
+                    name: card.username,
+                    password: card.password || '',
+                    profile: card.profile || 'default',
+                    comment: card.comment || 'POS Batch',
+                  });
+                  created = true;
+                } catch (hsErr: any) {
+                  throw new Error(hsErr.message || 'تعذر إضافة الكارت');
+                }
+              }
             }
 
-            try {
-              await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/user', 'PUT', bodyV7);
-            } catch {
-              const bodyV6 = {
-                customer: card.customer || 'admin',
-                username: card.username,
-                password: card.password || '',
-                'actual-profile': card.profile,
-                comment: card.comment,
-              };
-              await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/user', 'PUT', bodyV6);
-            }
-            createdCount++;
+            if (created) createdCount++;
           } catch (err: any) {
             errors.push(`فشل إضافة الكارت ${card.username}: ${err.message}`);
           }
@@ -2267,6 +2701,7 @@ if (command === 'reboot') {
 
     for (const card of cards) {
       try {
+        let created = false;
         // Try v7 user-manager syntax first
         try {
           const words = [
@@ -2275,33 +2710,60 @@ if (command === 'reboot') {
             `=comment=${card.comment || 'POS Batch'}`,
           ];
           if (card.password) words.push(`=password=${card.password}`);
-          if (card.profile) words.push(`=profile=${card.profile}`);
           await client.sendSentence(words);
-        } catch {
-          // Fallback to v6 /tool/user-manager/user/add
-          const wordsV6 = [
-            '/tool/user-manager/user/add',
-            `=customer=${card.customer || 'admin'}`,
-            `=username=${card.username}`,
-            `=password=${card.password || ''}`,
-          ];
-          if (card.comment) wordsV6.push(`=comment=${card.comment}`);
-          await client.sendSentence(wordsV6);
+          created = true;
 
           if (card.profile) {
             try {
               await client.sendSentence([
-                '/tool/user-manager/user/create-and-activate-profile',
-                `=numbers=${card.username}`,
+                '/user-manager/user-profile/add',
+                `=user=${card.username}`,
                 `=profile=${card.profile}`,
-                `=customer=${card.customer || 'admin'}`,
               ]);
-            } catch {
-              // Ignore if profile already active
+            } catch {}
+          }
+        } catch {
+          // Fallback to v6 /tool/user-manager/user/add
+          try {
+            const wordsV6 = [
+              '/tool/user-manager/user/add',
+              `=customer=${card.customer || 'admin'}`,
+              `=username=${card.username}`,
+              `=password=${card.password || ''}`,
+            ];
+            if (card.comment) wordsV6.push(`=comment=${card.comment}`);
+            await client.sendSentence(wordsV6);
+            created = true;
+
+            if (card.profile) {
+              try {
+                await client.sendSentence([
+                  '/tool/user-manager/user/create-and-activate-profile',
+                  `=numbers=${card.username}`,
+                  `=profile=${card.profile}`,
+                  `=customer=${card.customer || 'admin'}`,
+                ]);
+              } catch {}
+            }
+          } catch {
+            // Fallback to Hotspot user
+            try {
+              const wordsHs = [
+                '/ip/hotspot/user/add',
+                `=name=${card.username}`,
+                `=password=${card.password || ''}`,
+                `=profile=${card.profile || 'default'}`,
+                `=comment=${card.comment || 'POS Batch'}`,
+              ];
+              await client.sendSentence(wordsHs);
+              created = true;
+            } catch (hsErr: any) {
+              throw new Error(hsErr.message || 'تعذر إضافة الكارت');
             }
           }
         }
-        createdCount++;
+
+        if (created) createdCount++;
       } catch (err: any) {
         errors.push(`فشل إضافة الكارت ${card.username}: ${err.message}`);
       }
@@ -2716,34 +3178,84 @@ if (command === 'reboot') {
       return true;
     }
 
+    const proto = options.protocol || 'auto';
+
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+        const restOpt = { ...options, protocol: (isHttps ? 'rest_https' : 'rest_http') as any, port };
+
+        // Hotspot active
+        try {
+          const actives = await fetchRestApi(restOpt, '/ip/hotspot/active');
+          const list = Array.isArray(actives) ? actives : [actives];
+          for (const a of list) {
+            if (a && a.user === userName && a['.id']) {
+              await fetchRestApi(restOpt, `/ip/hotspot/active/${encodeURIComponent(a['.id'])}`, 'DELETE');
+            }
+          }
+        } catch {}
+
+        // User Manager Sessions
+        try {
+          const sessions = await fetchRestApi(restOpt, '/user-manager/session');
+          const list = Array.isArray(sessions) ? sessions : [sessions];
+          for (const s of list) {
+            if (s && (s.user === userName) && (s.active === 'true' || s.active === true || s.active === 'yes') && s['.id']) {
+              await fetchRestApi(restOpt, `/user-manager/session/${encodeURIComponent(s['.id'])}`, 'DELETE');
+            }
+          }
+        } catch {}
+
+        return true;
+      } catch (err) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
     const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
     try {
-      // Hotspot active removal (often UM users are logged in via hotspot)
+      // 1. Hotspot active removal
       try {
-        await client.sendSentence(['/ip/hotspot/active/remove', `?user=${userName}`]);
+        const hsActives = await client.sendSentence(['/ip/hotspot/active/print', `?user=${userName}`]);
+        for (const act of hsActives) {
+          if (act['.id']) {
+            await client.sendSentence(['/ip/hotspot/active/remove', `=numbers=${act['.id']}`]);
+          }
+        }
       } catch {}
-      // PPP active removal
+
+      // 2. PPP active removal
       try {
-        await client.sendSentence(['/ppp/active/remove', `?name=${userName}`]);
+        const pppActives = await client.sendSentence(['/ppp/active/print', `?name=${userName}`]);
+        for (const p of pppActives) {
+          if (p['.id']) {
+            await client.sendSentence(['/ppp/active/remove', `=numbers=${p['.id']}`]);
+          }
+        }
       } catch {}
-      
-      // UM Session removal
+
+      // 3. User Manager Session removal (v7)
       try {
-        // v7
-        const sessions = await client.sendSentence(['/user-manager/session/print', `?user=${userName}`, '?active=true']);
-        for (const s of sessions) {
-          if (s['.id']) await client.sendSentence(['/user-manager/session/remove', `=numbers=${s['.id']}`]);
+        const v7Sessions = await client.sendSentence(['/user-manager/session/print', `?user=${userName}`]);
+        for (const s of v7Sessions) {
+          if (s['.id'] && (s['active'] === 'true' || s['active'] === 'yes')) {
+            await client.sendSentence(['/user-manager/session/remove', `=numbers=${s['.id']}`]);
+          }
         }
       } catch {
+        // v6
         try {
-          // v6
-          const sessions = await client.sendSentence(['/tool/user-manager/session/print', `?user=${userName}`, '?active=true']);
-          for (const s of sessions) {
-            if (s['.id']) await client.sendSentence(['/tool/user-manager/session/remove', `=numbers=${s['.id']}`]);
+          const v6Sessions = await client.sendSentence(['/tool/user-manager/session/print', `?user=${userName}`]);
+          for (const s of v6Sessions) {
+            if (s['.id'] && (s['active'] === 'true' || s['active'] === 'yes')) {
+              await client.sendSentence(['/tool/user-manager/session/remove', `=numbers=${s['.id']}`]);
+            }
           }
         } catch {}
       }
@@ -2770,15 +3282,21 @@ if (command === 'reboot') {
     await client.login(options.username, options.password || '');
 
     try {
-      await client.sendSentence(['/user-manager/user/reset-counters', `=numbers=${userIdOrName}`]);
-    } catch {
       try {
-        await client.sendSentence(['/tool/user-manager/user/reset-counters', `=numbers=${userIdOrName}`]);
+        await client.sendSentence(['/user-manager/user/reset-counters', `=numbers=${userIdOrName}`]);
       } catch {
-        // ignore
+        try {
+          await client.sendSentence(['/tool/user-manager/user/reset-counters', `=numbers=${userIdOrName}`]);
+        } catch {
+          // Hotspot user reset-counters
+          try {
+            await client.sendSentence(['/ip/hotspot/user/reset-counters', `=numbers=${userIdOrName}`]);
+          } catch {}
+        }
       }
+    } finally {
+      client.close();
     }
-    client.close();
     return true;
   }
 
@@ -2815,65 +3333,186 @@ if (command === 'reboot') {
     const proto = options.protocol || 'auto';
     const targetId = userData.id || userData.name;
 
+    // =========================================================================
+    // 1. REST API
+    // =========================================================================
     if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
       try {
         const isHttps = proto === 'rest_https' || options.useSsl;
         const port = options.port || (isHttps ? 443 : 80);
+        const restOpt = { ...options, protocol: (isHttps ? 'rest_https' : 'rest_http') as any, port };
 
-        const patchBody: any = {};
-        if (userData.password !== undefined) patchBody.password = userData.password;
-        if (userData.actualProfile) {
-          patchBody['actual-profile'] = userData.actualProfile;
-          patchBody['profile'] = userData.actualProfile;
-        }
-        if (userData.disabled !== undefined) patchBody.disabled = userData.disabled ? 'yes' : 'no';
-        if (userData.comment !== undefined) patchBody.comment = userData.comment;
-        if (userData.limitUptime) patchBody['limit-uptime'] = userData.limitUptime;
-        if (userData.limitBytesTotal !== undefined) patchBody['limit-bytes-total'] = String(userData.limitBytesTotal);
+        let updated = false;
 
+        // Try RouterOS v7 User Manager
         try {
-          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, `/user-manager/user/${encodeURIComponent(targetId)}`, 'PATCH', patchBody);
+          const v7Body: any = {};
+          if (userData.password !== undefined) v7Body.password = userData.password;
+          if (userData.disabled !== undefined) v7Body.disabled = userData.disabled ? 'yes' : 'no';
+          if (userData.comment !== undefined) v7Body.comment = userData.comment;
+
+          if (Object.keys(v7Body).length > 0) {
+            await fetchRestApi(restOpt, `/user-manager/user/${encodeURIComponent(targetId)}`, 'PATCH', v7Body);
+          }
+
+          // In v7, profile is managed in /user-manager/user-profile
+          if (userData.actualProfile) {
+            try {
+              const allUP = await fetchRestApi(restOpt, '/user-manager/user-profile');
+              const listUP = Array.isArray(allUP) ? allUP : [allUP];
+              const existing = listUP.find((p: any) => p && p.user === userData.name);
+              if (existing && existing['.id']) {
+                await fetchRestApi(restOpt, `/user-manager/user-profile/${encodeURIComponent(existing['.id'])}`, 'PATCH', { profile: userData.actualProfile });
+              } else {
+                await fetchRestApi(restOpt, '/user-manager/user-profile', 'PUT', { user: userData.name, profile: userData.actualProfile });
+              }
+            } catch {}
+          }
+          updated = true;
         } catch {
+          // Try v6 User Manager
           try {
-            await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, `/tool/user-manager/user/${encodeURIComponent(targetId)}`, 'PATCH', patchBody);
+            const v6Body: any = {};
+            if (userData.password !== undefined) v6Body.password = userData.password;
+            if (userData.disabled !== undefined) v6Body.disabled = userData.disabled ? 'yes' : 'no';
+            if (userData.comment !== undefined) v6Body.comment = userData.comment;
+            if (userData.limitUptime) v6Body['limit-uptime'] = userData.limitUptime;
+            if (userData.limitBytesTotal !== undefined) v6Body['limit-bytes-total'] = String(userData.limitBytesTotal);
+            if (userData.actualProfile) v6Body['actual-profile'] = userData.actualProfile;
+
+            await fetchRestApi(restOpt, `/tool/user-manager/user/${encodeURIComponent(targetId)}`, 'PATCH', v6Body);
+            updated = true;
           } catch {
-            await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/user/set', 'POST', { numbers: targetId, ...patchBody });
+            // Try Hotspot user
+            try {
+              const hsBody: any = {};
+              if (userData.password !== undefined) hsBody.password = userData.password;
+              if (userData.disabled !== undefined) hsBody.disabled = userData.disabled ? 'yes' : 'no';
+              if (userData.comment !== undefined) hsBody.comment = userData.comment;
+              if (userData.limitUptime) hsBody['limit-uptime'] = userData.limitUptime;
+              if (userData.limitBytesTotal !== undefined) hsBody['limit-bytes-total'] = String(userData.limitBytesTotal);
+              if (userData.actualProfile) hsBody.profile = userData.actualProfile;
+
+              await fetchRestApi(restOpt, `/ip/hotspot/user/${encodeURIComponent(targetId)}`, 'PATCH', hsBody);
+              updated = true;
+            } catch {}
           }
         }
-        return { success: true, message: `تم تحديث بيانات الكارت (${userData.name}) بنجاح.` };
-      } catch (err: any) {
+
+        if (updated) {
+          // If disabled, kick off immediately
+          if (userData.disabled) {
+            try {
+              await MikroTikService.disconnectUserManagerUser(options, userData.name);
+            } catch {}
+          }
+          return { success: true, message: `تم تحديث بيانات الكارت (${userData.name}) بنجاح.` };
+        }
+      } catch (err) {
         if (proto !== 'auto') throw err;
       }
     }
 
-    // Binary API
+    // =========================================================================
+    // 2. Binary API
+    // =========================================================================
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
     const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
-    const sentences: string[] = [];
-    if (userData.password !== undefined) sentences.push(`=password=${userData.password}`);
-    if (userData.actualProfile) sentences.push(`=actual-profile=${userData.actualProfile}`);
-    if (userData.disabled !== undefined) sentences.push(`=disabled=${userData.disabled ? 'yes' : 'no'}`);
-    if (userData.comment !== undefined) sentences.push(`=comment=${userData.comment}`);
-    if (userData.limitUptime) sentences.push(`=limit-uptime=${userData.limitUptime}`);
-    if (userData.limitBytesTotal !== undefined) sentences.push(`=limit-bytes-total=${userData.limitBytesTotal}`);
-
     try {
-      await client.sendSentence(['/user-manager/user/set', `=numbers=${targetId}`, ...sentences]);
-    } catch {
-      try {
-        const v6Sentences = sentences.map(s => s.startsWith('=actual-profile=') ? s.replace('=actual-profile=', '=profile=') : s);
-        await client.sendSentence(['/tool/user-manager/user/set', `=numbers=${targetId}`, ...v6Sentences]);
-      } catch (err2: any) {
-        client.close();
-        throw new Error(`تعذر تعديل الكارت في الراوتر: ${err2.message}`);
-      }
-    }
+      let updated = false;
 
-    client.close();
-    return { success: true, message: `تم تحديث الكارت (${userData.name}) في الراوتر بنجاح.` };
+      // -----------------------------------------------------------------------
+      // Attempt 2a: RouterOS v7 User Manager
+      // -----------------------------------------------------------------------
+      try {
+        const v7Words = ['/user-manager/user/set', `=numbers=${targetId}`];
+        if (userData.password !== undefined) v7Words.push(`=password=${userData.password}`);
+        if (userData.disabled !== undefined) v7Words.push(`=disabled=${userData.disabled ? 'yes' : 'no'}`);
+        if (userData.comment !== undefined) v7Words.push(`=comment=${userData.comment}`);
+
+        if (v7Words.length > 2) {
+          await client.sendSentence(v7Words);
+        }
+
+        // Handle profile update in v7 via /user-manager/user-profile
+        if (userData.actualProfile) {
+          try {
+            const existingProfiles = await client.sendSentence(['/user-manager/user-profile/print', `?user=${userData.name}`]);
+            if (existingProfiles.length > 0 && existingProfiles[0]['.id']) {
+              await client.sendSentence([
+                '/user-manager/user-profile/set',
+                `=numbers=${existingProfiles[0]['.id']}`,
+                `=profile=${userData.actualProfile}`,
+              ]);
+            } else {
+              await client.sendSentence([
+                '/user-manager/user-profile/add',
+                `=user=${userData.name}`,
+                `=profile=${userData.actualProfile}`,
+              ]);
+            }
+          } catch {}
+        }
+        updated = true;
+      } catch {
+        // ---------------------------------------------------------------------
+        // Attempt 2b: RouterOS v6 User Manager
+        // ---------------------------------------------------------------------
+        try {
+          const v6Words = ['/tool/user-manager/user/set', `=numbers=${targetId}`];
+          if (userData.password !== undefined) v6Words.push(`=password=${userData.password}`);
+          if (userData.disabled !== undefined) v6Words.push(`=disabled=${userData.disabled ? 'yes' : 'no'}`);
+          if (userData.comment !== undefined) v6Words.push(`=comment=${userData.comment}`);
+          if (userData.limitUptime) v6Words.push(`=limit-uptime=${userData.limitUptime}`);
+          if (userData.limitBytesTotal !== undefined) v6Words.push(`=limit-bytes-total=${userData.limitBytesTotal}`);
+
+          await client.sendSentence(v6Words);
+
+          if (userData.actualProfile) {
+            try {
+              await client.sendSentence([
+                '/tool/user-manager/user/create-and-activate-profile',
+                `=numbers=${userData.name}`,
+                `=profile=${userData.actualProfile}`,
+                `=customer=admin`,
+              ]);
+            } catch {}
+          }
+          updated = true;
+        } catch {
+          // -------------------------------------------------------------------
+          // Attempt 2c: Fallback to Hotspot User
+          // -------------------------------------------------------------------
+          try {
+            const hsWords = ['/ip/hotspot/user/set', `=numbers=${targetId}`];
+            if (userData.password !== undefined) hsWords.push(`=password=${userData.password}`);
+            if (userData.disabled !== undefined) hsWords.push(`=disabled=${userData.disabled ? 'yes' : 'no'}`);
+            if (userData.comment !== undefined) hsWords.push(`=comment=${userData.comment}`);
+            if (userData.limitUptime) hsWords.push(`=limit-uptime=${userData.limitUptime}`);
+            if (userData.limitBytesTotal !== undefined) hsWords.push(`=limit-bytes-total=${userData.limitBytesTotal}`);
+            if (userData.actualProfile) hsWords.push(`=profile=${userData.actualProfile}`);
+
+            await client.sendSentence(hsWords);
+            updated = true;
+          } catch (hsErr: any) {
+            throw new Error(`تعذر تعديل بيانات الكارت: ${hsErr.message}`);
+          }
+        }
+      }
+
+      if (userData.disabled) {
+        try {
+          await client.sendSentence(['/ip/hotspot/active/print', `?user=${userData.name}`]);
+        } catch {}
+      }
+
+      return { success: true, message: `تم تحديث الكارت (${userData.name}) في الراوتر بنجاح.` };
+    } finally {
+      client.close();
+    }
   }
 
   // 20c. Get User Manager Sessions (History of logins/logouts, download/upload per session)
@@ -2897,16 +3536,25 @@ if (command === 'reboot') {
 
     const proto = options.protocol || 'auto';
     let rawSessions: any[] = [];
+    let activeHotspots: any[] = [];
 
     if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
       try {
         const isHttps = proto === 'rest_https' || options.useSsl;
         const port = options.port || (isHttps ? 443 : 80);
+        const restOpt = { ...options, protocol: (isHttps ? 'rest_https' : 'rest_http') as any, port };
+
         try {
-          rawSessions = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/session');
+          rawSessions = await fetchRestApi(restOpt, '/user-manager/session');
         } catch {
-          rawSessions = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/session');
+          try {
+            rawSessions = await fetchRestApi(restOpt, '/tool/user-manager/session');
+          } catch {}
         }
+
+        try {
+          activeHotspots = await fetchRestApi(restOpt, '/ip/hotspot/active');
+        } catch {}
       } catch (err) {
         if (proto !== 'auto') throw err;
       }
@@ -2918,17 +3566,24 @@ if (command === 'reboot') {
       await client.connect();
       await client.login(options.username, options.password || '');
       try {
-        rawSessions = await client.sendSentence(['/user-manager/session/print']);
-      } catch {
         try {
-          rawSessions = await client.sendSentence(['/tool/user-manager/session/print']);
+          rawSessions = await client.sendSentence(['/user-manager/session/print']);
+        } catch {
+          try {
+            rawSessions = await client.sendSentence(['/tool/user-manager/session/print']);
+          } catch {}
+        }
+
+        try {
+          activeHotspots = await client.sendSentence(['/ip/hotspot/active/print']);
         } catch {}
+      } finally {
+        client.close();
       }
-      client.close();
     }
 
     const list = Array.isArray(rawSessions) ? rawSessions : [];
-    const parsed = list.filter((s: any) => s && (s.user || s['user'])).map((s: any) => {
+    const parsedSessions = list.filter((s: any) => s && (s.user || s['user'])).map((s: any) => {
       const user = s.user || s['user'];
       const fromTime = s['from-time'] || s.fromTime;
       const tillTime = s['till-time'] || s.tillTime;
@@ -2953,10 +3608,48 @@ if (command === 'reboot') {
       };
     });
 
-    if (userName) {
-      return parsed.filter(s => s.user.toLowerCase() === userName.toLowerCase());
+    // Also include currently active hotspot sessions
+    const activeList = Array.isArray(activeHotspots) ? activeHotspots : [];
+    const liveActiveSessions = activeList
+      .filter((act: any) => act && (act.user || act['user']))
+      .map((act: any) => {
+        const u = act.user || act['user'];
+        const dl = Number(act['bytes-out'] || act.bytesOut) || 0;
+        const ul = Number(act['bytes-in'] || act.bytesIn) || 0;
+        return {
+          id: `live-active-${u}-${act['.id'] || act.id || Math.random()}`,
+          user: u,
+          userIp: act.address || act.userIp || '',
+          userMac: (act['mac-address'] || act.macAddress || '').toUpperCase().trim(),
+          fromTime: new Date().toISOString(),
+          tillTime: null,
+          uptime: act.uptime || act['uptime'] || '0s',
+          download: dl,
+          upload: ul,
+          totalBytes: dl + ul,
+          active: true,
+          terminateCause: 'متصل الآن (جلسة نشطة)',
+        };
+      });
+
+    // Merge: live active sessions first, then historical sessions
+    // Avoid exact duplicates if a session is already present and active
+    const finalSessions: any[] = [];
+    for (const live of liveActiveSessions) {
+      if (!userName || live.user.toLowerCase() === userName.toLowerCase()) {
+        finalSessions.push(live);
+      }
     }
-    return parsed;
+
+    for (const s of parsedSessions) {
+      if (userName && s.user.toLowerCase() !== userName.toLowerCase()) continue;
+      // If we already have a live session for this user and IP, don't duplicate
+      const alreadyHasLive = finalSessions.some(f => f.user === s.user && f.active && f.userIp === s.userIp);
+      if (s.active && alreadyHasLive) continue;
+      finalSessions.push(s);
+    }
+
+    return finalSessions;
   }
 
   // Get Router Interfaces (with byte counters for WAN reconciliation)

@@ -47,16 +47,14 @@ export const UserManagerCardEditModal: React.FC<UserManagerCardEditModalProps> =
   onSaved,
   onResetCounters
 }) => {
-  if (!isOpen || !user) return null;
-
-  const [password, setPassword] = useState(user.password || '');
+  const [password, setPassword] = useState(user?.password || '');
   const [showPassword, setShowPassword] = useState(true);
-  const [actualProfile, setActualProfile] = useState(user.actualProfile || (profiles[0]?.name || 'default'));
-  const [disabled, setDisabled] = useState(Boolean(user.disabled));
-  const [comment, setComment] = useState(user.comment || '');
-  const [limitUptime, setLimitUptime] = useState(user.limitUptime || '');
+  const [actualProfile, setActualProfile] = useState(user?.actualProfile || (profiles[0]?.name || 'default'));
+  const [disabled, setDisabled] = useState(Boolean(user?.disabled));
+  const [comment, setComment] = useState(user?.comment || '');
+  const [limitUptime, setLimitUptime] = useState(user?.limitUptime || '');
   const [limitBytesMb, setLimitBytesMb] = useState<number>(
-    user.limitBytesTotal && user.limitBytesTotal > 0
+    user?.limitBytesTotal && user.limitBytesTotal > 0
       ? Math.round(user.limitBytesTotal / (1024 * 1024))
       : 0
   );
@@ -145,6 +143,8 @@ export const UserManagerCardEditModal: React.FC<UserManagerCardEditModalProps> =
       setFeedback({ success: false, message: 'تعذر تصفير عدادات الكارت بالراوتر.' });
     }
   };
+
+  if (!isOpen || !user) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">

@@ -89,8 +89,6 @@ export const FinancialExportModal: React.FC<FinancialExportModalProps> = ({
   settings,
   defaultPeriod = 'all',
 }) => {
-  if (!isOpen) return null;
-
   const currency = settings?.currencySymbol || 'ر.ي';
 
   // Filters State
@@ -490,6 +488,8 @@ export const FinancialExportModal: React.FC<FinancialExportModalProps> = ({
       setIsSharingPdf(false);
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-sm overflow-y-auto">

@@ -70,8 +70,6 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
   activeUser,
   canPrint = true,
 }) => {
-  if (!isOpen) return null;
-
   const currency = settings?.currencySymbol || 'ر.ي';
 
   // Filters
@@ -274,6 +272,8 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
       setIsExportingPdf(false);
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 animate-fadeIn">

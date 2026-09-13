@@ -41,8 +41,6 @@ export const UserManagerCardSessionsModal: React.FC<UserManagerCardSessionsModal
   onClose,
   onEditProfile
 }) => {
-  if (!isOpen || !user) return null;
-
   const [sessions, setSessions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -102,10 +100,12 @@ export const UserManagerCardSessionsModal: React.FC<UserManagerCardSessionsModal
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `sessions_${user.name}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `sessions_${user?.name || 'user'}_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
+
+  if (!isOpen || !user) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
