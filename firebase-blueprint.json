@@ -86,9 +86,26 @@
         "networkId": { "type": "string" },
         "amount": { "type": "number" }
       }
+    },
+    "DailyNetworkLog": {
+      "title": "DailyNetworkLog",
+      "description": "Daily internet consumption logs (upload, download, total bandwidth)",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "downloadBytes": { "type": "number" },
+        "uploadBytes": { "type": "number" },
+        "totalBytes": { "type": "number" },
+        "notes": { "type": "string" }
+      },
+      "required": ["date", "downloadBytes", "uploadBytes", "totalBytes"]
     }
   },
   "firestore": {
+    "network_daily_logs/{logId}": {
+      "schema": { "$ref": "#/entities/DailyNetworkLog" },
+      "description": "Persistent daily bandwidth usage logs"
+    },
     "users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
       "description": "User profiles"

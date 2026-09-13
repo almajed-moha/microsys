@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   X,
   Calendar,
@@ -19,9 +19,16 @@ import {
   ChevronRight,
   Zap,
   Scale,
+  Database,
+  RefreshCw,
 } from 'lucide-react';
 import { MikrotikCallerSession } from '../types';
 import { printElementDocument, exportElementToPdf } from '../utils/pdfExport';
+import {
+  DailyNetworkLog,
+  getDailyNetworkLog,
+  getDailyNetworkLogs,
+} from '../services/networkLogsService';
 
 interface MikrotikDailyUsageModalProps {
   isOpen: boolean;
@@ -67,6 +74,37 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
   const [isExporting, setIsExporting] = useState(false);
   const [activeHourlyTab, setActiveHourlyTab] = useState<'total' | 'download' | 'upload'>('total');
 
+  // Firestore Database State
+  const [dbLog, setDbLog] = useState<DailyNetworkLog | null>(null);
+  const [allDbLogs, setAllDbLogs] = useState<DailyNetworkLog[]>([]);
+  const [isLoadingDb, setIsLoadingDb] = useState(false);
+  const [lastDbFetch, setLastDbFetch] = useState<Date | null>(null);
+
+  // Fetch report from Firestore
+  const fetchDbReport = useCallback(async () => {
+    if (!isOpen) return;
+    setIsLoadingDb(true);
+    try {
+      const [single, all] = await Promise.all([
+        getDailyNetworkLog(selectedDate),
+        getDailyNetworkLogs(),
+      ]);
+      setDbLog(single);
+      setAllDbLogs(all);
+      setLastDbFetch(new Date());
+    } catch (e) {
+      console.warn('Failed to fetch daily network log from DB:', e);
+    } finally {
+      setIsLoadingDb(false);
+    }
+  }, [isOpen, selectedDate]);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchDbReport();
+    }
+  }, [isOpen, selectedDate, fetchDbReport]);
+
   // Navigate dates
   const changeDateByDays = (days: number) => {
     const d = new Date(selectedDate);
@@ -85,8 +123,8 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
 
   // Aggregate stats for the selected day
   const dayStats = useMemo(() => {
-    let totalDownload = 0;
-    let totalUpload = 0;
+    let sessionDownload = 0;
+    let sessionUpload = 0;
     const userMap = new Map<
       string,
       {
@@ -117,8 +155,8 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
       const ul = s.uploadBytes || 0;
       const tot = dl + ul;
 
-      totalDownload += dl;
-      totalUpload += ul;
+      sessionDownload += dl;
+      sessionUpload += ul;
 
       // Group by user for top consumers
       const existing = userMap.get(s.user);
@@ -150,8 +188,15 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
       }
     }
 
+    // Merge persistent database ledger with session readings
+    const dbDownload = dbLog?.downloadBytes || 0;
+    const dbUpload = dbLog?.uploadBytes || 0;
+
+    const totalDownload = Math.max(sessionDownload, dbDownload);
+    const totalUpload = Math.max(sessionUpload, dbUpload);
     const totalPull = totalDownload + totalUpload;
-    const uniqueUsersCount = userMap.size;
+
+    const uniqueUsersCount = Math.max(userMap.size, dbLog?.activeUsersCount || 0);
     const avgPerUser = uniqueUsersCount > 0 ? totalPull / uniqueUsersCount : 0;
 
     // Find peak hour
@@ -174,8 +219,9 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
       hourlyPull,
       peakHour,
       topConsumers,
+      isFromDb: !!dbLog,
     };
-  }, [daySessions]);
+  }, [daySessions, dbLog]);
 
   // Comparison with last 7 days trend
   const sevenDaysTrend = useMemo(() => {
@@ -188,9 +234,13 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
       const str = d.toISOString().split('T')[0];
 
       // Sum all sessions for this day
-      const dayTotal = sessions
+      const sessionTotal = sessions
         .filter((s) => s.loginTime && s.loginTime.split('T')[0] === str)
         .reduce((sum, s) => sum + (s.downloadBytes || 0) + (s.uploadBytes || 0), 0);
+
+      // Check DB log for this day
+      const dbEntry = allDbLogs.find((l) => l.date === str || l.id === str);
+      const dayTotal = Math.max(sessionTotal, dbEntry?.totalBytes || 0);
 
       const dayLabel = d.toLocaleDateString('ar-SA', { weekday: 'short', month: 'numeric', day: 'numeric' });
       list.push({
@@ -201,7 +251,7 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
       });
     }
     return list;
-  }, [sessions, selectedDate]);
+  }, [sessions, selectedDate, allDbLogs]);
 
   // Max value in hourly pull for scaling the bar chart
   const maxHourlyValue = useMemo(() => {
@@ -367,6 +417,52 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
                   <span>مقارنة المبيعات والفاقد</span>
                 </button>
               )}
+            </div>
+          </div>
+
+          {/* Database Connection & Sync Status Banner */}
+          <div className="bg-gradient-to-r from-teal-50 via-indigo-50/50 to-slate-50 border border-teal-200/80 rounded-2xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-xs print:border-slate-300">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <Database size={16} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-800">
+                    مصدر بيانات التقرير: قاعدة البيانات السحابية (Firestore)
+                  </span>
+                  {dbLog ? (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold flex items-center gap-1 border border-emerald-300">
+                      <CheckCircle2 size={11} />
+                      موثق ومخزن بالقاعدة
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-300">
+                      مزامنة تلقائية نشطة 🟢
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  يتم حفظ إجمالي الرفع والتنزيل طوال اليوم (من 00:00:00 إلى 23:59:59) بشكل دائم لاستعراضها في أي وقت
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 print:hidden shrink-0">
+              {lastDbFetch && (
+                <span className="text-[10px] text-slate-500 font-mono hidden md:inline">
+                  آخر فحص: {lastDbFetch.toLocaleTimeString('ar-SA')}
+                </span>
+              )}
+              <button
+                onClick={fetchDbReport}
+                disabled={isLoadingDb}
+                className="px-3 py-1.5 rounded-xl bg-white border border-teal-300 hover:bg-teal-50 text-teal-800 font-bold transition flex items-center gap-1.5 shadow-xs"
+                title="إعادة جلب أحدث البيانات من قاعدة البيانات"
+              >
+                <RefreshCw size={13} className={`text-teal-600 ${isLoadingDb ? 'animate-spin' : ''}`} />
+                <span>{isLoadingDb ? 'جارِ الجلب...' : 'تحديث من قاعدة البيانات'}</span>
+              </button>
             </div>
           </div>
 

@@ -170,7 +170,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   // Sub-tabs
 
   // Auto-track network usage deltas and sync to Firebase
-  useNetworkUsageTracker(activeUsers, isConnected);
+  useNetworkUsageTracker(activeUsers, isConnected, systemInfo?.model || config.routerModel);
 
   const [activeSubTab, setActiveSubTab] = useState<
     'active_users' | 'all_users' | 'profiles' | 'user_manager' | 'maintenance' | 'interfaces' | 'remote_control' | 'hosts' | 'diagnostics' | 'ai_assistant' | 'settings' | 'daily_logs'
@@ -2200,6 +2200,17 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
           config={config}
           onUpdateSettings={onUpdateSettings}
           onRefreshParent={() => fetchAllLiveData(config)}
+        />
+      )}
+
+      {/* SUB-VIEW 9.8: Daily Network Logs & Bandwidth Consumption Report */}
+      {activeSubTab === 'daily_logs' && (
+        <DailyNetworkLogsView
+          currentDownloadBytes={totalDownloadBytes}
+          currentUploadBytes={totalUploadBytes}
+          activeUsers={activeUsers}
+          routerIdentity={systemInfo?.model || config.routerModel || 'MikroTik Router'}
+          isConnected={isConnected}
         />
       )}
 
