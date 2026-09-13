@@ -21,6 +21,9 @@ import {
   HardDrive,
   Info,
   Check,
+  Share2,
+  Receipt,
+  FileDown,
 } from 'lucide-react';
 import {
   DailyNetworkLog,
@@ -33,6 +36,7 @@ import {
 import { HotspotActiveUser } from '../types';
 import { syncCurrentActiveUsersToDailyLog } from '../hooks/useNetworkUsageTracker';
 import { printElementDocument, exportElementToPdf } from '../utils/pdfExport';
+import { DailyUsagePrintModal } from './DailyUsagePrintModal';
 
 const formatBytesToHuman = (bytes: number) => {
   if (!bytes || bytes <= 0) return '0 B';
@@ -67,6 +71,12 @@ export const DailyNetworkLogsView: React.FC<Props> = ({
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [lastFetchTime, setLastFetchTime] = useState<Date>(new Date());
   const [isExporting, setIsExporting] = useState(false);
+  const [printModalData, setPrintModalData] = useState<{
+    date: string;
+    download: number;
+    upload: number;
+    total: number;
+  } | null>(null);
 
   // Manual Add/Edit Modal State
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -483,14 +493,32 @@ export const DailyNetworkLogsView: React.FC<Props> = ({
               <span>{isLoading ? 'جارِ الجلب...' : 'تحديث من قاعدة البيانات'}</span>
             </button>
 
+            {/* Print and Share Modal Trigger */}
+            <button
+              onClick={() => {
+                const todayLog = logs.find((l) => l.date === todayStr);
+                setPrintModalData({
+                  date: todayLog ? todayLog.date : todayStr,
+                  download: todayLog ? todayLog.downloadBytes : currentDownloadBytes,
+                  upload: todayLog ? todayLog.uploadBytes : currentUploadBytes,
+                  total: todayLog ? todayLog.totalBytes : currentDownloadBytes + currentUploadBytes,
+                });
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white rounded-xl text-xs font-bold shadow-md shadow-teal-600/20 transition"
+              title="طباعة على مقاسات ورق متعددة (A4، كاشير 80mm، 58mm) ومشاركة عبر واتساب"
+            >
+              <Printer className="w-4 h-4" />
+              <span>طباعة ومشاركة الاستهلاك</span>
+            </button>
+
             {/* Print */}
             <button
               onClick={handlePrint}
               className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 transition"
-              title="طباعة التقرير"
+              title="طباعة الجدول الكامل"
             >
-              <Printer className="w-4 h-4 text-slate-400" />
-              <span>طباعة</span>
+              <FileText className="w-4 h-4 text-slate-400" />
+              <span>طباعة الكل</span>
             </button>
 
             {/* Export PDF */}
@@ -734,13 +762,29 @@ export const DailyNetworkLogsView: React.FC<Props> = ({
 
                       {/* Actions */}
                       <td className="p-3.5 text-center print:hidden">
-                        <button
-                          onClick={() => handleDelete(log.id)}
-                          className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition"
-                          title={`حذف سجل يوم ${log.date}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setPrintModalData({
+                                date: log.date,
+                                download: log.downloadBytes,
+                                upload: log.uploadBytes,
+                                total: log.totalBytes,
+                              });
+                            }}
+                            className="p-2 bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 rounded-xl transition"
+                            title={`طباعة ومشاركة تقرير استهلاك يوم ${log.date}`}
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(log.id)}
+                            className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition"
+                            title={`حذف سجل يوم ${log.date}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -851,6 +895,43 @@ export const DailyNetworkLogsView: React.FC<Props> = ({
             </form>
           </div>
         </div>
+      )}
+      {/* Advanced Paper Format Print & WhatsApp Share Modal */}
+      {printModalData && (
+        <DailyUsagePrintModal
+          isOpen={!!printModalData}
+          onClose={() => setPrintModalData(null)}
+          selectedDate={printModalData.date}
+          routerIdentity={routerIdentity}
+          networkName="سجل استهلاك شبكة المايكروتك"
+          dayStats={{
+            totalPull: printModalData.total,
+            totalDownload: printModalData.download,
+            totalUpload: printModalData.upload,
+            uniqueUsersCount: activeUsers.length || 0,
+            avgPerUser: activeUsers.length > 0 ? Math.round(printModalData.total / activeUsers.length) : 0,
+            hourlyPull: [],
+            peakHour: {
+              hour: 0,
+              label: 'حسب السجل',
+              download: printModalData.download,
+              upload: printModalData.upload,
+              total: printModalData.total
+            },
+            topConsumers: activeUsers.slice(0, 20).map((u) => ({
+              user: u.user,
+              address: u.address || '',
+              macAddress: u.macAddress || '',
+              hostName: u.server || '',
+              download: u.bytesOut || 0,
+              upload: u.bytesIn || 0,
+              total: (u.bytesOut || 0) + (u.bytesIn || 0),
+              uptime: u.uptime || '',
+              server: u.server,
+              comment: u.comment
+            })),
+          }}
+        />
       )}
     </div>
   );

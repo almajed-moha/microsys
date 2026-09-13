@@ -21,9 +21,14 @@ import {
   Scale,
   Database,
   RefreshCw,
+  Share2,
+  FileText,
+  Receipt,
+  FileDown,
 } from 'lucide-react';
 import { MikrotikCallerSession } from '../types';
-import { printElementDocument, exportElementToPdf } from '../utils/pdfExport';
+import { printElementDocument, exportElementToPdf, sharePdfToWhatsApp } from '../utils/pdfExport';
+import { DailyUsagePrintModal } from './DailyUsagePrintModal';
 import {
   DailyNetworkLog,
   getDailyNetworkLog,
@@ -35,6 +40,9 @@ interface MikrotikDailyUsageModalProps {
   onClose: () => void;
   sessions: MikrotikCallerSession[];
   routerIdentity?: string;
+  networkName?: string;
+  supportPhone?: string;
+  currencySymbol?: string;
   onOpenComparisonModal?: () => void;
 }
 
@@ -66,12 +74,17 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
   onClose,
   sessions,
   routerIdentity,
+  networkName,
+  supportPhone,
+  currencySymbol,
   onOpenComparisonModal,
 }) => {
   // Selected date (defaults to today)
   const todayStr = new Date().toISOString().split('T')[0];
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
   const [isExporting, setIsExporting] = useState(false);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [activeHourlyTab, setActiveHourlyTab] = useState<'total' | 'download' | 'upload'>('total');
 
   // Firestore Database State
@@ -387,22 +400,72 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
 
               <div className="h-4 w-px bg-slate-200 mx-1"></div>
 
+              {/* Dedicated Print & Share Center Button */}
               <button
-                onClick={handleExportPdf}
-                disabled={isExporting}
-                className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition flex items-center gap-1"
+                onClick={() => setIsPrintModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                title="طباعة على مقاسات الورق المختلفة (A4، كاشير 80mm، 58mm) ومشاركة عبر واتساب"
               >
-                <Download size={13} />
-                <span>PDF</span>
+                <Printer size={14} />
+                <span>خيارات الطباعة والمشاركة</span>
               </button>
 
-              <button
-                onClick={handlePrint}
-                className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition flex items-center gap-1"
-              >
-                <Printer size={13} />
-                <span>طباعة</span>
-              </button>
+              {/* Quick Export Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                  disabled={isExporting}
+                  className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition flex items-center gap-1"
+                >
+                  <Download size={13} />
+                  <span>تصدير سريع</span>
+                </button>
+
+                {isExportMenuOpen && (
+                  <div className="absolute left-0 top-full mt-1.5 w-52 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-30 text-right text-xs divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100">
+                    <button
+                      onClick={() => {
+                        setIsExportMenuOpen(false);
+                        handleExportPdf();
+                      }}
+                      className="w-full px-3.5 py-2 hover:bg-slate-50 flex items-center justify-between text-slate-700"
+                    >
+                      <span>ملف PDF كامل (A4)</span>
+                      <FileDown size={14} className="text-teal-600" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsExportMenuOpen(false);
+                        setIsPrintModalOpen(true);
+                      }}
+                      className="w-full px-3.5 py-2 hover:bg-slate-50 flex items-center justify-between text-slate-700"
+                    >
+                      <span>ورق كاشير حراري (80mm)</span>
+                      <Receipt size={14} className="text-amber-600" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsExportMenuOpen(false);
+                        setIsPrintModalOpen(true);
+                      }}
+                      className="w-full px-3.5 py-2 hover:bg-slate-50 flex items-center justify-between text-slate-700"
+                    >
+                      <span>ورق حراري ميني (58mm)</span>
+                      <Receipt size={14} className="text-purple-600" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsExportMenuOpen(false);
+                        setIsPrintModalOpen(true);
+                      }}
+                      className="w-full px-3.5 py-2 hover:bg-slate-50 flex items-center justify-between text-emerald-700 font-bold"
+                    >
+                      <span>مشاركة فورية عبر واتساب</span>
+                      <Share2 size={14} className="text-emerald-600" />
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {onOpenComparisonModal && (
                 <button
@@ -881,14 +944,35 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
               {formatBytes(dayStats.totalPull)}
             </strong>
           </span>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl font-bold transition"
-          >
-            إغلاق
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsPrintModalOpen(true)}
+              className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition flex items-center gap-1.5 shadow-xs"
+            >
+              <Printer size={14} />
+              <span>طباعة ومشاركة</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl font-bold transition"
+            >
+              إغلاق
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Advanced Paper Format Print & WhatsApp Share Modal */}
+      <DailyUsagePrintModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        selectedDate={selectedDate}
+        routerIdentity={routerIdentity}
+        networkName={networkName}
+        supportPhone={supportPhone}
+        currencySymbol={currencySymbol}
+        dayStats={dayStats}
+      />
     </div>
   );
 };

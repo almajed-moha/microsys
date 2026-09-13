@@ -9,7 +9,6 @@ import {
   Layers,
   Printer,
   Settings,
-  Sparkles,
   RotateCcw,
   ChevronLeft,
   ChevronRight,
@@ -426,32 +425,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
 
           <div className="pt-4 text-[10px] font-bold text-slate-500 px-3 pb-1 tracking-wider uppercase border-t border-slate-800/80">
-            {!isCollapsed ? 'الإعدادات والذكاء الاصطناعي' : '•••'}
+            {!isCollapsed ? 'إعدادات النظام والأدوات' : '•••'}
           </div>
-
-          {/* AI Assistant Button */}
-          {(!activeUser || hasPermission(activeUser, 'settings', 'useAIAssistant', activeTenant)) && (
-            <button
-              onClick={() => {
-                handleOpenAI();
-                handleClose();
-              }}
-              title="المساعد الذكي والتحليلات"
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 group ${
-                isCollapsed ? 'lg:justify-center' : 'justify-between'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Sparkles className="w-5 h-5 text-amber-400 shrink-0 group-hover:rotate-12 transition-transform" />
-                {!isCollapsed && <span>المساعد الذكي والتوقعات</span>}
-              </div>
-              {!isCollapsed && (
-                <span className="px-1.5 py-0.5 rounded text-[9px] bg-amber-500/20 text-amber-300 font-mono">
-                  AI
-                </span>
-              )}
-            </button>
-          )}
 
           {/* Database Backup & Restore Button */}
           {onOpenBackup && (!activeUser || hasPermission(activeUser, 'settings', 'backupAndRestore', activeTenant)) && (

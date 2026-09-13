@@ -183,14 +183,14 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="no-print sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 shadow-md w-full">
-      <div className="w-full px-2 sm:px-4 md:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
+      <div className="w-full px-2 sm:px-4 md:px-6">
+        <div className="flex items-center justify-between h-14 sm:h-16 gap-2 md:gap-3">
           {/* Zone 1: Right Side (RTL Start): Sidebar Toggle + Network Brand */}
-          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {/* Sidebar Toggle Button */}
             <button
               onClick={onToggleSidebar}
-              className="p-1.5 sm:p-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 shadow-xs transition shrink-0"
+              className="p-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 shadow-xs transition shrink-0"
               title="فتح / إغلاق القائمة الجانبية"
               aria-label="القائمة الجانبية"
             >
@@ -199,23 +199,23 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Network Brand & Status */}
             <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center shadow-md shadow-indigo-500/20 text-white shrink-0">
-                <Wifi className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center shadow-md shadow-indigo-500/20 text-white shrink-0">
+                <Wifi className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              <div className="min-w-0">
-                <h1 className="font-black text-xs sm:text-sm md:text-base text-white tracking-tight truncate max-w-[100px] xs:max-w-[130px] sm:max-w-[180px] md:max-w-[220px]">
+              <div className="min-w-0 hidden xs:block">
+                <h1 className="font-black text-xs sm:text-sm md:text-base text-white tracking-tight truncate max-w-[120px] sm:max-w-[160px] md:max-w-[190px] xl:max-w-[220px]">
                   {safeSettings.networkName}
                 </h1>
-                <p className="text-[10px] sm:text-[11px] text-indigo-400 font-semibold hidden xl:block truncate max-w-[220px]">
+                <p className="text-[10px] sm:text-[11px] text-indigo-400 font-semibold hidden lg:block truncate max-w-[200px]">
                   {viewTitles[currentTab] || 'نظام إدارة شبكات مايكروتك'}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Zone 2: Dedicated Center Search Bar (مساحة البحث المركزية المستقلة تماماً) */}
+          {/* Zone 2: Dedicated Center Search Bar (مساحة البحث المركزية المستقلة تماماً بدون تداخل) */}
           {onOpenGlobalSearch && hasPermission(activeUser, 'dashboard', 'view', activeTenant) && (
-            <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg mx-1 sm:mx-3 min-w-0">
+            <div className="flex-1 max-w-[180px] xs:max-w-[220px] sm:max-w-xs md:max-w-sm lg:max-w-md mx-1 sm:mx-2 min-w-0">
               <button
                 type="button"
                 onClick={onOpenGlobalSearch}
@@ -225,8 +225,8 @@ export const Header: React.FC<HeaderProps> = ({
                 <div className="flex items-center gap-2 min-w-0">
                   <Search className="w-4 h-4 text-indigo-400 group-hover:text-cyan-400 group-hover:scale-110 transition shrink-0" />
                   <span className="text-xs font-medium text-slate-300 group-hover:text-white truncate">
-                    <span className="hidden md:inline">بحث شامل في النظام (كروت، فواتير، نقاط)...</span>
-                    <span className="inline md:hidden">بحث سريع...</span>
+                    <span className="hidden md:inline">بحث شامل في النظام (كروت، فواتير)...</span>
+                    <span className="inline md:hidden">بحث شامل...</span>
                   </span>
                 </div>
                 <div className="hidden sm:flex items-center gap-0.5 text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400 group-hover:border-indigo-500/50 group-hover:text-indigo-300 shrink-0">
@@ -236,9 +236,9 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {/* Zone 3: Left Side (RTL End): Responsive Toolbar & Actions */}
+          {/* Zone 3: Left Side (RTL End): Responsive Toolbar & Actions (لا يتداخل مع البحث) */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Group A: Primary Financial & Operational Actions */}
+            {/* Group A: Primary Operational Actions */}
             {onOpenQuickSale && hasPermission(activeUser, 'invoices', 'createSaleInvoice', activeTenant) && (
               <button
                 onClick={onOpenQuickSale}
@@ -253,11 +253,11 @@ export const Header: React.FC<HeaderProps> = ({
             {onOpenQuickPayment && hasPermission(activeUser, 'payments', 'addPayment', activeTenant) && (
               <button
                 onClick={onOpenQuickPayment}
-                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition shadow-xs shrink-0 active:scale-95"
+                className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition shadow-xs shrink-0 active:scale-95"
                 title="تسجيل سند قبض وسداد دفعة لنقطة بيع"
               >
                 <DollarSign className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span className="hidden md:inline">سند قبض</span>
+                <span className="hidden lg:inline">سند قبض</span>
               </button>
             )}
 
@@ -265,7 +265,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="hidden sm:block w-px h-5 bg-slate-800 shrink-0" />
 
             {/* Group B: Realtime Status Indicators & Live Badges */}
-            {/* 1. MikroTik Router Status Badge */}
+            {/* 1. MikroTik Router Status Badge - مستقل ومنفصل بدون أي تداخل */}
             <button
               type="button"
               onClick={() => setCurrentTab('mikrotik')}

@@ -1450,6 +1450,9 @@ export const MikrotikSessionsView: React.FC<MikrotikSessionsViewProps> = ({
         onClose={() => setIsDailyModalOpen(false)}
         sessions={sessions}
         routerIdentity={routerIdentity}
+        networkName={settings?.networkName}
+        supportPhone={settings?.supportPhone}
+        currencySymbol={settings?.currencySymbol}
         onOpenComparisonModal={() => setIsComparisonModalOpen(true)}
       />
 

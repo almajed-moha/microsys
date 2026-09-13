@@ -35,6 +35,9 @@ import {
   SlidersHorizontal,
   X,
   ShieldAlert,
+  Share2,
+  Receipt,
+  FileDown,
 } from 'lucide-react';
 import {
   NetworkSettings,
@@ -46,6 +49,7 @@ import {
 import { useContinuousCardTracker } from '../hooks/useContinuousCardTracker';
 import { formatBytes, formatSpeed } from '../utils/cardUsageTracker';
 import { printElementDocument, exportElementToPdf } from '../utils/pdfExport';
+import { DailyUsagePrintModal } from './DailyUsagePrintModal';
 
 export interface CardUsageTrackerViewProps {
   settings?: NetworkSettings;
@@ -111,6 +115,7 @@ export const CardUsageTrackerView: React.FC<CardUsageTrackerViewProps> = ({
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
   // Local state for editing ISP Settings form
@@ -366,6 +371,16 @@ export const CardUsageTrackerView: React.FC<CardUsageTrackerViewProps> = ({
               <span>إعدادات المزود</span>
             </button>
 
+            {/* Print & Share Options Modal Button */}
+            <button
+              onClick={() => setIsPrintModalOpen(true)}
+              className="px-3.5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white rounded-2xl transition-all text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-md shadow-teal-900/30"
+              title="طباعة على مقاسات ورق متعددة (A4، كاشير 80mm، 58mm) ومشاركة عبر واتساب"
+            >
+              <Printer size={15} />
+              <span>خيارات الطباعة والمشاركة</span>
+            </button>
+
             {/* Export Menu */}
             <div className="relative">
               <button
@@ -378,7 +393,17 @@ export const CardUsageTrackerView: React.FC<CardUsageTrackerViewProps> = ({
               </button>
 
               {isExportMenuOpen && (
-                <div className="absolute top-full mt-2 left-0 w-48 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden z-50 text-right">
+                <div className="absolute top-full mt-2 left-0 w-52 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden z-50 text-right">
+                  <button
+                    onClick={() => {
+                      setIsExportMenuOpen(false);
+                      setIsPrintModalOpen(true);
+                    }}
+                    className="w-full px-4 py-3 text-xs hover:bg-slate-800 border-b border-slate-800/80 flex items-center justify-between text-teal-300 font-bold"
+                  >
+                    <span>طباعة ومشاركة متقدمة</span>
+                    <Printer size={14} className="text-teal-400" />
+                  </button>
                   <button
                     onClick={() => handleExportPdf('a4')}
                     className="w-full px-4 py-3 text-xs hover:bg-slate-800 border-b border-slate-800/80 flex items-center justify-between text-slate-200"
@@ -405,9 +430,9 @@ export const CardUsageTrackerView: React.FC<CardUsageTrackerViewProps> = ({
                   </button>
                   <button
                     onClick={handlePrint}
-                    className="w-full px-4 py-3 text-xs hover:bg-slate-800 flex items-center justify-between text-teal-300"
+                    className="w-full px-4 py-3 text-xs hover:bg-slate-800 flex items-center justify-between text-slate-300"
                   >
-                    <span>طباعة فورية</span>
+                    <span>طباعة سريعة للجدول</span>
                     <Printer size={14} />
                   </button>
                 </div>
@@ -1230,6 +1255,43 @@ export const CardUsageTrackerView: React.FC<CardUsageTrackerViewProps> = ({
           </div>
         </div>
       )}
+      {/* Advanced Paper Format Print & WhatsApp Share Modal */}
+      <DailyUsagePrintModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        selectedDate={selectedDate}
+        routerIdentity={settings?.mikrotikHost || 'راوتر مايكروتك'}
+        networkName={settings?.networkName || 'شبكة مايكروتك'}
+        supportPhone={settings?.phone || ''}
+        currencySymbol={settings?.currency || 'ر.ي'}
+        dayStats={{
+          totalPull: currentISPSummary.wanTotalBytes || todayClientTotalBytes || 0,
+          totalDownload: currentISPSummary.wanDownloadBytes || todayClientDownloadBytes || 0,
+          totalUpload: currentISPSummary.wanUploadBytes || todayClientUploadBytes || 0,
+          uniqueUsersCount: dateRecords.length || 0,
+          avgPerUser: dateRecords.length > 0 ? Math.round(todayClientTotalBytes / dateRecords.length) : 0,
+          hourlyPull: [],
+          peakHour: {
+            hour: 0,
+            label: 'اليوم الكامل',
+            download: currentISPSummary.wanDownloadBytes || todayClientDownloadBytes || 0,
+            upload: currentISPSummary.wanUploadBytes || todayClientUploadBytes || 0,
+            total: currentISPSummary.wanTotalBytes || todayClientTotalBytes || 0,
+          },
+          topConsumers: dateRecords.slice(0, 30).map((r) => ({
+            user: r.username,
+            address: r.ip || '',
+            macAddress: r.mac || '',
+            hostName: r.categoryName || '',
+            download: r.totalDownloadBytes || 0,
+            upload: r.totalUploadBytes || 0,
+            total: r.totalBytes || 0,
+            uptime: r.totalUptime || '',
+            server: r.comment || '',
+            comment: r.comment,
+          })),
+        }}
+      />
     </div>
   );
 };

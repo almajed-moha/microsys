@@ -20,7 +20,10 @@ import {
   ChevronRight,
   ExternalLink,
   ShieldCheck,
-  Edit3
+  Edit3,
+  Share2,
+  FileText,
+  Receipt
 } from 'lucide-react';
 import {
   MikroTikConfig,
@@ -30,6 +33,7 @@ import {
   fetchUserManagerDailyReport,
   formatBytesToHuman
 } from '../utils/mikrotikApi';
+import { DailyUsagePrintModal } from './DailyUsagePrintModal';
 
 interface UserManagerDailyUsageReportViewProps {
   config: Partial<MikroTikConfig>;
@@ -52,6 +56,7 @@ export const UserManagerDailyUsageReportView: React.FC<UserManagerDailyUsageRepo
   const [searchQuery, setSearchQuery] = useState('');
   const [subView, setSubView] = useState<'cards' | 'sessions'>('cards');
   const [profileFilter, setProfileFilter] = useState('all');
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   const loadDailyReport = async (dateToFetch?: string) => {
     setIsLoading(true);
@@ -229,6 +234,16 @@ export const UserManagerDailyUsageReportView: React.FC<UserManagerDailyUsageRepo
             title="تحديث البيانات"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-purple-400' : ''}`} />
+          </button>
+
+          <button
+            onClick={() => setIsPrintModalOpen(true)}
+            disabled={cardsUsage.length === 0 && summary.totalWanBytes === 0}
+            className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-40"
+            title="خيارات الطباعة بمختلف المقاسات (A4، كاشير 80mm، 58mm) ومشاركة واتساب"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>طباعة ومشاركة</span>
           </button>
 
           <button
@@ -668,6 +683,41 @@ export const UserManagerDailyUsageReportView: React.FC<UserManagerDailyUsageRepo
           </div>
         </div>
       )}
+      {/* Advanced Paper Format Print & WhatsApp Share Modal */}
+      <DailyUsagePrintModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        selectedDate={selectedDate}
+        routerIdentity={config?.host ? `مايكروتك (${config.host})` : 'راوتر مايكروتك'}
+        networkName="شبكة مايكروتك - يوزر مانجر"
+        dayStats={{
+          totalPull: summary.totalWanBytes || summary.totalCardsBytes || 0,
+          totalDownload: summary.wanDownloadBytes || summary.cardsDownloadBytes || 0,
+          totalUpload: summary.wanUploadBytes || summary.cardsUploadBytes || 0,
+          uniqueUsersCount: summary.totalActiveCardsToday || cardsUsage.length || 0,
+          avgPerUser: cardsUsage.length > 0 ? Math.round((summary.totalCardsBytes || 0) / cardsUsage.length) : 0,
+          hourlyPull: [],
+          peakHour: {
+            hour: 0,
+            label: 'اليوزر مانجر',
+            download: summary.wanDownloadBytes || 0,
+            upload: summary.wanUploadBytes || 0,
+            total: summary.totalWanBytes || 0
+          },
+          topConsumers: cardsUsage.slice(0, 30).map((c) => ({
+            user: c.user,
+            address: c.comment || '',
+            macAddress: '',
+            hostName: c.profile || '',
+            download: c.downloadBytes || 0,
+            upload: c.uploadBytes || 0,
+            total: c.totalBytes || 0,
+            uptime: `${c.sessionsCount || 1} جلسات`,
+            server: 'User Manager',
+            comment: c.comment
+          })),
+        }}
+      />
     </div>
   );
 };
