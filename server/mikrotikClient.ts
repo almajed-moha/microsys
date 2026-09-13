@@ -439,7 +439,7 @@ async function fetchRestApi(
   const defaultPort = isHttps ? 443 : 80;
   const port = options.port || defaultPort;
   const host = options.host;
-  const timeout = options.timeoutMs || 5000;
+  const timeout = options.timeoutMs || 30000;
 
   const auth = Buffer.from(`${options.username}:${options.password || ''}`).toString('base64');
   const path = endpoint.startsWith('/') ? `/rest${endpoint}` : `/rest/${endpoint}`;
@@ -613,7 +613,7 @@ export class MikroTikService {
     if (proto === 'auto' || proto === 'api_binary' || proto === 'api_ssl') {
       const apiPort = options.port || (proto === 'api_ssl' || options.useSsl ? 8729 : 8728);
       const useSsl = proto === 'api_ssl' || options.useSsl || apiPort === 8729;
-      const client = new RouterOSBinaryClient(options.host, apiPort, useSsl, options.timeoutMs || 5000);
+      const client = new RouterOSBinaryClient(options.host, apiPort, useSsl, options.timeoutMs || 30000);
 
       try {
         await client.connect();
@@ -740,7 +740,7 @@ export class MikroTikService {
 
     // Binary API fallback
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -893,7 +893,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -989,7 +989,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -1399,7 +1399,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -1448,7 +1448,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -1512,7 +1512,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -1556,7 +1556,7 @@ export class MikroTikService {
         const data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/ip/hotspot/user');
         const list = Array.isArray(data) ? data : [data];
 
-        return list.filter(u => u && (u.name || u.username)).map(u => ({
+        return list.filter(u => u).map(u => ({
           id: u['.id'] || u.id || u.name || u.username,
           name: u.name || u.username,
           password: u.password,
@@ -1577,14 +1577,14 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
     const users = await client.sendSentence(['/ip/hotspot/user/print']);
     client.close();
 
-    return users.filter(u => u && (u['name'] || u['username'])).map(u => ({
+    return users.filter(u => u).map(u => ({
       id: u['.id'] || u['name'] || u['username'],
       name: u['name'] || u['username'],
       password: u['password'],
@@ -1642,7 +1642,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -1691,7 +1691,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -1786,7 +1786,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -1867,7 +1867,7 @@ export class MikroTikService {
     // Binary API
     try {
       const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-      const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+      const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
       await client.connect();
       await client.login(options.username, options.password || '');
 
@@ -1933,7 +1933,7 @@ export class MikroTikService {
         }
 
         const list = Array.isArray(data) ? data : [data];
-        return list.filter(u => u && (u.name || u.username)).map(u => ({
+        return list.filter(u => u).map(u => ({
           id: u['.id'] || u.id || u.name || u.username,
           name: u.name || u.username,
           password: u.password,
@@ -1956,7 +1956,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -1968,7 +1968,7 @@ export class MikroTikService {
     }
     client.close();
 
-    return users.filter(u => u && (u['name'] || u['username'])).map(u => ({
+    return users.filter(u => u).map(u => ({
       id: u['.id'] || u['name'] || u['username'],
       name: u['name'] || u['username'],
       password: u['password'],
@@ -2039,7 +2039,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -2101,7 +2101,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -2164,7 +2164,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -2248,7 +2248,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -2461,7 +2461,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -2628,7 +2628,7 @@ export class MikroTikService {
     }
 
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -2678,7 +2678,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -2704,7 +2704,7 @@ export class MikroTikService {
     }
 
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -2752,7 +2752,7 @@ export class MikroTikService {
     }
 
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -2835,7 +2835,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -2901,7 +2901,7 @@ export class MikroTikService {
 
     if (!rawSessions || rawSessions.length === 0) {
       const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-      const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+      const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
       await client.connect();
       await client.login(options.username, options.password || '');
       try {
@@ -2980,7 +2980,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
     let ifaces: any[] = [];
@@ -3153,7 +3153,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -3259,7 +3259,7 @@ export class MikroTikService {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 5000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
