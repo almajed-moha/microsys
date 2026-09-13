@@ -900,7 +900,7 @@ export class MikroTikService {
     const users = await client.sendSentence(['/ip/hotspot/active/print']);
     client.close();
 
-    return users.filter(u => u && (u['name'] || u['username'])).map(item => ({
+    return users.filter(item => item && (item['user'] || item['address'])).map(item => ({
       id: item['.id'] || item['user'],
       user: item['user'] || 'Unknown',
       address: item['address'] || '',

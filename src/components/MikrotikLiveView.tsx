@@ -15,7 +15,7 @@ import {
   Users,
   Radio,
   Sliders,
-  Terminal,
+  Terminal, Database,
   LogOut,
   Search,
   CheckCircle2,
@@ -113,6 +113,7 @@ function isPrivateIp(host?: string): boolean {
   if (/^172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(clean)) return true;
   return false;
 }
+import { DailyNetworkLogsView } from "./DailyNetworkLogsView";
 
 interface MikrotikLiveViewProps {
   settings: NetworkSettings;
@@ -167,7 +168,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
 
   // Sub-tabs
   const [activeSubTab, setActiveSubTab] = useState<
-    'active_users' | 'all_users' | 'profiles' | 'user_manager' | 'maintenance' | 'interfaces' | 'remote_control' | 'hosts' | 'diagnostics' | 'ai_assistant' | 'settings'
+    'active_users' | 'all_users' | 'profiles' | 'user_manager' | 'maintenance' | 'interfaces' | 'remote_control' | 'hosts' | 'diagnostics' | 'ai_assistant' | 'settings' | 'daily_logs'
   >('active_users');
 
   // Search & Filter States
@@ -1245,6 +1246,19 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
         >
           <Terminal className="w-4 h-4" />
           <span>سكربتات WinBox</span>
+        </button>
+
+
+        <button
+          onClick={() => setActiveSubTab('daily_logs')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+            activeSubTab === 'daily_logs'
+              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <Database className="w-4 h-4 text-emerald-400" />
+          <span>سجل الاستهلاك اليومي</span>
         </button>
 
         <button
