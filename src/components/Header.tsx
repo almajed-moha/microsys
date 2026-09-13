@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Menu,
   Wifi,
-  Sparkles,
   Settings,
   PlusCircle,
   DollarSign,
@@ -185,9 +184,9 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="no-print sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 shadow-md w-full">
       <div className="w-full px-2 sm:px-4 md:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-14 sm:h-16 gap-2">
-          {/* Right Side (RTL Start): Sidebar Toggle + Network Brand */}
-          <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 shrink">
+        <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
+          {/* Zone 1: Right Side (RTL Start): Sidebar Toggle + Network Brand */}
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 min-w-0">
             {/* Sidebar Toggle Button */}
             <button
               onClick={onToggleSidebar}
@@ -201,67 +200,165 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Network Brand & Status */}
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center shadow-md shadow-indigo-500/20 text-white shrink-0">
-                <Wifi className="w-3.5 h-3.5 sm:w-5 sm:h-5 animate-pulse" />
+                <Wifi className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <h1 className="font-black text-xs sm:text-sm md:text-base text-white tracking-tight truncate max-w-[110px] xs:max-w-[150px] sm:max-w-[190px] md:max-w-xs">
-                    {safeSettings.networkName}
-                  </h1>
-                  <button
-                    onClick={() => setCurrentTab('mikrotik')}
-                    className={`hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold border transition shrink-0 ${
-                      isConnected
-                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
-                    }`}
-                    title="الانتقال لمركز المايكروتك المباشر"
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full ml-1 ${isConnected ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`}></span>
-                    <span className="hidden md:inline">{isConnected ? 'مايكروتك متصل' : 'مايكروتك'}</span>
-                    <span className="md:hidden">{isConnected ? 'متصل' : 'روتر'}</span>
-                  </button>
-                </div>
-                <p className="text-[10px] sm:text-[11px] text-indigo-400 font-semibold hidden xl:block truncate max-w-xs">
+                <h1 className="font-black text-xs sm:text-sm md:text-base text-white tracking-tight truncate max-w-[100px] xs:max-w-[130px] sm:max-w-[180px] md:max-w-[220px]">
+                  {safeSettings.networkName}
+                </h1>
+                <p className="text-[10px] sm:text-[11px] text-indigo-400 font-semibold hidden xl:block truncate max-w-[220px]">
                   {viewTitles[currentTab] || 'نظام إدارة شبكات مايكروتك'}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Left Side (RTL End): Responsive Toolbar & Actions */}
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            {/* 1. Global Search Button */}
-            {onOpenGlobalSearch && hasPermission(activeUser, 'dashboard', 'view', activeTenant) && (
+          {/* Zone 2: Dedicated Center Search Bar (مساحة البحث المركزية المستقلة تماماً) */}
+          {onOpenGlobalSearch && hasPermission(activeUser, 'dashboard', 'view', activeTenant) && (
+            <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg mx-1 sm:mx-3 min-w-0">
               <button
+                type="button"
                 onClick={onOpenGlobalSearch}
-                className="flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1.5 md:px-3 md:py-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 hover:border-indigo-500/50 shadow-xs transition group"
-                title="بحث سريع في كل النظام والتبويبات (Ctrl + K)"
+                className="w-full flex items-center justify-between gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-slate-800/80 hover:bg-slate-800/95 text-slate-300 hover:text-white border border-slate-700/80 hover:border-indigo-500/60 shadow-inner transition group text-right"
+                title="بحث شامل في النظام: كروت، فواتير، نقاط بيع، مصروفات (Ctrl + K)"
               >
-                <Search className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform shrink-0" />
-                <span className="text-xs font-medium hidden md:inline text-slate-300 group-hover:text-white">
-                  بحث شامل...
-                </span>
-                <span className="hidden xl:flex items-center gap-0.5 text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Search className="w-4 h-4 text-indigo-400 group-hover:text-cyan-400 group-hover:scale-110 transition shrink-0" />
+                  <span className="text-xs font-medium text-slate-300 group-hover:text-white truncate">
+                    <span className="hidden md:inline">بحث شامل في النظام (كروت، فواتير، نقاط)...</span>
+                    <span className="inline md:hidden">بحث سريع...</span>
+                  </span>
+                </div>
+                <div className="hidden sm:flex items-center gap-0.5 text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400 group-hover:border-indigo-500/50 group-hover:text-indigo-300 shrink-0">
                   <kbd>Ctrl</kbd>+<kbd>K</kbd>
-                </span>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* Zone 3: Left Side (RTL End): Responsive Toolbar & Actions */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Group A: Primary Financial & Operational Actions */}
+            {onOpenQuickSale && hasPermission(activeUser, 'invoices', 'createSaleInvoice', activeTenant) && (
+              <button
+                onClick={onOpenQuickSale}
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition shrink-0 active:scale-95"
+                title="تسجيل عملية بيع كروت جديدة"
+              >
+                <PlusCircle className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline">تسجيل بيع</span>
               </button>
             )}
 
-            {/* 2. Quick Financial Metrics (Large Desktop Only) */}
+            {onOpenQuickPayment && hasPermission(activeUser, 'payments', 'addPayment', activeTenant) && (
+              <button
+                onClick={onOpenQuickPayment}
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition shadow-xs shrink-0 active:scale-95"
+                title="تسجيل سند قبض وسداد دفعة لنقطة بيع"
+              >
+                <DollarSign className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="hidden md:inline">سند قبض</span>
+              </button>
+            )}
+
+            {/* Subtle Divider */}
+            <div className="hidden sm:block w-px h-5 bg-slate-800 shrink-0" />
+
+            {/* Group B: Realtime Status Indicators & Live Badges */}
+            {/* 1. MikroTik Router Status Badge */}
+            <button
+              type="button"
+              onClick={() => setCurrentTab('mikrotik')}
+              className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-bold border transition shadow-xs shrink-0 ${
+                isConnected
+                  ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+              }`}
+              title="حالة اتصال راوتر مايكروتك - انقر للانتقال لمركز المراقبة والتحكم المباشر"
+            >
+              <span className="relative flex h-2 w-2 shrink-0">
+                {isConnected && (
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                )}
+                <span
+                  className={`relative inline-flex rounded-full h-2 w-2 ${
+                    isConnected ? 'bg-emerald-400' : 'bg-slate-500'
+                  }`}
+                ></span>
+              </span>
+              <span className="hidden sm:inline">
+                {isConnected ? 'مايكروتك: متصل' : 'المايكروتك'}
+              </span>
+              <span className="sm:hidden text-[11px]">
+                {isConnected ? 'متصل' : 'الراوتر'}
+              </span>
+            </button>
+
+            {/* 2. Unified Cloud Sync Status */}
+            {syncStatus === 'dev-locked' ? (
+              <div
+                className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold shadow-xs bg-cyan-500/10 border-cyan-500/30 text-cyan-300 shrink-0"
+                title="بيئة جوجل استوديو: تم إيقاف مزامنة وتعديل قواعد البيانات السحابية لحماية حساباتك المنظمة. المزامنة محصورة على الواجهات والبرمجة والتطوير فقط."
+              >
+                <Shield className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span>سحابي محمي</span>
+              </div>
+            ) : (
+              <div
+                className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold shadow-xs shrink-0 ${
+                  syncStatus === 'syncing'
+                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                    : syncStatus === 'offline'
+                    ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                    : syncStatus === 'error'
+                    ? 'bg-red-500/10 border-red-500/30 text-red-300'
+                    : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                }`}
+                title="حالة المزامنة السحابية الفورية لقاعدة البيانات"
+              >
+                <Cloud className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span>
+                  {syncStatus === 'syncing'
+                    ? 'مزامنة...'
+                    : syncStatus === 'offline'
+                    ? 'غير متصل'
+                    : syncStatus === 'error'
+                    ? 'خطأ سحابي'
+                    : 'سحابي متزامن'}
+                </span>
+              </div>
+            )}
+
+            {/* 3. Pending Orders Alert Pill */}
+            {pendingOrdersCount > 0 && hasPermission(activeUser, 'orders', 'view', activeTenant) && (
+              <button
+                onClick={() => setCurrentTab('orders')}
+                className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 text-xs font-bold transition shadow-xs shrink-0 animate-bounce"
+                style={{ animationDuration: '3s' }}
+                title={`${pendingOrdersCount} طلبات كروت جديدة بانتظار المراجعة`}
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
+                <span className="font-bold">{pendingOrdersCount}</span>
+                <span className="hidden sm:inline">طلبات</span>
+              </button>
+            )}
+
+            {/* 4. Quick Financial Metrics (Large Desktop Only) */}
             {hasPermission(activeUser, 'dashboard', 'viewFinancialMetrics', activeTenant) && (
-              <div className="hidden 2xl:flex items-center gap-3 bg-slate-950/60 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
-                <div className="flex items-center gap-1.5 text-slate-300">
-                  <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>المبيعات:</span>
+              <div className="hidden 2xl:flex items-center gap-2.5 bg-slate-950/60 px-3 py-1.5 rounded-xl border border-slate-800 text-xs shrink-0">
+                <div className="flex items-center gap-1 text-slate-300">
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                   <span className="font-bold text-emerald-400 font-mono">
                     {(totalSalesToday ?? 0).toLocaleString()} {safeSettings.currencySymbol}
                   </span>
                 </div>
                 <div className="w-px h-3.5 bg-slate-800"></div>
-                <div className="flex items-center gap-1.5 text-slate-300">
-                  <DollarSign className="w-3.5 h-3.5 text-amber-400" />
-                  <span>المديونيات:</span>
+                <div className="flex items-center gap-1 text-slate-300">
+                  <DollarSign className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <span className="font-bold text-amber-400 font-mono">
                     {(totalDebt ?? 0).toLocaleString()} {safeSettings.currencySymbol}
                   </span>
@@ -269,14 +366,14 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             )}
 
-            {/* 3. SaaS Master Tenant Filter Dropdown (Desktop) */}
+            {/* 5. SaaS Master Tenant Filter Dropdown (Desktop) */}
             {activeUser?.role === 'system_owner' && onSelectTenantFilter && tenants.length > 0 && (
-              <div className="hidden lg:flex items-center gap-1.5 bg-slate-950/80 px-2 py-1 rounded-xl border border-indigo-500/30 text-xs shadow-inner">
+              <div className="hidden xl:flex items-center gap-1.5 bg-slate-950/80 px-2 py-1 rounded-xl border border-indigo-500/30 text-xs shadow-inner shrink-0">
                 <Building2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                 <select
                   value={selectedTenantFilter}
                   onChange={(e) => onSelectTenantFilter(e.target.value)}
-                  className="bg-slate-900 text-indigo-300 border border-slate-700/80 rounded-lg px-2 py-1 text-xs font-bold focus:outline-none focus:border-indigo-500 cursor-pointer max-w-[140px]"
+                  className="bg-slate-900 text-indigo-300 border border-slate-700/80 rounded-lg px-2 py-1 text-xs font-bold focus:outline-none focus:border-indigo-500 cursor-pointer max-w-[130px]"
                   title="تصفية وعزل بيانات شبكة محددة لمالك النظام"
                 >
                   <option value="all">🏢 كافة الشبكات</option>
@@ -289,102 +386,26 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             )}
 
-            {/* 4. Pending Orders Alert Pill */}
-            {pendingOrdersCount > 0 && hasPermission(activeUser, 'orders', 'view', activeTenant) && (
-              <button
-                onClick={() => setCurrentTab('orders')}
-                className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 text-xs font-bold transition shadow-xs shrink-0 animate-bounce"
-                style={{ animationDuration: '3s' }}
-                title={`${pendingOrdersCount} طلبات كروت جديدة بانتظار المراجعة`}
-              >
-                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                <span className="font-bold">{pendingOrdersCount}</span>
-                <span className="hidden sm:inline">طلبات</span>
-              </button>
-            )}
+            {/* Subtle Divider */}
+            <div className="hidden md:block w-px h-5 bg-slate-800 shrink-0" />
 
-            {/* 4.5. Cloud Sync Indicator */}
-            {syncStatus === 'dev-locked' ? (
-              <div
-                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all shadow-sm bg-cyan-500/10 border-cyan-500/30 text-cyan-300"
-                title="بيئة جوجل استوديو: تم إيقاف مزامنة وتعديل قواعد البيانات السحابية لحماية حساباتك المنظمة. المزامنة محصورة على الواجهات والبرمجة والتطوير فقط."
-              >
-                <Shield className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <span className="hidden md:inline">جوجل استوديو: حماية الحسابات (قراءة فقط)</span>
-                <span className="md:hidden">محمي</span>
-              </div>
-            ) : (
-              <div className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all shadow-sm ${
-                syncStatus === 'syncing' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
-                syncStatus === 'offline' ? 'bg-rose-500/10 border-rose-500/30 text-rose-400' :
-                syncStatus === 'error' ? 'bg-red-500/10 border-red-500/30 text-red-400' :
-                'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-              }`} title="حالة المزامنة السحابية للبيانات">
-                {syncStatus === 'syncing' && <Cloud className="w-3.5 h-3.5 animate-pulse" />}
-                {syncStatus === 'offline' && <Wifi className="w-3.5 h-3.5 opacity-50" />}
-                {syncStatus === 'error' && <X className="w-3.5 h-3.5" />}
-                {syncStatus === 'online' && <CheckCircle2 className="w-3.5 h-3.5" />}
-                <span className="hidden md:inline">
-                  {syncStatus === 'syncing' ? 'جاري المزامنة...' : 
-                   syncStatus === 'offline' ? 'غير متصل' : 
-                   syncStatus === 'error' ? 'خطأ مزامنة' : 
-                   'متصل ومحدث'}
-                </span>
-              </div>
-            )}
-
-            {/* 4.6. Refresh Data Button */}
+            {/* Group C: System Tools & Utilities */}
+            {/* 1. Compact Refresh Data Button */}
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition shadow-sm"
+              className="p-1.5 sm:p-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition shrink-0 shadow-xs group"
               title="تحديث البيانات وجلب أحدث التغييرات من السيرفر"
+              aria-label="تحديث البيانات"
             >
-              <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="hidden sm:inline">تحديث البيانات</span>
+              <RotateCcw className="w-4 h-4 text-cyan-400 group-hover:rotate-180 transition-transform duration-500" />
             </button>
 
-            {/* 5. Quick Payment Button (Desktop & Tablet) */}
-            {onOpenQuickPayment && hasPermission(activeUser, 'payments', 'addPayment', activeTenant) && (
-              <button
-                onClick={onOpenQuickPayment}
-                className="hidden sm:flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1.5 md:px-3 md:py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition shadow-xs shrink-0"
-                title="تسجيل سند قبض وسداد دفعة لنقطة بيع"
-              >
-                <DollarSign className="w-4 h-4 text-emerald-400" />
-                <span className="hidden lg:inline">سند قبض</span>
-              </button>
-            )}
-
-            {/* 6. Quick Sale Button (High Priority - Always visible or compact) */}
-            {onOpenQuickSale && hasPermission(activeUser, 'invoices', 'createSaleInvoice', activeTenant) && (
-              <button
-                onClick={onOpenQuickSale}
-                className="flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1.5 md:px-3 md:py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition shrink-0"
-                title="تسجيل عملية بيع كروت جديدة"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span className="hidden md:inline">تسجيل بيع</span>
-              </button>
-            )}
-
-            {/* 7. AI Assistant Button (Tablet & Desktop) */}
-            {hasPermission(activeUser, 'settings', 'useAIAssistant', activeTenant) && (
-              <button
-                onClick={onOpenAI}
-                className="hidden sm:flex p-1.5 sm:p-2 md:px-2.5 md:py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-xs shadow-md shadow-purple-600/20 transition ring-1 ring-purple-400/40 items-center gap-1.5 shrink-0"
-                title="مساعد الذكاء الاصطناعي وتحليل المبيعات"
-              >
-                <Sparkles className="w-4 h-4 text-yellow-300 animate-spin" style={{ animationDuration: '6s' }} />
-                <span className="hidden xl:inline">المستشار الذكي</span>
-              </button>
-            )}
-
-            {/* 8. Quick Theme Toggle Button (Desktop & Tablet) */}
+            {/* 2. Quick Theme Toggle Button (Desktop & Tablet) */}
             {onToggleTheme && (
               <button
                 onClick={onToggleTheme}
-                className="hidden md:flex p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition shrink-0"
+                className="hidden md:flex p-1.5 sm:p-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition shrink-0"
                 title={safeSettings.themeMode === 'light' ? 'التبديل إلى الوضع الليلي (Dark Mode)' : 'التبديل إلى الوضع النهاري (Light Mode)'}
                 aria-label="تبديل وضع السمة"
               >
@@ -396,42 +417,29 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* Cloud Realtime Sync Status Indicator */}
-            <div
-              className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 text-xs font-semibold shadow-inner"
-              title="قاعدة بيانات Firestore السحابية: متصلة ومتزامنة فورياً عبر جميع الأجهزة ومحمية بنظام التحقق من الهوية"
-            >
-              <Cloud className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span>سحابي متزامن</span>
-            </div>
-
-            {/* 9. Database & Backup Button (Desktop) */}
+            {/* 3. Database & Backup Button (Desktop) */}
             {onOpenBackup && hasPermission(activeUser, 'settings', 'backupAndRestore', activeTenant) && (
               <button
                 onClick={onOpenBackup}
-                className="hidden lg:flex p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-indigo-200 border border-slate-700 transition shrink-0"
+                className="hidden xl:flex p-1.5 sm:p-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-indigo-300 hover:text-indigo-200 border border-slate-700/80 transition shrink-0"
                 title="النسخ الاحتياطي واستعادة قاعدة البيانات (JSON)"
               >
                 <Database className="w-4 h-4 text-indigo-400" />
               </button>
             )}
 
-            {/* 10. Settings Button (Desktop) */}
+            {/* 4. Settings Button (Desktop) */}
             {hasPermission(activeUser, 'settings', 'view', activeTenant) && (
               <button
                 onClick={onOpenSettings}
-                className="hidden md:flex p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition shrink-0"
+                className="hidden md:flex p-1.5 sm:p-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition shrink-0"
                 title="إعدادات الشبكة والمظهر والمايكروتك"
               >
                 <Settings className="w-4 h-4" />
               </button>
             )}
 
-            {/* 11. Quick Mobile / Tablet Overflow Menu ("المزيد" - More Tools) */}
+            {/* 5. Quick Mobile / Tablet Overflow Menu ("المزيد" - More Tools) */}
             <div className="relative md:hidden" ref={quickToolsRef}>
               <button
                 onClick={() => {
@@ -516,6 +524,23 @@ export const Header: React.FC<HeaderProps> = ({
 
                   {/* Quick Action Items Grid / List */}
                   <div className="space-y-1">
+                    {/* Quick Sale */}
+                    {onOpenQuickSale && hasPermission(activeUser, 'invoices', 'createSaleInvoice', activeTenant) && (
+                      <button
+                        onClick={() => {
+                          setIsQuickToolsOpen(false);
+                          onOpenQuickSale();
+                        }}
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-white bg-indigo-600/30 hover:bg-indigo-600/40 border border-indigo-500/40 transition"
+                      >
+                        <span className="flex items-center gap-2">
+                          <PlusCircle className="w-4 h-4 text-indigo-400" />
+                          <span>تسجيل عملية بيع جديدة</span>
+                        </span>
+                        <span className="text-[10px] text-white bg-indigo-600 px-2 py-0.5 rounded font-bold">بيع</span>
+                      </button>
+                    )}
+
                     {/* Quick Payment */}
                     {onOpenQuickPayment && hasPermission(activeUser, 'payments', 'addPayment', activeTenant) && (
                       <button
@@ -530,23 +555,6 @@ export const Header: React.FC<HeaderProps> = ({
                           <span>تسجيل سند قبض ودفعات</span>
                         </span>
                         <span className="text-[10px] text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">قبض</span>
-                      </button>
-                    )}
-
-                    {/* AI Advisor */}
-                    {hasPermission(activeUser, 'settings', 'useAIAssistant', activeTenant) && (
-                      <button
-                        onClick={() => {
-                          setIsQuickToolsOpen(false);
-                          onOpenAI?.();
-                        }}
-                        className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-purple-300 bg-purple-950/30 hover:bg-purple-900/40 border border-purple-500/30 transition"
-                      >
-                        <span className="flex items-center gap-2">
-                          <Sparkles className="w-4 h-4 text-yellow-300 animate-spin" style={{ animationDuration: '6s' }} />
-                          <span>المستشار الذكي (AI)</span>
-                        </span>
-                        <span className="text-[10px] text-purple-300 bg-purple-500/20 px-1.5 py-0.5 rounded">تحليلات</span>
                       </button>
                     )}
 
