@@ -1853,12 +1853,12 @@ public static async kickHotspotUser(options: MikroTikConnectionOptions, userIdOr
         const isHttps = proto === 'rest_https' || options.useSsl;
         const port = options.port || (isHttps ? 443 : 80);
 
-        if (command === 'reboot') {
-          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/system/reboot', 'POST', {});
+if (command === 'reboot') {
+          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/system/reboot', 'POST', {}).catch(err => console.log('Reboot REST drop:', err.message));
           return { success: true, message: 'تم إرسال أمر إعادة تشغيل الراوتر بنجاح.' };
         }
         if (command === 'shutdown') {
-          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/system/shutdown', 'POST', {});
+          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/system/shutdown', 'POST', {}).catch(err => console.log('Shutdown REST drop:', err.message));
           return { success: true, message: 'تم إرسال أمر إيقاف تشغيل الراوتر بنجاح.' };
         }
         if (command === 'ping') {
@@ -1884,14 +1884,14 @@ public static async kickHotspotUser(options: MikroTikConnectionOptions, userIdOr
       await client.connect();
       await client.login(options.username, options.password || '');
 
-      if (command === 'reboot') {
-        await client.sendSentence(['/system/reboot']);
-        client.close();
+if (command === 'reboot') {
+        client.sendSentence(['/system/reboot']).catch(err => console.log('Reboot Binary drop:', err.message));
+        setTimeout(() => client.close(), 500); // Close immediately after sending
         return { success: true, message: 'تم إرسال أمر إعادة تشغيل الراوتر (Reboot) بنجاح.' };
       }
       if (command === 'shutdown') {
-        await client.sendSentence(['/system/shutdown']);
-        client.close();
+        client.sendSentence(['/system/shutdown']).catch(err => console.log('Shutdown Binary drop:', err.message));
+        setTimeout(() => client.close(), 500);
         return { success: true, message: 'تم إرسال أمر إيقاف تشغيل الراوتر (Shutdown) بنجاح.' };
       }
       if (command === 'ping') {
