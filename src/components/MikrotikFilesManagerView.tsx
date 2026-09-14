@@ -159,7 +159,7 @@ export const MikrotikFilesManagerView: React.FC<MikrotikFilesManagerViewProps> =
 
   // Helper to check if file is text-editable
   const isEditableFile = (fileName: string): boolean => {
-    const lower = fileName.toLowerCase();
+    const lower = (fileName || '').toLowerCase();
     return (
       lower.endsWith('.html') ||
       lower.endsWith('.htm') ||
@@ -177,7 +177,7 @@ export const MikrotikFilesManagerView: React.FC<MikrotikFilesManagerViewProps> =
     if (item.isDirectory || item.type === 'directory') {
       return <Folder className="w-5 h-5 text-amber-400" />;
     }
-    const lower = item.name.toLowerCase();
+    const lower = (item.name || '').toLowerCase();
     if (lower.endsWith('.html') || lower.endsWith('.htm')) {
       return <FileCode className="w-5 h-5 text-orange-400" />;
     }
@@ -204,7 +204,7 @@ export const MikrotikFilesManagerView: React.FC<MikrotikFilesManagerViewProps> =
     return files
       .filter((file) => {
         const matchesSearch =
-          file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (file.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
           (file.type || '').toLowerCase().includes(searchQuery.toLowerCase());
 
         if (!matchesSearch) return false;
@@ -842,9 +842,9 @@ traffic-limit = انتهى رصيد الكارت
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {filteredFiles.map((file) => {
-                  const isHtml = file.name.toLowerCase().endsWith('.html') || file.name.toLowerCase().endsWith('.htm');
-                  const isRsc = file.name.toLowerCase().endsWith('.rsc');
-                  const isBackup = file.name.toLowerCase().endsWith('.backup');
+                  const isHtml = (file.name || '').toLowerCase().endsWith('.html') || (file.name || '').toLowerCase().endsWith('.htm');
+                  const isRsc = (file.name || '').toLowerCase().endsWith('.rsc');
+                  const isBackup = (file.name || '').toLowerCase().endsWith('.backup');
                   const editable = isEditableFile(file.name);
 
                   return (

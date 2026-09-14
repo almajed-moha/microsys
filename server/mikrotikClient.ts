@@ -4289,12 +4289,12 @@ add name="c1005" password="105" profile="Profile_5M_Standard" limit-uptime=1h li
         const list = Array.isArray(data) ? data : [data];
 
         if (list && list.length > 0 && list[0] && (list[0].name || list[0]['.id'])) {
-          return list.filter(f => f && (f.name || f['.id'])).map(f => {
+          return list.filter(f => f && (f.name || f['.id'] || 'unnamed_file')).map(f => {
             const rawSize = parseInt(f.size || '0', 10);
             const isDir = f.type === 'directory' || (!f.type && (f.name || '').endsWith('/'));
             return {
               id: f['.id'] || f.id || f.name,
-              name: f.name || f['.id'],
+              name: f.name || f['.id'] || 'unnamed_file',
               type: f.type || (isDir ? 'directory' : 'file'),
               size: isNaN(rawSize) ? 0 : rawSize,
               creationTime: f['creation-time'] || f.creationTime || 'غير محدد',
@@ -4314,7 +4314,7 @@ add name="c1005" password="105" profile="Profile_5M_Standard" limit-uptime=1h li
       await client.connect();
       await client.login(options.username, options.password || '');
 
-      const files = await client.sendSentence(['/file/print']);
+      const files = await client.sendSentence(['/file/print', 'detail']);
       client.close();
 
       return (files || []).map(f => {
@@ -4322,7 +4322,7 @@ add name="c1005" password="105" profile="Profile_5M_Standard" limit-uptime=1h li
         const isDir = f.type === 'directory';
         return {
           id: f['.id'] || f.name,
-          name: f.name || f['.id'],
+          name: f.name || f['.id'] || 'unnamed_file',
           type: f.type || (isDir ? 'directory' : 'file'),
           size: isNaN(rawSize) ? 0 : rawSize,
           creationTime: f['creation-time'] || 'غير محدد',
