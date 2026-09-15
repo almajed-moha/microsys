@@ -103,6 +103,7 @@ import {
   ConnectionTestResult,
 } from '../utils/mikrotikApi';
 import { exportElementToPdf } from '../utils/pdfExport';
+import { CircularMetricCard } from './CircularMetricGauge';
 import { UserManagerView } from './UserManagerView';
 import { MikrotikMaintenanceView } from './MikrotikMaintenanceView';
 import { RemoteMikrotikWizardModal } from './RemoteMikrotikWizardModal';
@@ -996,104 +997,127 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
         )}
       </div>
 
-      {/* Live System Telemetry Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {/* CPU Load */}
-        <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-md hover:border-slate-700 transition">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-400 text-xs font-medium">استهلاك المعالج (CPU)</span>
-            <Cpu className="w-4 h-4 text-amber-400" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black font-mono text-white">
-              {systemInfo?.cpuLoad ?? 0}%
-            </span>
-            <span className="text-[11px] text-slate-400 font-mono">
-              {systemInfo?.cpuCount ? `${systemInfo.cpuCount} Cores` : '1 Core'}
-            </span>
-          </div>
-          <div className="mt-2 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-            <div
-              className={`h-full transition-all duration-500 ${
-                (systemInfo?.cpuLoad ?? 0) > 80
-                  ? 'bg-rose-500'
-                  : (systemInfo?.cpuLoad ?? 0) > 50
-                  ? 'bg-amber-500'
-                  : 'bg-emerald-500'
-              }`}
-              style={{ width: `${Math.min(100, systemInfo?.cpuLoad ?? 0)}%` }}
-            ></div>
-          </div>
-        </div>
+      {/* Live System Telemetry Cards with Circular Gauges */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {/* CPU Load - Circular Gauge */}
+        <CircularMetricCard
+          id="cpu-telemetry-gauge"
+          title="استهلاك المعالج (CPU)"
+          icon={<Cpu className="w-4 h-4 text-amber-400" />}
+          percent={systemInfo?.cpuLoad ?? 0}
+          type="cpu"
+          centerLabel="LOAD"
+          details={[
+            {
+              label: 'الأنوية',
+              value: systemInfo?.cpuCount ? `${systemInfo.cpuCount} Cores` : '1 Core',
+              valueColor: 'text-white',
+            },
+            ...(systemInfo?.cpuFrequency ? [{
+              label: 'التردد',
+              value: systemInfo.cpuFrequency,
+              valueColor: 'text-amber-300',
+            }] : []),
+            {
+              label: 'المعمارية',
+              value: systemInfo?.architecture || systemInfo?.boardName || 'RouterOS',
+              valueColor: 'text-slate-300',
+              title: systemInfo?.boardName || systemInfo?.architecture,
+            },
+            ...(systemInfo?.temperature !== undefined ? [{
+              label: 'الحرارة',
+              value: `${systemInfo.temperature}°C`,
+              valueColor: systemInfo.temperature > 65 ? 'text-rose-400' : 'text-emerald-400',
+            }] : []),
+          ]}
+        />
 
-        {/* RAM Memory */}
-        <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-md hover:border-slate-700 transition">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-400 text-xs font-medium">الذاكرة العشوائية (RAM)</span>
-            <HardDrive className="w-4 h-4 text-cyan-400" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black font-mono text-white">
-              {systemInfo?.totalMemory
-                ? Math.round(
-                    ((systemInfo.totalMemory - (systemInfo.freeMemory || 0)) /
-                      systemInfo.totalMemory) *
-                      100
-                  )
-                : 0}
-              %
-            </span>
-            <span className="text-[11px] text-slate-400 font-mono">
-              متاح: {formatBytesToHuman(systemInfo?.freeMemory || 0)}
-            </span>
-          </div>
-          <div className="mt-2 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-            <div
-              className="bg-cyan-500 h-full transition-all duration-500"
-              style={{
-                width: `${
-                  systemInfo?.totalMemory
-                    ? Math.round(
-                        ((systemInfo.totalMemory - (systemInfo.freeMemory || 0)) /
-                          systemInfo.totalMemory) *
-                          100
-                      )
-                    : 0
-                }%`,
-              }}
-            ></div>
-          </div>
-        </div>
+        {/* RAM Memory - Circular Gauge */}
+        {(() => {
+          const totalMem = systemInfo?.totalMemory || 0;
+          const freeMem = systemInfo?.freeMemory || 0;
+          const usedMem = Math.max(0, totalMem - freeMem);
+          const ramPct = totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : 0;
+
+          return (
+            <CircularMetricCard
+              id="ram-telemetry-gauge"
+              title="الذاكرة العشوائية (RAM)"
+              icon={<HardDrive className="w-4 h-4 text-cyan-400" />}
+              percent={ramPct}
+              type="ram"
+              centerLabel="USED"
+              details={[
+                {
+                  label: 'المستهلك',
+                  value: formatBytesToHuman(usedMem),
+                  valueColor: 'text-white',
+                },
+                {
+                  label: 'المتاح',
+                  value: formatBytesToHuman(freeMem),
+                  valueColor: 'text-emerald-400',
+                },
+                {
+                  label: 'الإجمالي',
+                  value: formatBytesToHuman(totalMem),
+                  valueColor: 'text-cyan-300',
+                },
+              ]}
+            />
+          );
+        })()}
 
         {/* Active Hotspot Users & Total Registered */}
-        <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-md hover:border-slate-700 transition">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-400 text-xs font-medium">المستخدمين (Active / Total)</span>
-            <Users className="w-4 h-4 text-indigo-400" />
+        <div className="bg-slate-900/90 p-3.5 sm:p-4 rounded-2xl border border-slate-800 shadow-md hover:border-slate-700/80 transition-all flex flex-col justify-between group">
+          <div className="flex items-center justify-between pb-2.5 border-b border-slate-800/60">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400">
+                <Users className="w-4 h-4" />
+              </div>
+              <span className="text-slate-200 text-xs font-bold">المستخدمين (Hotspot)</span>
+            </div>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/30">
+              {activeUsers.length} متصل
+            </span>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black font-mono text-indigo-400">
+          <div className="mt-2.5 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-black font-mono text-indigo-400">
               {activeUsers.length}
             </span>
-            <span className="text-[11px] text-slate-400">متصل الآن / {configuredUsers.length} كارت مسجل</span>
+            <span className="text-[11px] text-slate-400">نشط / {configuredUsers.length} مسجل</span>
           </div>
-          <p className="text-[11px] text-slate-500 mt-1 font-mono">
-            عدد بروفايلات السرعة: {userProfiles.length} بروفايل
-          </p>
+          <div className="mt-2 pt-2 border-t border-slate-800/50 flex items-center justify-between text-[11px] text-slate-400">
+            <span>بروفايلات السرعة:</span>
+            <span className="font-mono font-bold text-slate-300">{userProfiles.length} بروفايل</span>
+          </div>
         </div>
 
         {/* Router Uptime & Model */}
-        <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-md hover:border-slate-700 transition">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-400 text-xs font-medium">موديل الراوتر ووقت التشغيل</span>
-            <Zap className="w-4 h-4 text-emerald-400" />
+        <div className="bg-slate-900/90 p-3.5 sm:p-4 rounded-2xl border border-slate-800 shadow-md hover:border-slate-700/80 transition-all flex flex-col justify-between group">
+          <div className="flex items-center justify-between pb-2.5 border-b border-slate-800/60">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400">
+                <Zap className="w-4 h-4" />
+              </div>
+              <span className="text-slate-200 text-xs font-bold">النظام والتشغيل</span>
+            </div>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono">
+              v{systemInfo?.version || config.routerOsVersion || '7.x'}
+            </span>
           </div>
-          <div className="mt-1">
-            <span className="text-sm font-bold text-white block truncate">
+          <div className="mt-2.5">
+            <span className="text-sm sm:text-base font-bold text-white block truncate" title={systemInfo?.model || config.routerModel || 'MikroTik Router'}>
               {systemInfo?.model || config.routerModel || 'MikroTik Router'}
             </span>
-            <span className="text-[11px] text-slate-400 font-mono block mt-0.5">
-              تشغيل مستمر: {systemInfo?.uptime || 'غير متاح'}
+            <span className="text-[11px] text-slate-400 font-mono block mt-1" dir="ltr">
+              UP: {systemInfo?.uptime || 'غير متاح'}
+            </span>
+          </div>
+          <div className="mt-2 pt-2 border-t border-slate-800/50 flex items-center justify-between text-[11px] text-slate-400">
+            <span>الهوية:</span>
+            <span className="font-mono font-bold text-cyan-400 truncate max-w-[120px]">
+              {systemInfo?.identity || config.routerIdentity || 'MikroTik'}
             </span>
           </div>
         </div>
