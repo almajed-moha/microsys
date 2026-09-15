@@ -389,6 +389,8 @@ export interface DataSyncHistoryItem {
   totalAddedBytes: number;
   activeUsersCount: number;
   message: string;
+  durationMs?: number;
+  fastMode?: boolean;
 }
 
 export interface RouterSystemInfo {

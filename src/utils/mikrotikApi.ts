@@ -103,7 +103,7 @@ export async function fetchActiveHotspotUsers(config: Partial<MikroTikConfig>): 
 }
 
 // 3b. Fetch Comprehensive Mikrotik Sessions & Real Caller Statistics
-export async function fetchMikrotikSessions(config: Partial<MikroTikConfig>): Promise<{
+export async function fetchMikrotikSessions(config: Partial<MikroTikConfig> & { fastSync?: boolean; activeOnly?: boolean }): Promise<{
   success: boolean;
   sessions: MikrotikCallerSession[];
   activeCount: number;
@@ -117,6 +117,8 @@ export async function fetchMikrotikSessions(config: Partial<MikroTikConfig>): Pr
   routerIdentity?: string;
   error?: string;
   isPrivateIp?: boolean;
+  durationMs?: number;
+  fastMode?: boolean;
 }> {
   try {
     const res = await fetch('/api/mikrotik/sessions', {
@@ -138,6 +140,8 @@ export async function fetchMikrotikSessions(config: Partial<MikroTikConfig>): Pr
           totalSessions: 0,
         },
         routerIdentity: data.routerIdentity,
+        durationMs: data.durationMs,
+        fastMode: data.fastMode,
       };
     } else {
       return {
@@ -153,6 +157,7 @@ export async function fetchMikrotikSessions(config: Partial<MikroTikConfig>): Pr
         },
         error: data.error || 'تعذر الاتصال بالراوتر',
         isPrivateIp: data.isPrivateIp,
+        durationMs: data.durationMs,
       };
     }
   } catch (error: any) {
@@ -169,6 +174,37 @@ export async function fetchMikrotikSessions(config: Partial<MikroTikConfig>): Pr
         totalSessions: 0,
       },
       error: error?.message || 'خطأ في الاتصال بالخادم',
+    };
+  }
+}
+
+// 3c. Run Speed & Latency Benchmark comparing Full vs Fast .proplist Sync
+export async function runSyncBenchmark(config: Partial<MikroTikConfig>): Promise<{
+  success: boolean;
+  fastDurationMs?: number;
+  standardDurationMs?: number;
+  speedup?: number;
+  savedMs?: number;
+  percentFaster?: number;
+  activeUsersCount?: number;
+  totalSessionsFound?: number;
+  routerIdentity?: string;
+  timestamp?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch('/api/mikrotik/benchmark-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    const data = await res.json();
+    return data;
+  } catch (error: any) {
+    console.warn('runSyncBenchmark error:', error);
+    return {
+      success: false,
+      error: error.message || 'تعذر استكمال اختبار السرعة',
     };
   }
 }

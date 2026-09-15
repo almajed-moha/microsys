@@ -169,10 +169,11 @@ export function useGlobalNetworkUsageSync(
       const timeFormatted = syncStartTime.toLocaleTimeString('ar-YE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
       try {
-        // 1. Fetch live router sessions and active hotspot users
-        const res = await fetchMikrotikSessions(config);
+        // 1. Fetch live router sessions and active hotspot users with fastSync and .proplist optimizations
+        const res = await fetchMikrotikSessions({ ...config, fastSync: true, activeOnly: true });
         const sessions = res.success ? res.sessions || [] : [];
         const routerId = (res as any)?.routerIdentity || config.routerIdentity || config.host || 'MikroTik Router';
+        const cycleDurationMs = res.durationMs || Math.max(1, Date.now() - syncStartTime.getTime());
 
         // 2. Map to HotspotActiveUser shape
         const activeUsers: HotspotActiveUser[] = sessions
@@ -233,6 +234,8 @@ export function useGlobalNetworkUsageSync(
           totalAddedBytes: (syncRes.downAdded || 0) + (syncRes.upAdded || 0),
           activeUsersCount: activeUsers.length,
           message: syncRes.message,
+          durationMs: cycleDurationMs,
+          fastMode: true,
         });
 
         // 6. Refresh today log
@@ -253,6 +256,8 @@ export function useGlobalNetworkUsageSync(
           totalAddedBytes: 0,
           activeUsersCount: 0,
           message: errMsg,
+          durationMs: Math.max(1, Date.now() - syncStartTime.getTime()),
+          fastMode: true,
         });
 
         return { success: false, message: errMsg };

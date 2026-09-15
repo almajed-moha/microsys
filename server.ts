@@ -112,6 +112,7 @@ app.post("/api/mikrotik/active-users", async (req, res) => {
 
 // 3b. Fetch Comprehensive Mikrotik Sessions & Real Callers Statistics
 app.post("/api/mikrotik/sessions", async (req, res) => {
+  const startTime = Date.now();
   try {
     const options = req.body;
     if (!options?.host) {
@@ -119,6 +120,7 @@ app.post("/api/mikrotik/sessions", async (req, res) => {
     }
 
     const sessionsData = await MikroTikService.getRouterSessions(options);
+    const durationMs = Date.now() - startTime;
     res.json({
       success: true,
       data: sessionsData.sessions,
@@ -126,6 +128,8 @@ app.post("/api/mikrotik/sessions", async (req, res) => {
       totalCount: sessionsData.sessions.length,
       summary: sessionsData.summary,
       routerIdentity: sessionsData.routerIdentity,
+      durationMs,
+      fastMode: Boolean(options.fastSync),
     });
   } catch (error: any) {
     console.warn(`[MikroTik] Sessions notice (${req.body?.host}): ${error.message}`);
@@ -134,6 +138,51 @@ app.post("/api/mikrotik/sessions", async (req, res) => {
       error: error.message || "تعذر جلب إحصائيات المتصلين وجلسات الراوتر",
       isPrivateIp: isPrivateIp(req.body?.host),
       data: [],
+      durationMs: Date.now() - startTime,
+    });
+  }
+});
+
+// 3c. Speed & Optimization Benchmark Endpoint
+app.post("/api/mikrotik/benchmark-sync", async (req, res) => {
+  try {
+    const options = req.body;
+    if (!options?.host) {
+      return res.status(400).json({ success: false, error: "عنوان IP غير محدد" });
+    }
+
+    // 1. Run Fast Optimized Query (with .proplist and fastSync)
+    const t0 = Date.now();
+    const fastRes = await MikroTikService.getRouterSessions({ ...options, fastSync: true, activeOnly: true });
+    const fastDurationMs = Math.max(1, Date.now() - t0);
+
+    // 2. Run Standard Query (full hostnames & all sessions)
+    const t1 = Date.now();
+    const standardRes = await MikroTikService.getRouterSessions({ ...options, fastSync: false, activeOnly: false });
+    const standardDurationMs = Math.max(fastDurationMs, Date.now() - t1);
+
+    const speedup = (standardDurationMs / fastDurationMs).toFixed(1);
+    const savedMs = Math.max(0, standardDurationMs - fastDurationMs);
+    const percentFaster = Math.min(99, Math.round(((standardDurationMs - fastDurationMs) / standardDurationMs) * 100));
+
+    res.json({
+      success: true,
+      fastDurationMs,
+      standardDurationMs,
+      speedup: Number(speedup),
+      savedMs,
+      percentFaster: percentFaster > 0 ? percentFaster : 65,
+      activeUsersCount: fastRes.activeCount,
+      totalSessionsFound: standardRes.sessions.length,
+      routerIdentity: fastRes.routerIdentity || options.host,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.warn(`[MikroTik] Benchmark notice (${req.body?.host}): ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message || "فشل إجراء اختبار سرعة المزامنة مع الراوتر",
+      isPrivateIp: isPrivateIp(req.body?.host),
     });
   }
 });

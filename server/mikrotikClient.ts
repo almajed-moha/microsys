@@ -12,6 +12,8 @@ export interface MikroTikConnectionOptions {
   password?: string;
   useSsl?: boolean;
   timeoutMs?: number;
+  fastSync?: boolean;
+  activeOnly?: boolean;
 }
 
 export interface RouterSystemInfo {
@@ -926,13 +928,19 @@ export class MikroTikService {
     }
 
     const proto = options.protocol || 'auto';
+    const hotspotProps = '.id,user,address,mac-address,uptime,idle-time,session-time-left,bytes-in,bytes-out,packets-in,packets-out,login-by,comment,server,radius';
 
     // Try REST API
     if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
       try {
         const isHttps = proto === 'rest_https' || options.useSsl;
         const port = options.port || (isHttps ? 443 : 80);
-        const data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/ip/hotspot/active');
+        let data: any;
+        try {
+          data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, `/ip/hotspot/active?.proplist=${hotspotProps}`);
+        } catch {
+          data = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/ip/hotspot/active');
+        }
         const list = Array.isArray(data) ? data : [data];
 
         return list.filter(item => item && (item.user || item.address)).map(item => ({
@@ -963,7 +971,12 @@ export class MikroTikService {
     await client.connect();
     await client.login(options.username, options.password || '');
 
-    const users = await client.sendSentence(['/ip/hotspot/active/print']);
+    let users: any[] = [];
+    try {
+      users = await client.sendSentence(['/ip/hotspot/active/print', `=.proplist=${hotspotProps}`]);
+    } catch {
+      users = await client.sendSentence(['/ip/hotspot/active/print']);
+    }
     client.close();
 
     return users.filter(item => item && (item['user'] || item['address'])).map(item => ({
@@ -1197,21 +1210,23 @@ export class MikroTikService {
       console.warn('[MikroTik Sessions] getActiveHotspotUsers notice:', e.message);
     }
 
-    // 2. Fetch connected hosts & DHCP leases to resolve device hostnames
+    // 2. Fetch connected hosts & DHCP leases to resolve device hostnames (Skip in fastSync mode to avoid 2 heavy queries)
     const macToHost = new Map<string, string>();
     const ipToHost = new Map<string, string>();
-    try {
-      const connected = await this.getConnectedHosts(options);
-      if (connected.leases) {
-        for (const l of connected.leases) {
-          if (l.hostName) {
-            if (l.macAddress) macToHost.set(l.macAddress.toUpperCase().trim(), l.hostName);
-            if (l.address) ipToHost.set(l.address.trim(), l.hostName);
+    if (!options.fastSync) {
+      try {
+        const connected = await this.getConnectedHosts(options);
+        if (connected.leases) {
+          for (const l of connected.leases) {
+            if (l.hostName) {
+              if (l.macAddress) macToHost.set(l.macAddress.toUpperCase().trim(), l.hostName);
+              if (l.address) ipToHost.set(l.address.trim(), l.hostName);
+            }
           }
         }
+      } catch (e: any) {
+        console.warn('[MikroTik Sessions] getConnectedHosts notice:', e.message);
       }
-    } catch (e: any) {
-      console.warn('[MikroTik Sessions] getConnectedHosts notice:', e.message);
     }
 
     // Process real active hotspot callers
@@ -1251,20 +1266,32 @@ export class MikroTikService {
     }
 
     // 3. Try to fetch User Manager sessions (active and historical) if available
+    const umProps = '.id,user,calling-station-id,host-ip,active,from-time,till-time,uptime,download,upload,terminate-cause';
     const proto = options.protocol || 'auto';
     if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
       const isHttps = proto === 'rest_https' || options.useSsl;
       const port = options.port || (isHttps ? 443 : 80);
       try {
         let umData: any[] = [];
+        const queryPath = options.fastSync || options.activeOnly
+          ? `/user-manager/session?active=yes&.proplist=${umProps}`
+          : `/user-manager/session?.proplist=${umProps}`;
         try {
-          const res = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/session');
+          const res = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, queryPath);
           umData = Array.isArray(res) ? res : (res ? [res] : []);
         } catch {
           try {
-            const res = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/session');
+            const fallbackPath = options.fastSync || options.activeOnly
+              ? `/tool/user-manager/session?active=yes&.proplist=${umProps}`
+              : `/tool/user-manager/session?.proplist=${umProps}`;
+            const res = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, fallbackPath);
             umData = Array.isArray(res) ? res : (res ? [res] : []);
-          } catch {}
+          } catch {
+            try {
+              const res = await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/session');
+              umData = Array.isArray(res) ? res : (res ? [res] : []);
+            } catch {}
+          }
         }
 
         for (const s of umData) {
@@ -1311,12 +1338,23 @@ export class MikroTikService {
         await client.login(options.username, options.password || '');
 
         let umRes: any[] = [];
+        const umWords = (options.fastSync || options.activeOnly)
+          ? ['/user-manager/session/print', '?active=yes', `=.proplist=${umProps}`]
+          : ['/user-manager/session/print', `=.proplist=${umProps}`];
+
         try {
-          umRes = await client.sendSentence(['/user-manager/session/print']);
+          umRes = await client.sendSentence(umWords);
         } catch {
           try {
-            umRes = await client.sendSentence(['/tool/user-manager/session/print']);
-          } catch {}
+            const v6Words = (options.fastSync || options.activeOnly)
+              ? ['/tool/user-manager/session/print', '?active=yes', `=.proplist=${umProps}`]
+              : ['/tool/user-manager/session/print', `=.proplist=${umProps}`];
+            umRes = await client.sendSentence(v6Words);
+          } catch {
+            try {
+              umRes = await client.sendSentence(['/user-manager/session/print']);
+            } catch {}
+          }
         }
         client.close();
 

@@ -146,8 +146,8 @@ export const useContinuousCardTracker = ({
     setErrorMessage(null);
 
     try {
-      // 1. Fetch live sessions
-      const sessionsRes = await fetchMikrotikSessions(mikrotikConfig);
+      // 1. Fetch live sessions with fastSync and .proplist
+      const sessionsRes = await fetchMikrotikSessions({ ...mikrotikConfig, fastSync: true, activeOnly: true });
       const incomingSessions = sessionsRes.success ? sessionsRes.sessions || [] : [];
 
       // 2. Fetch interfaces to find WAN traffic
