@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { MikroTikConfig, HotspotActiveUser, CardCategory } from '../types';
-import { fetchActiveHotspotUsers, fetchMikrotikSessions, fetchUserManagerDailyReport } from '../utils/mikrotikApi';
+import { MikroTikConfig, HotspotActiveUser, CardCategory, DataSyncHistoryItem } from '../types';
+import { fetchMikrotikSessions, fetchUserManagerDailyReport } from '../utils/mikrotikApi';
 import { syncCurrentActiveUsersToDailyLog } from './useNetworkUsageTracker';
 import {
   syncReconstructedDayLog,
   getDailyNetworkLog,
-  incrementDailyNetworkLog,
+  DailyNetworkLog,
 } from '../services/networkLogsService';
 import { getLocalDateString, getYesterdayDateString } from '../utils/dateUtils';
 import {
@@ -14,29 +14,144 @@ import {
   mergeSessionsIntoDailyLedger,
 } from '../utils/cardUsageTracker';
 
+const STORAGE_SYNC_ENABLED_KEY = 'mikrotik_data_sync_enabled';
+const STORAGE_SYNC_INTERVAL_KEY = 'mikrotik_data_sync_interval';
+const STORAGE_SYNC_HISTORY_KEY = 'mikrotik_data_sync_history_v1';
+
 export interface GlobalNetworkSyncResult {
+  // Sync state
+  isEnabled: boolean;
+  setIsEnabled: (enabled: boolean) => void;
+  intervalSeconds: number;
+  setIntervalSeconds: (seconds: number) => void;
+  countdownSeconds: number;
+  isSyncing: boolean;
   isAutoSyncing: boolean;
   isManualSyncing: boolean;
   lastSyncedAt: Date | null;
   syncStatusMessage: string | null;
+  todayLog: DailyNetworkLog | null;
+  syncHistory: DataSyncHistoryItem[];
+  cycleCount: number;
+
+  // Actions
   syncNow: () => Promise<{ success: boolean; message: string }>;
   reconcileYesterdayAndToday: () => Promise<{ success: boolean; message: string }>;
+  clearSyncHistory: () => void;
 }
 
 export function useGlobalNetworkUsageSync(
   config?: Partial<MikroTikConfig>,
   categories: CardCategory[] = [],
   tenantId: string = 'system',
-  autoIntervalSeconds: number = 25
+  defaultIntervalSeconds: number = 60 // Default 1 minute as requested
 ): GlobalNetworkSyncResult {
+  // Persistence for user preferences
+  const [isEnabled, setIsEnabledState] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_SYNC_ENABLED_KEY);
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const [intervalSeconds, setIntervalSecondsState] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_SYNC_INTERVAL_KEY);
+      const parsed = saved ? parseInt(saved, 10) : 60;
+      return parsed >= 15 ? parsed : 60;
+    } catch {
+      return defaultIntervalSeconds >= 15 ? defaultIntervalSeconds : 60;
+    }
+  });
+
+  const [countdownSeconds, setCountdownSeconds] = useState<number>(intervalSeconds);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
-  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(() => {
+    try {
+      const raw = localStorage.getItem('mikrotik_data_sync_last_time');
+      return raw ? new Date(raw) : null;
+    } catch {
+      return null;
+    }
+  });
   const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
+  const [todayLog, setTodayLog] = useState<DailyNetworkLog | null>(null);
+  const [cycleCount, setCycleCount] = useState<number>(0);
+
+  // History state
+  const [syncHistory, setSyncHistory] = useState<DataSyncHistoryItem[]>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_SYNC_HISTORY_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const isRunningRef = useRef(false);
 
-  // Core sync cycle
+  // Setters with localStorage persistence
+  const setIsEnabled = useCallback((val: boolean) => {
+    setIsEnabledState(val);
+    try {
+      localStorage.setItem(STORAGE_SYNC_ENABLED_KEY, String(val));
+    } catch (e) {
+      console.warn(e);
+    }
+  }, []);
+
+  const setIntervalSeconds = useCallback((sec: number) => {
+    const valid = Math.max(15, sec);
+    setIntervalSecondsState(valid);
+    setCountdownSeconds(valid);
+    try {
+      localStorage.setItem(STORAGE_SYNC_INTERVAL_KEY, String(valid));
+    } catch (e) {
+      console.warn(e);
+    }
+  }, []);
+
+  const clearSyncHistory = useCallback(() => {
+    setSyncHistory([]);
+    try {
+      localStorage.removeItem(STORAGE_SYNC_HISTORY_KEY);
+    } catch (e) {
+      console.warn(e);
+    }
+  }, []);
+
+  // Helper to append to history
+  const addHistoryItem = useCallback((item: Omit<DataSyncHistoryItem, 'id'>) => {
+    const newItem: DataSyncHistoryItem = {
+      ...item,
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    };
+    setSyncHistory((prev) => {
+      const updated = [newItem, ...prev.slice(0, 14)];
+      try {
+        localStorage.setItem(STORAGE_SYNC_HISTORY_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.warn(e);
+      }
+      return updated;
+    });
+  }, []);
+
+  // Fetch current today's log from Firestore
+  const refreshTodayLog = useCallback(async () => {
+    try {
+      const todayStr = getLocalDateString();
+      const log = await getDailyNetworkLog(todayStr);
+      if (log) setTodayLog(log);
+    } catch (err) {
+      console.warn('Failed to refresh today log:', err);
+    }
+  }, []);
+
+  // Core sync cycle (Runs every minute in background)
   const runSyncCycle = useCallback(
     async (isManual = false): Promise<{ success: boolean; message: string }> => {
       if (!config?.host || config.host.trim() === '') {
@@ -50,11 +165,14 @@ export function useGlobalNetworkUsageSync(
       if (isManual) setIsManualSyncing(true);
       else setIsAutoSyncing(true);
 
+      const syncStartTime = new Date();
+      const timeFormatted = syncStartTime.toLocaleTimeString('ar-YE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
       try {
-        // 1. Fetch live router sessions
+        // 1. Fetch live router sessions and active hotspot users
         const res = await fetchMikrotikSessions(config);
         const sessions = res.success ? res.sessions || [] : [];
-        const routerId = res.routerIdentity || 'MikroTik Router';
+        const routerId = (res as any)?.routerIdentity || config.routerIdentity || config.host || 'MikroTik Router';
 
         // 2. Map to HotspotActiveUser shape
         const activeUsers: HotspotActiveUser[] = sessions
@@ -75,12 +193,12 @@ export function useGlobalNetworkUsageSync(
           }));
 
         // 3. Sync to daily network logs (handles local date & deltas)
-        let syncRes = { success: true, message: 'تم التحقق' };
+        let syncRes = { success: true, downAdded: 0, upAdded: 0, message: 'تم التحقق من استهلاك الشبكة' };
         if (activeUsers.length > 0) {
           syncRes = await syncCurrentActiveUsersToDailyLog(activeUsers, routerId);
         }
 
-        // 4. Also update persistent CardDailyUsage ledger in localStorage
+        // 4. Update persistent CardDailyUsage ledger in localStorage
         if (sessions.length > 0) {
           const today = getLocalDateString();
           const currentLedger = loadCardUsageLogs();
@@ -94,19 +212,58 @@ export function useGlobalNetworkUsageSync(
           saveCardUsageLogs(updatedLedger);
         }
 
-        setLastSyncedAt(new Date());
-        setSyncStatusMessage(syncRes.message || 'تمت المزامنة الحية بنجاح');
+        // 5. Update state & history
+        const now = new Date();
+        setLastSyncedAt(now);
+        setSyncStatusMessage(syncRes.message || 'تمت المزامنة بنجاح');
+        setCycleCount((c) => c + 1);
+
+        try {
+          localStorage.setItem('mikrotik_data_sync_last_time', now.toISOString());
+        } catch (e) {
+          console.warn(e);
+        }
+
+        addHistoryItem({
+          timestamp: timeFormatted,
+          type: isManual ? 'manual' : 'auto',
+          success: true,
+          downAddedBytes: syncRes.downAdded || 0,
+          upAddedBytes: syncRes.upAdded || 0,
+          totalAddedBytes: (syncRes.downAdded || 0) + (syncRes.upAdded || 0),
+          activeUsersCount: activeUsers.length,
+          message: syncRes.message,
+        });
+
+        // 6. Refresh today log
+        await refreshTodayLog();
+
         return { success: true, message: syncRes.message || 'تمت المزامنة بنجاح' };
       } catch (err: any) {
-        console.warn('[GlobalNetworkSync] Cycle notice:', err.message);
-        return { success: false, message: err.message || 'حدث خطأ أثناء المزامنة' };
+        console.warn('[ScheduledDataSync] Cycle notice:', err.message);
+        const errMsg = err.message || 'تعذر الاتصال بالمايكروتك';
+        setSyncStatusMessage(errMsg);
+
+        addHistoryItem({
+          timestamp: timeFormatted,
+          type: isManual ? 'manual' : 'auto',
+          success: false,
+          downAddedBytes: 0,
+          upAddedBytes: 0,
+          totalAddedBytes: 0,
+          activeUsersCount: 0,
+          message: errMsg,
+        });
+
+        return { success: false, message: errMsg };
       } finally {
         isRunningRef.current = false;
         if (isManual) setIsManualSyncing(false);
         else setIsAutoSyncing(false);
+        setCountdownSeconds(intervalSeconds);
       }
     },
-    [config, categories, tenantId]
+    [config, categories, tenantId, intervalSeconds, addHistoryItem, refreshTodayLog]
   );
 
   // Manual Trigger
@@ -121,6 +278,9 @@ export function useGlobalNetworkUsageSync(
     }
 
     setIsManualSyncing(true);
+    const syncStartTime = new Date();
+    const timeFormatted = syncStartTime.toLocaleTimeString('ar-YE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
     try {
       const todayStr = getLocalDateString();
       const yesterdayStr = getYesterdayDateString();
@@ -134,6 +294,8 @@ export function useGlobalNetworkUsageSync(
 
       let yesterdaySynced = false;
       let todaySynced = false;
+      let totalDown = 0;
+      let totalUp = 0;
 
       // Process Yesterday
       if (yesterdayReportRes.success && yesterdayReportRes.data?.summary) {
@@ -147,6 +309,8 @@ export function useGlobalNetworkUsageSync(
             notes: 'تمت مطابقة وإعادة بناء الاستهلاك من جلسات User Manager',
           });
           yesterdaySynced = true;
+          totalDown += dl;
+          totalUp += ul;
         }
       }
 
@@ -156,7 +320,6 @@ export function useGlobalNetworkUsageSync(
         const dl = sum.cardsDownloadBytes || 0;
         const ul = sum.cardsUploadBytes || 0;
         if (dl > 0 || ul > 0) {
-          // If Firestore currently has less or 0, update it
           const curLog = await getDailyNetworkLog(todayStr);
           if (!curLog || curLog.totalBytes < (dl + ul)) {
             await syncReconstructedDayLog(todayStr, dl, ul, {
@@ -165,6 +328,8 @@ export function useGlobalNetworkUsageSync(
               notes: 'تمت مطابقة استهلاك اليوم من User Manager والمتصلين الفعليين',
             });
             todaySynced = true;
+            totalDown += dl;
+            totalUp += ul;
           }
         }
       }
@@ -194,44 +359,100 @@ export function useGlobalNetworkUsageSync(
         }
       }
 
-      setLastSyncedAt(new Date());
+      const now = new Date();
+      setLastSyncedAt(now);
       const msg = `تمت مطابقة استهلاك أمس (${yesterdayStr}) واليوم (${todayStr}) بنجاح من بيانات الراوتر`;
       setSyncStatusMessage(msg);
+
+      addHistoryItem({
+        timestamp: timeFormatted,
+        type: 'reconcile',
+        success: true,
+        downAddedBytes: totalDown,
+        upAddedBytes: totalUp,
+        totalAddedBytes: totalDown + totalUp,
+        activeUsersCount: liveSessionsRes.sessions?.length || 0,
+        message: msg,
+      });
+
+      await refreshTodayLog();
       return { success: true, message: msg };
     } catch (err: any) {
       console.warn('Reconcile error:', err);
-      return { success: false, message: err.message || 'تعذر مطابقة بيانات الاستهلاك' };
+      const errMsg = err.message || 'تعذر مطابقة بيانات الاستهلاك';
+      addHistoryItem({
+        timestamp: timeFormatted,
+        type: 'reconcile',
+        success: false,
+        downAddedBytes: 0,
+        upAddedBytes: 0,
+        totalAddedBytes: 0,
+        activeUsersCount: 0,
+        message: errMsg,
+      });
+      return { success: false, message: errMsg };
     } finally {
       setIsManualSyncing(false);
+      setCountdownSeconds(intervalSeconds);
     }
-  }, [config]);
+  }, [config, addHistoryItem, intervalSeconds, refreshTodayLog]);
 
-  // Background timer
+  // Initial fetch of today's log
   useEffect(() => {
-    if (!config?.host) return;
+    refreshTodayLog();
+  }, [refreshTodayLog]);
 
-    // Run initial sync shortly after mount
-    const initialTimer = setTimeout(() => {
-      runSyncCycle(false);
-    }, 2000);
+  // 1-second countdown ticker & scheduled execution
+  useEffect(() => {
+    if (!isEnabled || !config?.host) {
+      return;
+    }
 
-    const interval = Math.max(15, autoIntervalSeconds) * 1000;
-    const intervalTimer = setInterval(() => {
+    // Run first sync shortly after mounting (3 seconds)
+    const initialTimeout = setTimeout(() => {
       runSyncCycle(false);
-    }, interval);
+    }, 3000);
+
+    const ticker = setInterval(() => {
+      setCountdownSeconds((prev) => {
+        if (prev <= 1) {
+          // Trigger scheduled sync
+          runSyncCycle(false);
+          return intervalSeconds;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
     return () => {
-      clearTimeout(initialTimer);
-      clearInterval(intervalTimer);
+      clearTimeout(initialTimeout);
+      clearInterval(ticker);
     };
-  }, [config?.host, autoIntervalSeconds, runSyncCycle]);
+  }, [isEnabled, config?.host, intervalSeconds, runSyncCycle]);
+
+  // Periodic deep reconcile every 10 cycles (e.g. 10 minutes)
+  useEffect(() => {
+    if (cycleCount > 0 && cycleCount % 10 === 0) {
+      reconcileYesterdayAndToday().catch(() => {});
+    }
+  }, [cycleCount, reconcileYesterdayAndToday]);
 
   return {
+    isEnabled,
+    setIsEnabled,
+    intervalSeconds,
+    setIntervalSeconds,
+    countdownSeconds,
+    isSyncing: isAutoSyncing || isManualSyncing,
     isAutoSyncing,
     isManualSyncing,
     lastSyncedAt,
     syncStatusMessage,
+    todayLog,
+    syncHistory,
+    cycleCount,
     syncNow,
     reconcileYesterdayAndToday,
+    clearSyncHistory,
   };
 }

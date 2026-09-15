@@ -29,6 +29,7 @@ import {
   Bell,
   X,
   CheckCircle2,
+  RefreshCw,
 } from 'lucide-react';
 import { NetworkSettings, POSPoint, SalesRecord, PaymentRecord, AppUser, NetworkTenant } from '../types';
 import { NavView } from './Sidebar';
@@ -59,6 +60,13 @@ interface HeaderProps {
   onToggleTheme?: () => void;
   totalDebt?: number;
   totalSalesToday?: number;
+  onOpenDataSync?: () => void;
+  dataSyncInfo?: {
+    isEnabled: boolean;
+    countdownSeconds: number;
+    isSyncing: boolean;
+    intervalSeconds: number;
+  };
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -85,6 +93,8 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleTheme,
   totalDebt = 0,
   totalSalesToday = 0,
+  onOpenDataSync,
+  dataSyncInfo,
 }) => {
   const activeTenant = React.useMemo(() => {
     const targetId = activeUser?.role === 'system_owner'
@@ -293,6 +303,33 @@ export const Header: React.FC<HeaderProps> = ({
                 {isConnected ? 'متصل' : 'الراوتر'}
               </span>
             </button>
+
+            {/* Scheduled Data Sync Button & Live Countdown */}
+            {onOpenDataSync && (
+              <button
+                id="header-data-sync-btn"
+                type="button"
+                onClick={onOpenDataSync}
+                className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-bold border transition shadow-xs shrink-0 ${
+                  dataSyncInfo?.isSyncing
+                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 animate-pulse'
+                    : dataSyncInfo?.isEnabled
+                    ? 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border-slate-700 hover:border-cyan-500/40'
+                    : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30'
+                }`}
+                title="التزامن التلقائي المجدول للبيانات (Data Sync) كل دقيقة - انقر لعرض التفاصيل وتحديث قاعدة البيانات"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 text-cyan-400 shrink-0 ${
+                    dataSyncInfo?.isSyncing ? 'animate-spin' : ''
+                  }`}
+                />
+                <span className="hidden md:inline">تزامن البيانات:</span>
+                <span className="font-mono text-cyan-300 font-bold" dir="ltr">
+                  {dataSyncInfo?.isSyncing ? 'مزامنة...' : dataSyncInfo?.isEnabled ? `${dataSyncInfo?.countdownSeconds}s` : 'متوقف'}
+                </span>
+              </button>
+            )}
 
             {/* 2. Unified Cloud Sync Status */}
             {syncStatus === 'dev-locked' ? (

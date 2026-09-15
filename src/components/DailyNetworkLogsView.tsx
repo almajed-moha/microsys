@@ -56,6 +56,7 @@ interface Props {
   routerIdentity?: string;
   isConnected?: boolean;
   mikrotikConfig?: Partial<MikroTikConfig>;
+  onOpenDataSync?: () => void;
 }
 
 export const DailyNetworkLogsView: React.FC<Props> = ({
@@ -65,6 +66,7 @@ export const DailyNetworkLogsView: React.FC<Props> = ({
   routerIdentity = 'MikroTik Router',
   isConnected = false,
   mikrotikConfig,
+  onOpenDataSync,
 }) => {
   const [logs, setLogs] = useState<DailyNetworkLog[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -536,6 +538,19 @@ export const DailyNetworkLogsView: React.FC<Props> = ({
 
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+            {/* Scheduled Data Sync Center Trigger */}
+            {onOpenDataSync && (
+              <button
+                id="daily-logs-open-data-sync-btn"
+                onClick={onOpenDataSync}
+                className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold shadow-md shadow-cyan-600/20 transition"
+                title="إدارة التزامن التلقائي المجدول للبيانات كل دقيقة وسجل العمليات"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>التزامن التلقائي المجدول ⏱️</span>
+              </button>
+            )}
+
             {/* Sync from Router Now */}
             <button
               onClick={handleSyncNow}

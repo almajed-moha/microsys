@@ -127,6 +127,7 @@ interface MikrotikLiveViewProps {
   onSaveTemplate?: (template: CardTemplate) => void;
   onDeleteTemplate?: (templateId: string) => void;
   onUpdateSettings: (newSettings: NetworkSettings) => void;
+  onOpenDataSync?: () => void;
 }
 
 export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
@@ -137,6 +138,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   onSaveTemplate,
   onDeleteTemplate,
   onUpdateSettings,
+  onOpenDataSync,
 }) => {
   // Config state
   const [config, setConfig] = useState<MikroTikConfig>(() => ({
@@ -886,6 +888,19 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
               <Globe className="w-4 h-4 text-sky-200" />
               <span>معالج الربط عن بعد 🌐</span>
             </button>
+
+            {/* Scheduled Data Sync Button */}
+            {onOpenDataSync && (
+              <button
+                id="mikrotik-live-open-data-sync-btn"
+                onClick={onOpenDataSync}
+                className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 text-xs sm:text-sm font-bold shadow-md transition shrink-0"
+                title="مركز التزامن التلقائي المجدول للبيانات (كل دقيقة)"
+              >
+                <RefreshCw className="w-4 h-4 text-cyan-400" />
+                <span>تزامن البيانات المجدول ⏱️</span>
+              </button>
+            )}
 
             {/* Refresh Button */}
             <button
@@ -2228,6 +2243,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
           routerIdentity={systemInfo?.model || config.routerModel || 'MikroTik Router'}
           isConnected={isConnected}
           mikrotikConfig={config}
+          onOpenDataSync={onOpenDataSync}
         />
       )}
 

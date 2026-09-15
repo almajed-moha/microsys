@@ -368,6 +368,27 @@ export interface MikroTikConfig {
   routerModel?: string;
   routerOsVersion?: string;
   routerIdentity?: string;
+  dataSyncEnabled?: boolean;
+  dataSyncInterval?: number; // in seconds (default: 60)
+}
+
+export interface ScheduledDataSyncSettings {
+  enabled: boolean;
+  intervalSeconds: number; // default: 60 (every 1 minute)
+  lastSyncTime?: string;
+  autoReconcile?: boolean;
+}
+
+export interface DataSyncHistoryItem {
+  id: string;
+  timestamp: string;
+  type: 'auto' | 'manual' | 'reconcile';
+  success: boolean;
+  downAddedBytes: number;
+  upAddedBytes: number;
+  totalAddedBytes: number;
+  activeUsersCount: number;
+  message: string;
 }
 
 export interface RouterSystemInfo {

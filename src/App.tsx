@@ -106,6 +106,8 @@ import { logout as firebaseLogout } from './firebase';
 import { getDriveAccessToken, uploadBackupToGoogleDrive } from './services/googleDriveService';
 import { generateSystemBackup } from './utils/backupGenerator';
 import { exportToJSON } from './utils/storage';
+import { DataSyncModal } from './components/DataSyncModal';
+import { useGlobalNetworkUsageSync } from './hooks/useGlobalNetworkUsageSync';
 
 // Wipe any previous stale demo data once to ensure pristine master-only state as requested
 const MASTER_ONLY_RESET_FLAG = 'mikrotik_v4_master_only_clean_reset';
@@ -516,6 +518,15 @@ export default function App() {
   const [isFinancialExportModalOpen, setIsFinancialExportModalOpen] = useState(false);
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [quickSalePOSId, setQuickSalePOSId] = useState<string | undefined>(undefined);
+  const [isDataSyncModalOpen, setIsDataSyncModalOpen] = useState(false);
+
+  // Scheduled Automatic Data Sync (every 60 seconds / 1 minute in the background)
+  const scheduledDataSync = useGlobalNetworkUsageSync(
+    settings.mikrotikConfig,
+    scopedCategories,
+    effectiveTenantId || 'system',
+    60
+  );
 
   // Global Keyboard Shortcuts (Ctrl+K, Cmd+K, / to open search)
   useEffect(() => {
@@ -2953,6 +2964,13 @@ export default function App() {
           onToggleTheme={handleToggleTheme}
           totalDebt={totalDebt}
           totalSalesToday={totalSalesToday}
+          onOpenDataSync={() => setIsDataSyncModalOpen(true)}
+          dataSyncInfo={{
+            isEnabled: scheduledDataSync.isEnabled,
+            countdownSeconds: scheduledDataSync.countdownSeconds,
+            isSyncing: scheduledDataSync.isSyncing,
+            intervalSeconds: scheduledDataSync.intervalSeconds,
+          }}
         />
 
         {/* Global Feedback Banner */}
@@ -3176,6 +3194,7 @@ export default function App() {
                   settings={settings}
                   categories={scopedCategories}
                   onUpdateSettings={(newSettings) => handleSaveSettings(newSettings)}
+                  onOpenDataSync={() => setIsDataSyncModalOpen(true)}
                 />
               )}
 
@@ -3545,6 +3564,17 @@ export default function App() {
           isOpen={isAboutModalOpen}
           settings={settings}
           onClose={() => setIsAboutModalOpen(false)}
+        />
+      )}
+
+      {/* Scheduled Data Sync Center Modal */}
+      {isDataSyncModalOpen && (
+        <DataSyncModal
+          isOpen={isDataSyncModalOpen}
+          onClose={() => setIsDataSyncModalOpen(false)}
+          sync={scheduledDataSync}
+          routerHost={settings.mikrotikConfig?.host || settings.mikrotikIp}
+          routerIdentity={settings.mikrotikConfig?.routerIdentity || settings.networkName}
         />
       )}
 
