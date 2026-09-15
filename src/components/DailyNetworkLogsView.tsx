@@ -32,11 +32,14 @@ import {
   deleteMultipleNetworkLogs,
   saveDailyNetworkLog,
   subscribeToDailyNetworkLogs,
+  syncReconstructedDayLog,
 } from '../services/networkLogsService';
-import { HotspotActiveUser } from '../types';
+import { HotspotActiveUser, MikroTikConfig } from '../types';
 import { syncCurrentActiveUsersToDailyLog } from '../hooks/useNetworkUsageTracker';
 import { printElementDocument, exportElementToPdf } from '../utils/pdfExport';
 import { DailyUsagePrintModal } from './DailyUsagePrintModal';
+import { getLocalDateString, getYesterdayDateString } from '../utils/dateUtils';
+import { fetchUserManagerDailyReport } from '../utils/mikrotikApi';
 
 const formatBytesToHuman = (bytes: number) => {
   if (!bytes || bytes <= 0) return '0 B';
@@ -52,6 +55,7 @@ interface Props {
   activeUsers?: HotspotActiveUser[];
   routerIdentity?: string;
   isConnected?: boolean;
+  mikrotikConfig?: Partial<MikroTikConfig>;
 }
 
 export const DailyNetworkLogsView: React.FC<Props> = ({
@@ -60,6 +64,7 @@ export const DailyNetworkLogsView: React.FC<Props> = ({
   activeUsers = [],
   routerIdentity = 'MikroTik Router',
   isConnected = false,
+  mikrotikConfig,
 }) => {
   const [logs, setLogs] = useState<DailyNetworkLog[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -79,7 +84,7 @@ export const DailyNetworkLogsView: React.FC<Props> = ({
   } | null>(null);
 
   // Manual Add/Edit Modal State
-  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(() => getLocalDateString());
   const [downBytes, setDownBytes] = useState<number>(0);
   const [upBytes, setUpBytes] = useState<number>(0);
   const [notes, setNotes] = useState('');
@@ -115,8 +120,9 @@ export const DailyNetworkLogsView: React.FC<Props> = ({
     };
   }, []);
 
-  // Today string
-  const todayStr = new Date().toISOString().split('T')[0];
+  // Local calendar date strings
+  const todayStr = getLocalDateString();
+  const yesterdayStr = getYesterdayDateString();
 
   // Manual Sync Now from active users
   const handleSyncNow = async () => {
@@ -135,6 +141,65 @@ export const DailyNetworkLogsView: React.FC<Props> = ({
         message: err.message || 'حدث خطأ أثناء المزامنة مع قاعدة البيانات',
       });
       setTimeout(() => setActionFeedback(null), 4000);
+    } finally {
+      setIsSyncingNow(false);
+    }
+  };
+
+  // Deep Reconcile Yesterday and Today from Router
+  const handleReconcileYesterdayAndToday = async () => {
+    setIsSyncingNow(true);
+    try {
+      if (mikrotikConfig?.host) {
+        const [yReport, tReport] = await Promise.all([
+          fetchUserManagerDailyReport(mikrotikConfig, yesterdayStr).catch(() => ({ success: false, data: null })),
+          fetchUserManagerDailyReport(mikrotikConfig, todayStr).catch(() => ({ success: false, data: null })),
+        ]);
+
+        if (yReport.success && yReport.data?.summary) {
+          const s = yReport.data.summary;
+          const dl = s.cardsDownloadBytes || 0;
+          const ul = s.cardsUploadBytes || 0;
+          if (dl > 0 || ul > 0) {
+            await syncReconstructedDayLog(yesterdayStr, dl, ul, {
+              activeUsersCount: s.totalActiveCardsToday || s.totalSessionsToday || 0,
+              routerIdentity: routerIdentity || mikrotikConfig.host,
+              notes: 'مطابقة مباشرة من جلسات الراوتر',
+            });
+          }
+        }
+
+        if (tReport.success && tReport.data?.summary) {
+          const s = tReport.data.summary;
+          const dl = s.cardsDownloadBytes || 0;
+          const ul = s.cardsUploadBytes || 0;
+          if (dl > 0 || ul > 0) {
+            await syncReconstructedDayLog(todayStr, dl, ul, {
+              activeUsersCount: s.totalActiveCardsToday || s.activeCardsNow || 0,
+              routerIdentity: routerIdentity || mikrotikConfig.host,
+              notes: 'مطابقة مباشرة من جلسات الراوتر',
+            });
+          }
+        }
+      }
+
+      // Also run normal live active users sync for right now
+      if (activeUsers && activeUsers.length > 0) {
+        await syncCurrentActiveUsersToDailyLog(activeUsers, routerIdentity);
+      }
+
+      await loadData();
+      setActionFeedback({
+        success: true,
+        message: `تمت مطابقة وتصحيح استهلاك أمس (${yesterdayStr}) واليوم (${todayStr}) بنجاح!`,
+      });
+      setTimeout(() => setActionFeedback(null), 4500);
+    } catch (err: any) {
+      setActionFeedback({
+        success: false,
+        message: err.message || 'حدث خطأ أثناء مطابقة بيانات الاستهلاك',
+      });
+      setTimeout(() => setActionFeedback(null), 4500);
     } finally {
       setIsSyncingNow(false);
     }
@@ -480,6 +545,17 @@ export const DailyNetworkLogsView: React.FC<Props> = ({
             >
               <Zap className={`w-4 h-4 ${isSyncingNow ? 'animate-spin' : ''}`} />
               <span>{isSyncingNow ? 'جارِ المزامنة...' : 'مزامنة الاستهلاك الحالي الآن'}</span>
+            </button>
+
+            {/* Reconcile Yesterday & Today */}
+            <button
+              onClick={handleReconcileYesterdayAndToday}
+              disabled={isSyncingNow}
+              className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md shadow-amber-600/20 transition"
+              title="مطابقة وتصحيح استهلاك الأمس واليوم مباشرة من جلسات الراوتر"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncingNow ? 'animate-spin' : ''}`} />
+              <span>{isSyncingNow ? 'جارِ المطابقة...' : 'مطابقة استهلاك أمس واليوم'}</span>
             </button>
 
             {/* Fetch Fresh Report from DB */}

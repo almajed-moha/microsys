@@ -135,6 +135,38 @@ export const incrementDailyNetworkLog = async (
   const docRef = doc(db, COLLECTION_NAME, date);
   const nowIso = new Date().toISOString();
 
+  // Optimistically update local cache
+  try {
+    const cached = getCachedNetworkLogs();
+    const existingIdx = cached.findIndex(l => l.date === date || l.id === date);
+    if (existingIdx >= 0) {
+      cached[existingIdx].downloadBytes = (Number(cached[existingIdx].downloadBytes) || 0) + downDelta;
+      cached[existingIdx].uploadBytes = (Number(cached[existingIdx].uploadBytes) || 0) + upDelta;
+      cached[existingIdx].totalBytes = cached[existingIdx].downloadBytes + cached[existingIdx].uploadBytes;
+      cached[existingIdx].lastUpdated = nowIso;
+      if (extraMeta?.activeUsersCount !== undefined) {
+        cached[existingIdx].activeUsersCount = extraMeta.activeUsersCount;
+      }
+      if (extraMeta?.routerIdentity) {
+        cached[existingIdx].routerIdentity = extraMeta.routerIdentity;
+      }
+    } else {
+      cached.unshift({
+        id: date,
+        date,
+        downloadBytes: downDelta,
+        uploadBytes: upDelta,
+        totalBytes: downDelta + upDelta,
+        lastUpdated: nowIso,
+        activeUsersCount: extraMeta?.activeUsersCount || 0,
+        routerIdentity: extraMeta?.routerIdentity,
+      });
+    }
+    updateLocalCache(cached);
+  } catch (e) {
+    console.warn('Cache update warning in incrementDailyNetworkLog:', e);
+  }
+
   const updatePayload: Record<string, any> = {
     id: date,
     date: date,
@@ -153,5 +185,48 @@ export const incrementDailyNetworkLog = async (
   }
 
   await setDoc(docRef, updatePayload, { merge: true });
+};
+
+export const syncReconstructedDayLog = async (
+  date: string,
+  downloadBytes: number,
+  uploadBytes: number,
+  extraMeta?: { activeUsersCount?: number; routerIdentity?: string; notes?: string }
+): Promise<void> => {
+  const docRef = doc(db, COLLECTION_NAME, date);
+  const nowIso = new Date().toISOString();
+  const dl = Math.max(0, Number(downloadBytes) || 0);
+  const ul = Math.max(0, Number(uploadBytes) || 0);
+
+  const payload: DailyNetworkLog = {
+    id: date,
+    date,
+    downloadBytes: dl,
+    uploadBytes: ul,
+    totalBytes: dl + ul,
+    activeUsersCount: extraMeta?.activeUsersCount || 0,
+    routerIdentity: extraMeta?.routerIdentity || 'MikroTik Router',
+    notes: extraMeta?.notes || 'مزامنة مباشرة من جلسات الراوتر',
+    lastUpdated: nowIso,
+  };
+
+  // Update local cache
+  try {
+    const cached = getCachedNetworkLogs();
+    const existingIdx = cached.findIndex(l => l.date === date || l.id === date);
+    if (existingIdx >= 0) {
+      cached[existingIdx] = { ...cached[existingIdx], ...payload };
+    } else {
+      cached.unshift(payload);
+    }
+    updateLocalCache(cached);
+  } catch (e) {
+    console.warn(e);
+  }
+
+  await setDoc(docRef, {
+    ...payload,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
 };
 

@@ -505,7 +505,7 @@ async function fetchRestApi(
   const defaultPort = isHttps ? 443 : 80;
   const port = options.port || defaultPort;
   const host = options.host;
-  const timeout = options.timeoutMs || 30000;
+  const timeout = (options.protocol === 'auto' ? 3000 : options.timeoutMs) || 30000;
 
   const auth = Buffer.from(`${options.username}:${options.password || ''}`).toString('base64');
   const path = endpoint.startsWith('/') ? `/rest${endpoint}` : `/rest/${endpoint}`;
@@ -3709,17 +3709,27 @@ if (command === 'reboot') {
 
   // 20d. Get User Manager Daily Usage Report (Reconciliation between ISP WAN traffic and Card usage)
   public static async getUserManagerDailyReport(options: MikroTikConnectionOptions, targetDate?: string): Promise<any> {
-    const chosenDate = targetDate || new Date().toISOString().split('T')[0];
+    const todayStr = new Date().toISOString().split('T')[0];
+    const chosenDate = targetDate || todayStr;
+    const isToday = chosenDate === todayStr;
 
-    const [users, allSessions, interfaces] = await Promise.all([
+    const [users, allSessions, interfaces, liveHotspots] = await Promise.all([
       this.getUserManagerUsers(options).catch(() => []),
       this.getUserManagerSessions(options).catch(() => []),
       this.getRouterInterfaces(options).catch(() => []),
+      isToday ? this.getActiveHotspotUsers(options).catch(() => []) : Promise.resolve([]),
     ]);
 
+    // Match sessions that truly occurred on chosenDate
     const daySessions = allSessions.filter(s => {
-      if (!s.fromTime) return false;
-      return s.fromTime.startsWith(chosenDate) || (s.tillTime && s.tillTime.startsWith(chosenDate)) || s.active;
+      const fromDate = s.fromTime ? s.fromTime.split('T')[0] : '';
+      const tillDate = s.tillTime ? s.tillTime.split('T')[0] : '';
+
+      if (fromDate === chosenDate || tillDate === chosenDate) return true;
+      if (s.active && isToday) return true;
+      // Session span covers chosenDate
+      if (fromDate && tillDate && fromDate <= chosenDate && tillDate >= chosenDate) return true;
+      return false;
     });
 
     const userMap = new Map<string, {
@@ -3736,6 +3746,7 @@ if (command === 'reboot') {
 
     for (const s of daySessions) {
       const uName = s.user;
+      if (!uName) continue;
       const prev = userMap.get(uName) || {
         user: uName,
         profile: '',
@@ -3745,35 +3756,56 @@ if (command === 'reboot') {
         totalBytes: 0,
         uptimeSeconds: 0,
         isActiveNow: false,
+        comment: s.comment,
       };
 
       prev.sessionsCount += 1;
-      prev.downloadBytes += (s.download || 0);
-      prev.uploadBytes += (s.upload || 0);
-      prev.totalBytes += (s.download || 0) + (s.upload || 0);
+      prev.downloadBytes += (s.download || s.downloadBytes || 0);
+      prev.uploadBytes += (s.upload || s.uploadBytes || 0);
+      prev.totalBytes += (s.download || s.downloadBytes || 0) + (s.upload || s.uploadBytes || 0);
       prev.uptimeSeconds += parseDurationToSeconds(s.uptime || '0s');
       if (s.active) prev.isActiveNow = true;
 
       userMap.set(uName, prev);
     }
 
+    // If viewing today, also incorporate active live hotspot users if not already present
+    if (isToday && Array.isArray(liveHotspots)) {
+      for (const hs of liveHotspots) {
+        if (!hs.user) continue;
+        const existing = userMap.get(hs.user);
+        if (existing) {
+          existing.isActiveNow = true;
+          // Use maximum reading
+          const curDl = hs.bytesOut || 0;
+          const curUl = hs.bytesIn || 0;
+          if (curDl > existing.downloadBytes) existing.downloadBytes = curDl;
+          if (curUl > existing.uploadBytes) existing.uploadBytes = curUl;
+          existing.totalBytes = existing.downloadBytes + existing.uploadBytes;
+        } else {
+          const curDl = hs.bytesOut || 0;
+          const curUl = hs.bytesIn || 0;
+          userMap.set(hs.user, {
+            user: hs.user,
+            profile: hs.profile || '',
+            sessionsCount: 1,
+            downloadBytes: curDl,
+            uploadBytes: curUl,
+            totalBytes: curDl + curUl,
+            uptimeSeconds: parseDurationToSeconds(hs.uptime || '0s'),
+            isActiveNow: true,
+            comment: hs.comment,
+          });
+        }
+      }
+    }
+
+    // Enrich existing matched users with profile & comment info without adding inactive non-day users
     for (const u of users) {
       const existing = userMap.get(u.name);
       if (existing) {
         existing.profile = u.actualProfile || existing.profile;
         existing.comment = u.comment || existing.comment;
-      } else if ((u.totalBytes || 0) > 0) {
-        userMap.set(u.name, {
-          user: u.name,
-          profile: u.actualProfile || '',
-          sessionsCount: 1,
-          downloadBytes: u.downloadUsed || 0,
-          uploadBytes: u.uploadUsed || 0,
-          totalBytes: (u.downloadUsed || 0) + (u.uploadUsed || 0),
-          uptimeSeconds: parseDurationToSeconds(u.uptimeUsed || '0s'),
-          isActiveNow: false,
-          comment: u.comment,
-        });
       }
     }
 
@@ -4388,7 +4420,7 @@ add name="c1005" password="105" profile="Profile_5M_Standard" limit-uptime=1h li
       await client.login(options.username, options.password || '');
 
       const query = fileNameOrId.startsWith('*') ? `?.id=${fileNameOrId}` : `?name=${fileNameOrId}`;
-      const found = await client.sendSentence(['/file/print', query]);
+      const found = await client.sendSentence(['/file/print', 'detail', query]);
       client.close();
 
       if (found && found.length > 0 && typeof found[0].contents === 'string') {
@@ -4479,7 +4511,7 @@ add name="c1005" password="105" profile="Profile_5M_Standard" limit-uptime=1h li
         }
       }
 
-      await client.sendSentence(['/file/set', `={.id}=${targetId}`, `=contents=${contents}`]);
+      await client.sendSentence(['/file/set', `=.id=${targetId}`, `=contents=${contents}`]);
       client.close();
       return { success: true, message: `تم حفظ وتحديث محتوى الملف (${fileNameOrId}) على راوتر مايكروتك بنجاح.` };
     } catch (binErr: any) {

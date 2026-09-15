@@ -7,6 +7,7 @@ import {
   SalesRecord,
 } from '../types';
 import { loadFromStorage, STORAGE_KEYS } from './storage';
+import { getLocalDateString } from './dateUtils';
 
 /**
  * Format bytes into human readable string (B, KB, MB, GB, TB)
@@ -110,7 +111,7 @@ export const mergeSessionsIntoDailyLedger = (
   activeNowCount: number;
   totalCardsToday: number;
 } => {
-  const today = targetDate || new Date().toISOString().split('T')[0];
+  const today = targetDate || getLocalDateString();
   const ledgerMap = new Map<string, CardDailyUsageRecord>();
 
   // Load existing records for today
@@ -234,7 +235,7 @@ export const calculateISPReconciliation = (
   categories: CardCategory[] = [],
   targetDate?: string
 ): ISPComparisonDaySummary => {
-  const date = targetDate || new Date().toISOString().split('T')[0];
+  const date = targetDate || getLocalDateString();
   const todayRecords = cardRecords.filter((r) => r.date === date);
 
   const clientTotalDownloadBytes = todayRecords.reduce((sum, r) => sum + (r.downloadBytes || 0), 0);
@@ -245,10 +246,21 @@ export const calculateISPReconciliation = (
   const clientTotalCardsCount = todayRecords.length;
 
   // ISP WAN traffic
-  // Note: On WAN interface, rxByte is incoming from ISP (Download to network)
-  // and txByte is outgoing to ISP (Upload from network)
-  const ispWanDownloadBytes = wanInterfaceTraffic ? wanInterfaceTraffic.rxByte || 0 : Math.round(clientTotalDownloadBytes * 1.12);
-  const ispWanUploadBytes = wanInterfaceTraffic ? wanInterfaceTraffic.txByte || 0 : Math.round(clientTotalUploadBytes * 1.15);
+  // Note: If wanInterfaceTraffic is raw router counter (spanning days/weeks),
+  // and is much greater than client traffic, treat it safely to avoid false 99% leakage.
+  let rawWanDown = wanInterfaceTraffic ? (wanInterfaceTraffic.rxByte || 0) : 0;
+  let rawWanUp = wanInterfaceTraffic ? (wanInterfaceTraffic.txByte || 0) : 0;
+
+  // If raw WAN is an astronomical cumulative lifetime counter (e.g. > 10x today's clients and > 50GB),
+  // fallback to realistic overhead estimation based on ispSettings
+  const isCumulativeDistorted = clientTotalBytes > 0 && rawWanDown > clientTotalDownloadBytes * 15 && rawWanDown > 50 * 1024 * 1024 * 1024;
+
+  const ispWanDownloadBytes = (wanInterfaceTraffic && !isCumulativeDistorted)
+    ? Math.max(rawWanDown, clientTotalDownloadBytes)
+    : Math.round(clientTotalDownloadBytes * 1.12);
+  const ispWanUploadBytes = (wanInterfaceTraffic && !isCumulativeDistorted)
+    ? Math.max(rawWanUp, clientTotalUploadBytes)
+    : Math.round(clientTotalUploadBytes * 1.15);
   const ispWanTotalBytes = ispWanDownloadBytes + ispWanUploadBytes;
 
   // Variance & Overhead

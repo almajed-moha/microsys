@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { NetworkSettings, MikroTikConfig, AppUser } from '../types';
 import { exportToJSON, downloadFile } from '../utils/storage';
+import { hasPermission } from '../utils/permissions';
 import { RemoteMikrotikWizardModal } from './RemoteMikrotikWizardModal';
 import { testMikroTikConnection, ConnectionTestResult, isPrivateIp } from '../utils/mikrotikApi';
 
@@ -61,7 +62,7 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
     activeUser?.role === 'network_admin' ||
     activeUser?.role === 'system_owner' ||
     activeUser?.role === 'super_admin' ||
-    (activeUser?.permissions?.settings?.editNetworkProfile ?? true);
+    hasPermission(activeUser, 'settings', 'editNetworkProfile');
 
   const [formData, setFormData] = useState<NetworkSettings>({
     ...settings,

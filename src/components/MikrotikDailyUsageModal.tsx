@@ -34,6 +34,10 @@ import {
   getDailyNetworkLog,
   getDailyNetworkLogs,
 } from '../services/networkLogsService';
+import { getLocalDateString, getYesterdayDateString } from '../utils/dateUtils';
+import { loadCardUsageLogs } from '../utils/cardUsageTracker';
+import { syncCurrentActiveUsersToDailyLog } from '../hooks/useNetworkUsageTracker';
+import { HotspotActiveUser } from '../types';
 
 interface MikrotikDailyUsageModalProps {
   isOpen: boolean;
@@ -79,13 +83,16 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
   currencySymbol,
   onOpenComparisonModal,
 }) => {
-  // Selected date (defaults to today)
-  const todayStr = new Date().toISOString().split('T')[0];
+  // Selected date (defaults to local today)
+  const todayStr = getLocalDateString();
+  const yesterdayStr = getYesterdayDateString();
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
   const [isExporting, setIsExporting] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [activeHourlyTab, setActiveHourlyTab] = useState<'total' | 'download' | 'upload'>('total');
+  const [isLiveSyncing, setIsLiveSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   // Firestore Database State
   const [dbLog, setDbLog] = useState<DailyNetworkLog | null>(null);
@@ -120,21 +127,59 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
 
   // Navigate dates
   const changeDateByDays = (days: number) => {
-    const d = new Date(selectedDate);
+    const d = new Date(selectedDate + 'T12:00:00');
     d.setDate(d.getDate() + days);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    setSelectedDate(getLocalDateString(d));
   };
 
   // Filter sessions that were active on the selected day
   const daySessions = useMemo(() => {
     return sessions.filter((s) => {
       if (!s.loginTime) return false;
-      const sessionDay = s.loginTime.split('T')[0];
+      const sessionDay = getLocalDateString(s.loginTime);
       return sessionDay === selectedDate;
     });
   }, [sessions, selectedDate]);
 
-  // Aggregate stats for the selected day
+  // Handle immediate manual sync from router active sessions
+  const handleImmediateSync = async () => {
+    if (!sessions || sessions.length === 0) {
+      setSyncFeedback('لا توجد جلسات متصلة حالياً للمزامنة');
+      setTimeout(() => setSyncFeedback(null), 3000);
+      return;
+    }
+    setIsLiveSyncing(true);
+    try {
+      const activeHotspotUsers: HotspotActiveUser[] = sessions
+        .filter((s) => s.isActive)
+        .map((s) => ({
+          id: s.id,
+          user: s.user,
+          address: s.address,
+          macAddress: s.macAddress,
+          uptime: s.uptime,
+          bytesIn: s.uploadBytes,
+          bytesOut: s.downloadBytes,
+          packetsIn: s.packetsIn,
+          packetsOut: s.packetsOut,
+          loginBy: s.loginBy,
+          comment: s.comment,
+          server: s.server,
+        }));
+
+      const res = await syncCurrentActiveUsersToDailyLog(activeHotspotUsers, routerIdentity);
+      await fetchDbReport();
+      setSyncFeedback(res.message);
+      setTimeout(() => setSyncFeedback(null), 4000);
+    } catch (err: any) {
+      setSyncFeedback(err.message || 'حدث خطأ أثناء المزامنة');
+      setTimeout(() => setSyncFeedback(null), 4000);
+    } finally {
+      setIsLiveSyncing(false);
+    }
+  };
+
+  // Aggregate stats for the selected day by combining persistent ledger + live sessions + DB log
   const dayStats = useMemo(() => {
     let sessionDownload = 0;
     let sessionUpload = 0;
@@ -163,25 +208,66 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
       total: 0,
     }));
 
-    for (const s of daySessions) {
-      const dl = s.downloadBytes || 0;
-      const ul = s.uploadBytes || 0;
+    // 1. First add cards from persistent daily ledger for selectedDate
+    const persistentCards = loadCardUsageLogs().filter((r) => r.date === selectedDate);
+    for (const card of persistentCards) {
+      const dl = card.downloadBytes || 0;
+      const ul = card.uploadBytes || 0;
       const tot = dl + ul;
 
       sessionDownload += dl;
       sessionUpload += ul;
 
-      // Group by user for top consumers
+      userMap.set(card.cardUsername, {
+        user: card.cardUsername,
+        address: card.ipAddress || '—',
+        macAddress: card.macAddress || '—',
+        hostName: card.categoryName,
+        download: dl,
+        upload: ul,
+        total: tot,
+        uptime: card.uptime || '',
+        server: card.server,
+        comment: card.comment,
+      });
+
+      if (card.firstSeenTime) {
+        const hour = new Date(card.firstSeenTime).getHours();
+        if (hour >= 0 && hour < 24) {
+          hourlyPull[hour].download += dl;
+          hourlyPull[hour].upload += ul;
+          hourlyPull[hour].total += tot;
+        }
+      }
+    }
+
+    // 2. Layer on live daySessions (updates live figures if user is actively downloading now)
+    for (const s of daySessions) {
+      const dl = s.downloadBytes || 0;
+      const ul = s.uploadBytes || 0;
+      const tot = dl + ul;
+
       const existing = userMap.get(s.user);
       if (existing) {
-        existing.download += dl;
-        existing.upload += ul;
-        existing.total += tot;
+        if (dl > existing.download) {
+          sessionDownload += (dl - existing.download);
+          existing.download = dl;
+        }
+        if (ul > existing.upload) {
+          sessionUpload += (ul - existing.upload);
+          existing.upload = ul;
+        }
+        existing.total = existing.download + existing.upload;
+        if (s.address) existing.address = s.address;
+        if (s.macAddress) existing.macAddress = s.macAddress;
+        if (s.uptime) existing.uptime = s.uptime;
       } else {
+        sessionDownload += dl;
+        sessionUpload += ul;
         userMap.set(s.user, {
           user: s.user,
-          address: s.address,
-          macAddress: s.macAddress,
+          address: s.address || '—',
+          macAddress: s.macAddress || '—',
           hostName: s.hostName,
           download: dl,
           upload: ul,
@@ -192,12 +278,13 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
         });
       }
 
-      // Hour of session login
-      const hour = new Date(s.loginTime).getHours();
-      if (hour >= 0 && hour < 24) {
-        hourlyPull[hour].download += dl;
-        hourlyPull[hour].upload += ul;
-        hourlyPull[hour].total += tot;
+      if (s.loginTime) {
+        const hour = new Date(s.loginTime).getHours();
+        if (hour >= 0 && hour < 24) {
+          hourlyPull[hour].download += dl;
+          hourlyPull[hour].upload += ul;
+          hourlyPull[hour].total += tot;
+        }
       }
     }
 
@@ -234,7 +321,7 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
       topConsumers,
       isFromDb: !!dbLog,
     };
-  }, [daySessions, dbLog]);
+  }, [daySessions, selectedDate, dbLog]);
 
   // Comparison with last 7 days trend
   const sevenDaysTrend = useMemo(() => {
@@ -383,19 +470,24 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
               </button>
 
               <button
-                onClick={() => {
-                  const y = new Date();
-                  y.setDate(y.getDate() - 1);
-                  setSelectedDate(y.toISOString().split('T')[0]);
-                }}
+                onClick={() => setSelectedDate(yesterdayStr)}
                 className={`px-3 py-1.5 rounded-xl font-bold transition ${
-                  selectedDate ===
-                  new Date(Date.now() - 86400000).toISOString().split('T')[0]
+                  selectedDate === yesterdayStr
                     ? 'bg-teal-700 text-white shadow-xs'
                     : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 أمس
+              </button>
+
+              <button
+                onClick={handleImmediateSync}
+                disabled={isLiveSyncing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition text-xs disabled:opacity-50"
+                title="مزامنة فورية للاستهلاك الحالي من الراوتر وقاعدة البيانات"
+              >
+                <RefreshCw size={13} className={isLiveSyncing ? 'animate-spin' : ''} />
+                <span>{isLiveSyncing ? 'جاري المزامنة...' : 'مزامنة الاستهلاك الآن'}</span>
               </button>
 
               <div className="h-4 w-px bg-slate-200 mx-1"></div>
@@ -482,6 +574,14 @@ export const MikrotikDailyUsageModal: React.FC<MikrotikDailyUsageModalProps> = (
               )}
             </div>
           </div>
+
+          {/* Sync Feedback Message */}
+          {syncFeedback && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-2.5 text-xs flex items-center gap-2 font-bold animate-fade-in">
+              <CheckCircle2 size={16} className="text-amber-600 shrink-0" />
+              <span>{syncFeedback}</span>
+            </div>
+          )}
 
           {/* Database Connection & Sync Status Banner */}
           <div className="bg-gradient-to-r from-teal-50 via-indigo-50/50 to-slate-50 border border-teal-200/80 rounded-2xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-xs print:border-slate-300">

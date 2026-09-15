@@ -865,36 +865,41 @@ export default function App() {
       activeUser?.role === 'network_admin' ||
       activeUser?.role === 'system_owner' ||
       activeUser?.role === 'super_admin' ||
-      (activeUser?.permissions?.settings?.editNetworkProfile ?? true);
-
-    if (!isNetworkAdmin) {
-      alert('عذراً، بيانات وإعدادات الشبكة مثبتة وأساسية في النظام ولا يمكن تعديلها إلا بواسطة مدير الشبكة.');
-      return;
-    }
+      hasPermission(activeUser, 'settings', 'editNetworkProfile', currentTenant);
 
     const prevSettings = settings;
+    let cleanSettings: NetworkSettings;
 
-    // Ensure host and mikrotikIp are in lockstep
-    const cleanHost = (newSettings.mikrotikConfig?.host || newSettings.mikrotikIp || '192.168.88.1').trim();
-    const updatedMikrotikConfig = newSettings.mikrotikConfig
-      ? {
-          ...newSettings.mikrotikConfig,
-          host: cleanHost,
-          isLocked: true,
-          remoteHost: newSettings.mikrotikConfig.remoteHost || (isPrivateIp(cleanHost) ? undefined : cleanHost),
-        }
-      : undefined;
+    if (!isNetworkAdmin) {
+      // Non-admins can only save non-network settings
+      cleanSettings = {
+        ...newSettings,
+        isLocked: prevSettings.isLocked,
+        mikrotikIp: prevSettings.mikrotikIp,
+        mikrotikConfig: prevSettings.mikrotikConfig,
+        networkName: prevSettings.networkName,
+      };
+    } else {
+      const cleanHost = (newSettings.mikrotikConfig?.host || newSettings.mikrotikIp || '192.168.88.1').trim();
+      const updatedMikrotikConfig = newSettings.mikrotikConfig
+        ? {
+            ...newSettings.mikrotikConfig,
+            host: cleanHost,
+            isLocked: true,
+            remoteHost: newSettings.mikrotikConfig.remoteHost || (isPrivateIp(cleanHost) ? undefined : cleanHost),
+          }
+        : undefined;
+      cleanSettings = {
+        ...newSettings,
+        isLocked: true,
+        mikrotikIp: cleanHost,
+        mikrotikConfig: updatedMikrotikConfig,
+      };
+    }
 
     const targetTenantId = activeUser?.role === 'system_owner'
       ? (selectedTenantFilter !== 'all' ? selectedTenantFilter : null)
       : (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : null);
-
-    const cleanSettings: NetworkSettings = {
-      ...newSettings,
-      isLocked: true,
-      mikrotikIp: cleanHost,
-      mikrotikConfig: updatedMikrotikConfig,
-    };
 
     setSettings(cleanSettings);
     saveData(STORAGE_KEYS.SETTINGS, cleanSettings);
@@ -911,8 +916,8 @@ export default function App() {
               settings: {
                 ...t.settings,
                 ...cleanSettings,
-                mikrotikConfig: updatedMikrotikConfig,
-                mikrotikIp: cleanHost,
+                mikrotikConfig: cleanSettings.mikrotikConfig,
+                mikrotikIp: cleanSettings.mikrotikIp,
               },
             }
           : t

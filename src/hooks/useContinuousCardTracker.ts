@@ -18,6 +18,7 @@ import {
   mergeSessionsIntoDailyLedger,
   calculateISPReconciliation,
 } from '../utils/cardUsageTracker';
+import { getLocalDateString } from '../utils/dateUtils';
 
 export interface UseContinuousCardTrackerProps {
   settings?: NetworkSettings;
@@ -79,7 +80,7 @@ export const useContinuousCardTracker = ({
   const [pollCount, setPollCount] = useState<number>(0);
 
   // Selected date filter
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const todayStr = useMemo(() => getLocalDateString(), []);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
   // Persistent records state

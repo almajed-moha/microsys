@@ -2227,6 +2227,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
           activeUsers={activeUsers}
           routerIdentity={systemInfo?.model || config.routerModel || 'MikroTik Router'}
           isConnected={isConnected}
+          mikrotikConfig={config}
         />
       )}
 

@@ -243,9 +243,9 @@ export const MikrotikFilesManagerView: React.FC<MikrotikFilesManagerViewProps> =
     try {
       const data = await fetchMikrotikFileContent(config, file.id || file.name);
       if (data && typeof data.content === 'string') {
-        setEditorContent(data.content);
+        setEditorContent(data.content || '<!-- لم يتم العثور على محتوى (قد يكون الملف أكبر من 4KB، يرجى تفعيل REST API في المايكروتك) -->');
       } else {
-        setEditorContent('');
+        setEditorContent('<!-- لم يتم العثور على محتوى (قد يكون الملف أكبر من 4KB، يرجى تفعيل REST API في المايكروتك) -->');
       }
     } catch (err: any) {
       setFeedback({ type: 'error', message: `تعذر قراءة محتوى الملف: ${err.message}` });
@@ -511,7 +511,7 @@ traffic-limit = انتهى رصيد الكارت
   const handleOpenHtmlPreview = async (file: MikrotikFileItem) => {
     try {
       const data = await fetchMikrotikFileContent(config, file.id || file.name);
-      const content = data?.content || file.contents || '<p>لا يوجد محتوى للمعاينة</p>';
+      const content = data?.content || file.contents || '<h3>محتوى الملف غير متوفر عبر Binary API.</h3><p>قد يكون الملف أكبر من 4KB. يرجى تفعيل (REST API) في راوتر المايكروتك وقراءة الملف عبره، أو تحميل الملف مباشرة.</p>';
       // Replace MikroTik variables with mock values for preview
       const previewHtml = content
         .replace(/\$\(username\)/g, '771234')
