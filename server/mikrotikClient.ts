@@ -507,7 +507,7 @@ async function fetchRestApi(
   const defaultPort = isHttps ? 443 : 80;
   const port = options.port || defaultPort;
   const host = options.host;
-  const timeout = (options.protocol === 'auto' ? 3000 : options.timeoutMs) || 30000;
+  const timeout = (options.protocol === 'auto' ? 1500 : options.timeoutMs) || 30000;
 
   const auth = Buffer.from(`${options.username}:${options.password || ''}`).toString('base64');
   const path = endpoint.startsWith('/') ? `/rest${endpoint}` : `/rest/${endpoint}`;
@@ -2055,12 +2055,14 @@ if (command === 'reboot') {
         try {
           rawUsers = await fetchRestApi(restOpt, '/user-manager/user');
           isV7 = true;
-        } catch {
+        } catch (err: any) {
+          if (err.message && (err.message.includes('انتهت مهلة') || err.message.includes('فشل الاتصال'))) throw err;
           // Fallback to v6
           try {
             rawUsers = await fetchRestApi(restOpt, '/tool/user-manager/user');
             isV7 = false;
-          } catch {
+          } catch (err2: any) {
+            if (err2.message && (err2.message.includes('انتهت مهلة') || err2.message.includes('فشل الاتصال'))) throw err2;
             // User Manager package not installed or endpoints not accessible via REST
             rawUsers = null;
           }
@@ -3386,7 +3388,7 @@ if (command === 'reboot') {
         try {
           const v7Body: any = {};
           if (userData.password !== undefined) v7Body.password = userData.password;
-          if (userData.disabled !== undefined) v7Body.disabled = userData.disabled ? 'yes' : 'no';
+          if (userData.disabled !== undefined) v7Body.disabled = userData.disabled ? 'true' : 'false';
           if (userData.comment !== undefined) v7Body.comment = userData.comment;
 
           if (Object.keys(v7Body).length > 0) {
@@ -3407,28 +3409,30 @@ if (command === 'reboot') {
             } catch {}
           }
           updated = true;
-        } catch {
+        } catch (err: any) {
+          if (err.message && (err.message.includes('انتهت مهلة') || err.message.includes('فشل الاتصال'))) throw err;
           // Try v6 User Manager
           try {
             const v6Body: any = {};
             if (userData.password !== undefined) v6Body.password = userData.password;
-            if (userData.disabled !== undefined) v6Body.disabled = userData.disabled ? 'yes' : 'no';
+            if (userData.disabled !== undefined) v6Body.disabled = userData.disabled ? 'true' : 'false';
             if (userData.comment !== undefined) v6Body.comment = userData.comment;
             if (userData.limitUptime) v6Body['limit-uptime'] = userData.limitUptime;
-            if (userData.limitBytesTotal !== undefined) v6Body['limit-bytes-total'] = String(userData.limitBytesTotal);
+            if (userData.limitBytesTotal !== undefined) v6Body['limit-bytes-total'] = userData.limitBytesTotal === 0 ? '' : String(userData.limitBytesTotal);
             if (userData.actualProfile) v6Body['actual-profile'] = userData.actualProfile;
 
             await fetchRestApi(restOpt, `/tool/user-manager/user/${encodeURIComponent(targetId)}`, 'PATCH', v6Body);
             updated = true;
-          } catch {
+          } catch (err2: any) {
+            if (err2.message && (err2.message.includes('انتهت مهلة') || err2.message.includes('فشل الاتصال'))) throw err2;
             // Try Hotspot user
             try {
               const hsBody: any = {};
               if (userData.password !== undefined) hsBody.password = userData.password;
-              if (userData.disabled !== undefined) hsBody.disabled = userData.disabled ? 'yes' : 'no';
+              if (userData.disabled !== undefined) hsBody.disabled = userData.disabled ? 'true' : 'false';
               if (userData.comment !== undefined) hsBody.comment = userData.comment;
               if (userData.limitUptime) hsBody['limit-uptime'] = userData.limitUptime;
-              if (userData.limitBytesTotal !== undefined) hsBody['limit-bytes-total'] = String(userData.limitBytesTotal);
+              if (userData.limitBytesTotal !== undefined) hsBody['limit-bytes-total'] = userData.limitBytesTotal === 0 ? '' : String(userData.limitBytesTotal);
               if (userData.actualProfile) hsBody.profile = userData.actualProfile;
 
               await fetchRestApi(restOpt, `/ip/hotspot/user/${encodeURIComponent(targetId)}`, 'PATCH', hsBody);
@@ -3505,7 +3509,9 @@ if (command === 'reboot') {
           if (userData.disabled !== undefined) v6Words.push(`=disabled=${userData.disabled ? 'yes' : 'no'}`);
           if (userData.comment !== undefined) v6Words.push(`=comment=${userData.comment}`);
           if (userData.limitUptime) v6Words.push(`=limit-uptime=${userData.limitUptime}`);
-          if (userData.limitBytesTotal !== undefined) v6Words.push(`=limit-bytes-total=${userData.limitBytesTotal}`);
+          if (userData.limitBytesTotal !== undefined) {
+            v6Words.push(`=limit-bytes-total=${userData.limitBytesTotal === 0 ? '' : userData.limitBytesTotal}`);
+          }
 
           await client.sendSentence(v6Words);
 
@@ -3530,7 +3536,9 @@ if (command === 'reboot') {
             if (userData.disabled !== undefined) hsWords.push(`=disabled=${userData.disabled ? 'yes' : 'no'}`);
             if (userData.comment !== undefined) hsWords.push(`=comment=${userData.comment}`);
             if (userData.limitUptime) hsWords.push(`=limit-uptime=${userData.limitUptime}`);
-            if (userData.limitBytesTotal !== undefined) hsWords.push(`=limit-bytes-total=${userData.limitBytesTotal}`);
+            if (userData.limitBytesTotal !== undefined) {
+              hsWords.push(`=limit-bytes-total=${userData.limitBytesTotal === 0 ? '' : userData.limitBytesTotal}`);
+            }
             if (userData.actualProfile) hsWords.push(`=profile=${userData.actualProfile}`);
 
             await client.sendSentence(hsWords);
@@ -3584,10 +3592,13 @@ if (command === 'reboot') {
 
         try {
           rawSessions = await fetchRestApi(restOpt, '/user-manager/session');
-        } catch {
+        } catch (err: any) {
+          if (err.message && (err.message.includes('انتهت مهلة') || err.message.includes('فشل الاتصال'))) throw err;
           try {
             rawSessions = await fetchRestApi(restOpt, '/tool/user-manager/session');
-          } catch {}
+          } catch (err2: any) {
+            if (err2.message && (err2.message.includes('انتهت مهلة') || err2.message.includes('فشل الاتصال'))) throw err2;
+          }
         }
 
         try {
