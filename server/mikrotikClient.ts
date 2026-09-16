@@ -3418,7 +3418,7 @@ if (command === 'reboot') {
             if (userData.disabled !== undefined) v6Body.disabled = userData.disabled ? 'true' : 'false';
             if (userData.comment !== undefined) v6Body.comment = userData.comment;
             if (userData.limitUptime) v6Body['limit-uptime'] = userData.limitUptime;
-            if (userData.limitBytesTotal !== undefined) v6Body['limit-bytes-total'] = userData.limitBytesTotal === 0 ? '' : String(userData.limitBytesTotal);
+            if (userData.limitBytesTotal !== undefined) v6Body['limit-bytes-total'] = String(userData.limitBytesTotal);
             if (userData.actualProfile) v6Body['actual-profile'] = userData.actualProfile;
 
             await fetchRestApi(restOpt, `/tool/user-manager/user/${encodeURIComponent(targetId)}`, 'PATCH', v6Body);
@@ -3432,7 +3432,7 @@ if (command === 'reboot') {
               if (userData.disabled !== undefined) hsBody.disabled = userData.disabled ? 'true' : 'false';
               if (userData.comment !== undefined) hsBody.comment = userData.comment;
               if (userData.limitUptime) hsBody['limit-uptime'] = userData.limitUptime;
-              if (userData.limitBytesTotal !== undefined) hsBody['limit-bytes-total'] = userData.limitBytesTotal === 0 ? '' : String(userData.limitBytesTotal);
+              if (userData.limitBytesTotal !== undefined) hsBody['limit-bytes-total'] = String(userData.limitBytesTotal);
               if (userData.actualProfile) hsBody.profile = userData.actualProfile;
 
               await fetchRestApi(restOpt, `/ip/hotspot/user/${encodeURIComponent(targetId)}`, 'PATCH', hsBody);
@@ -3510,7 +3510,7 @@ if (command === 'reboot') {
           if (userData.comment !== undefined) v6Words.push(`=comment=${userData.comment}`);
           if (userData.limitUptime) v6Words.push(`=limit-uptime=${userData.limitUptime}`);
           if (userData.limitBytesTotal !== undefined) {
-            v6Words.push(`=limit-bytes-total=${userData.limitBytesTotal === 0 ? '' : userData.limitBytesTotal}`);
+            v6Words.push(`=limit-bytes-total=${userData.limitBytesTotal}`);
           }
 
           await client.sendSentence(v6Words);
@@ -3537,7 +3537,7 @@ if (command === 'reboot') {
             if (userData.comment !== undefined) hsWords.push(`=comment=${userData.comment}`);
             if (userData.limitUptime) hsWords.push(`=limit-uptime=${userData.limitUptime}`);
             if (userData.limitBytesTotal !== undefined) {
-              hsWords.push(`=limit-bytes-total=${userData.limitBytesTotal === 0 ? '' : userData.limitBytesTotal}`);
+              hsWords.push(`=limit-bytes-total=${userData.limitBytesTotal}`);
             }
             if (userData.actualProfile) hsWords.push(`=profile=${userData.actualProfile}`);
 
