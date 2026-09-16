@@ -607,10 +607,11 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
                             onDeleteOrder(order.id);
                           }
                         }}
-                        className="p-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold transition flex items-center justify-center border border-red-500/20"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold transition border border-red-500/20"
                         title="حذف الطلب نهائياً"
                       >
                         <Trash2 className="w-4 h-4" />
+                        <span>حذف</span>
                       </button>
                     )}
 

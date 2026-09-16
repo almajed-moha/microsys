@@ -60,6 +60,7 @@ interface DashboardViewProps {
   onPrintSaleReceipt: (sale: SalesRecord) => void;
   onOpenIncomeStatement?: () => void;
   onOpenFinancialExport?: () => void;
+  onOpenClientStatement?: () => void;
   canViewIncomeStatement?: boolean;
 }
 
@@ -79,6 +80,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenAI,
   onOpenIncomeStatement,
   onOpenFinancialExport,
+  onOpenClientStatement,
   canViewIncomeStatement = true,
 }) => {
   const currency = settings?.currencySymbol || 'ر.ي';
@@ -276,6 +278,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             >
               <Calculator className="w-4 h-4" />
               <span>قائمة الدخل</span>
+            </button>
+          )}
+          {canViewIncomeStatement && onOpenClientStatement && (
+            <button
+              onClick={onOpenClientStatement}
+              className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium transition cursor-pointer border border-slate-700"
+            >
+              <FileText className="w-4 h-4 text-emerald-400" />
+              <span>تقرير المديونيات</span>
             </button>
           )}
           <button

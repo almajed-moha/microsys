@@ -25,6 +25,7 @@ import {
   LoginView,
   AccessDeniedView,
   IncomeStatementModal,
+  ClientStatementReportModal,
   FinancialExportModal,
   GlobalSearchModal,
   POSPortalView,
@@ -515,6 +516,7 @@ export default function App() {
   const [isDatabaseBackupOpen, setIsDatabaseBackupOpen] = useState(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isIncomeStatementOpen, setIsIncomeStatementOpen] = useState(false);
+  const [isClientStatementOpen, setIsClientStatementOpen] = useState(false);
   const [isFinancialExportModalOpen, setIsFinancialExportModalOpen] = useState(false);
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [quickSalePOSId, setQuickSalePOSId] = useState<string | undefined>(undefined);
@@ -3033,6 +3035,7 @@ export default function App() {
                   onOpenAI={() => setIsAIModalOpen(true)}
                   onPrintSaleReceipt={(sale) => setSelectedSaleForReceipt(sale)}
                   onOpenIncomeStatement={() => setIsIncomeStatementOpen(true)}
+                  onOpenClientStatement={() => setIsClientStatementOpen(true)}
                   canViewIncomeStatement={hasPermission(activeUser, 'dashboard', 'viewIncomeStatement', currentTenant)}
                 />
               )}
@@ -3498,6 +3501,19 @@ export default function App() {
           activeUser={activeUser}
           canPrint={hasPermission(activeUser, 'dashboard', 'printIncomeStatement', currentTenant)}
           onClose={() => setIsIncomeStatementOpen(false)}
+        />
+      )}
+
+      {/* 9.1 Client Debts and Profits Report */}
+      {isClientStatementOpen && (
+        <ClientStatementReportModal
+          isOpen={isClientStatementOpen}
+          onClose={() => setIsClientStatementOpen(false)}
+          posPoints={scopedPOSPoints}
+          customers={scopedCustomers}
+          invoices={scopedInvoices}
+          payments={scopedPayments}
+          settings={settings}
         />
       )}
 
