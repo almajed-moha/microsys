@@ -87,6 +87,9 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
   const [rejectingOrder, setRejectingOrder] = useState<CardOrder | null>(null);
   const [rejectionReason, setRejectionReason] = useState<string>('');
 
+  // Delete Modal State
+  const [deletingOrder, setDeletingOrder] = useState<CardOrder | null>(null);
+
   // Admin Processing Notes Modal
   const [processingOrder, setProcessingOrder] = useState<CardOrder | null>(null);
   const [processingNotes, setProcessingNotes] = useState<string>('');
@@ -602,10 +605,10 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
                     {onDeleteOrder && hasPermission(activeUser, 'orders', 'deleteOrder') && (
                       <button
                         type="button"
-                        onClick={() => {
-                          if (window.confirm('هل أنت متأكد من حذف هذا الطلب نهائياً؟')) {
-                            onDeleteOrder(order.id);
-                          }
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDeletingOrder(order);
                         }}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold transition border border-red-500/20"
                         title="حذف الطلب نهائياً"
@@ -701,6 +704,52 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Modal: Delete Order Confirmation */}
+      {deletingOrder && onDeleteOrder && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-slate-900 rounded-2xl border border-red-500/20 max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-black text-lg text-white flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-red-500" />
+                <span>تأكيد الحذف النهائي</span>
+              </h3>
+              <button
+                onClick={() => setDeletingOrder(null)}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <p className="text-sm text-slate-300">
+              هل أنت متأكد من رغبتك في حذف طلب الكروت رقم <strong className="text-white">{deletingOrder.orderNumber}</strong> لنقطة البيع <strong className="text-white">{deletingOrder.posPointName}</strong> نهائياً؟
+            </p>
+            <p className="text-xs text-red-400 bg-red-500/10 p-3 rounded-xl border border-red-500/20">
+              تحذير: هذا الإجراء لا يمكن التراجع عنه، وسيتم مسح الطلب من السجلات بشكل كامل.
+            </p>
+            
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setDeletingOrder(null)}
+                className="px-4 py-2 rounded-xl text-slate-300 bg-slate-800 hover:bg-slate-700 font-bold text-sm transition"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={() => {
+                  onDeleteOrder(deletingOrder.id);
+                  setDeletingOrder(null);
+                }}
+                className="px-4 py-2 rounded-xl text-white bg-red-600 hover:bg-red-500 font-black text-sm shadow-md shadow-red-600/25 transition flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>تأكيد الحذف</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

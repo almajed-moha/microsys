@@ -1693,14 +1693,20 @@ export default function App() {
   };
 
   const handleDeleteOrder = (orderId: string) => {
+    console.log('[DEBUG] handleDeleteOrder called with id:', orderId);
     const target = orders.find((o) => o.id === orderId);
-    if (!target) return;
+    if (!target) {
+      console.warn('[DEBUG] Order target not found in orders array for id:', orderId);
+      return;
+    }
+    console.log('[DEBUG] Target order found:', target);
 
     deleteDocumentFromFirestore(STORAGE_KEYS.ORDERS, orderId);
 
     setOrders((prev) => {
       const next = prev.filter((ord) => ord.id !== orderId);
       saveData(STORAGE_KEYS.ORDERS, next);
+      console.log('[DEBUG] Orders updated locally. New length:', next.length);
       return next;
     });
 
