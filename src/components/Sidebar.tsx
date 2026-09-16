@@ -200,7 +200,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       permissionModule: 'orders' as const,
       label: 'طلبات الكروت الواردة',
       icon: ShoppingBag,
-      badge: pendingOrdersCount > 0 ? `${pendingOrdersCount} جديد ⚡` : `${ordersCount}`,
+      badge: pendingOrdersCount > 0 ? (
+        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.3)]">
+          {pendingOrdersCount} معلق
+        </span>
+      ) : (
+        `${ordersCount}`
+      ),
       color: 'text-amber-400',
       activeBg: 'bg-amber-600 text-white shadow-lg shadow-amber-600/30',
     },
