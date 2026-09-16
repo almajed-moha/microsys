@@ -85,7 +85,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       ? (selectedPOS?.currentDebt || 0)
       : (selectedCustomer?.balance || 0);
 
-  const remainingAfterPayment = Math.max(0, currentDebt - (Number(formData.amount) || 0));
+  const remainingAfterPayment = currentDebt - (Number(formData.amount) || 0);
 
   const handleOpenAdd = (entityId?: string, targetEntityType: 'pos' | 'customer' = 'pos') => {
     setEditingPayment(null);

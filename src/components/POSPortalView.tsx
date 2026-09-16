@@ -185,7 +185,7 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
     const totalPaid = posPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
     if (posInvoices.length > 0 || posPayments.length > 0) {
-      return Math.max(0, (totalSales - totalReturns) - totalPaid);
+      return (totalSales - totalReturns) - totalPaid;
     }
     return Number(currentPos.currentDebt || 0);
   }, [currentPos, posInvoices, posPayments]);

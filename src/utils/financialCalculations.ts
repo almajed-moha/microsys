@@ -681,7 +681,7 @@ export function calculatePOSBalance(
   );
 
   const netDeliveries = totalWholesaleSales - totalReturns;
-  const currentDebt = Math.max(0, netDeliveries - totalPaid);
+  const currentDebt = netDeliveries - totalPaid;
 
   return {
     totalWholesaleSales,

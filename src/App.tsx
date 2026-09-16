@@ -1216,7 +1216,7 @@ export default function App() {
       return safePOS.map((pos) => {
         if (!pos) return pos;
         const balance = calculatePOSBalance(pos.id, safeSales, safePayments, dispatches, safeInvoices);
-        const currentDebt = Math.max(0, balance.currentDebt);
+        const currentDebt = balance.currentDebt;
         return {
           ...pos,
           currentDebt,

@@ -69,7 +69,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       ? (selectedPOS?.currentDebt || 0)
       : (selectedCustomer?.balance || 0);
 
-  const remainingAfterPayment = Math.max(0, currentDebt - (Number(amount) || 0));
+  const remainingAfterPayment = currentDebt - (Number(amount) || 0);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
