@@ -449,10 +449,10 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
           {/* Current Debt */}
           <div className="bg-slate-950 rounded-lg p-4 border border-slate-800">
             <div className="flex items-center justify-between text-sm font-medium text-slate-400 mb-2">
-              <span>المديونية الحالية</span>
+              <span>{currentDebt < 0 ? 'رصيد دائن لك' : 'المديونية الحالية'}</span>
             </div>
-            <div className="text-2xl font-bold text-amber-400 tracking-tight">
-              {(currentDebt ?? 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">{settings.currencySymbol}</span>
+            <div className={`text-2xl font-bold tracking-tight ${currentDebt < 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {Math.abs(currentDebt ?? 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">{settings.currencySymbol}</span>
             </div>
             <div className="text-xs text-slate-500 mt-2">
               سقف الدين: {maxDebt > 0 ? `${(maxDebt ?? 0).toLocaleString()} ${settings.currencySymbol}` : 'مفتوح'}
@@ -1185,9 +1185,11 @@ export const POSPortalView: React.FC<POSPortalViewProps> = ({
           {/* Summary Card */}
           <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <span className="text-xs text-slate-400 block mb-1">الرصيد المستحق الحالي</span>
-              <div className="text-2xl font-black text-amber-400">
-                {(currentDebt ?? 0).toLocaleString()} <span className="text-sm font-normal text-slate-400">{settings.currencySymbol}</span>
+              <span className="text-xs text-slate-400 block mb-1">
+                {currentDebt < 0 ? 'رصيد دائن لك' : 'الرصيد المستحق الحالي'}
+              </span>
+              <div className={`text-2xl font-black ${currentDebt < 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {Math.abs(currentDebt ?? 0).toLocaleString()} <span className="text-sm font-normal text-slate-400">{settings.currencySymbol}</span>
               </div>
             </div>
 

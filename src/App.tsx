@@ -626,6 +626,31 @@ export default function App() {
     saveData(STORAGE_KEYS.POS_POINTS, posPoints);
   }, [posPoints]);
 
+  // Master synchronization effect to ensure 100% data consistency for all POS debts
+  useEffect(() => {
+    setPosPoints((prev) => {
+      let hasChanges = false;
+      const synchronized = prev.map((pos) => {
+        const balance = calculatePOSBalance(pos.id, sales, payments, dispatches, invoices);
+        if (
+          pos.currentDebt !== balance.currentDebt ||
+          pos.totalCashPaid !== balance.totalPaid ||
+          pos.totalCardsDelivered !== balance.totalCardsDelivered
+        ) {
+          hasChanges = true;
+          return {
+            ...pos,
+            currentDebt: balance.currentDebt,
+            totalCashPaid: balance.totalPaid,
+            totalCardsDelivered: balance.totalCardsDelivered,
+          };
+        }
+        return pos;
+      });
+      return hasChanges ? synchronized : prev;
+    });
+  }, [invoices, sales, payments, dispatches]);
+
   useEffect(() => {
     saveData(STORAGE_KEYS.EXPENSES, expenses);
   }, [expenses]);
@@ -3119,6 +3144,7 @@ export default function App() {
                   categories={scopedCategories}
                   dispatches={scopedDispatches}
                   sales={scopedSales}
+                  invoices={scopedInvoices}
                   payments={scopedPayments}
                   settings={settings}
                   allUsers={users}

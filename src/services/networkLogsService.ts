@@ -187,6 +187,25 @@ export const incrementDailyNetworkLog = async (
   await setDoc(docRef, updatePayload, { merge: true });
 };
 
+export interface CumulativeSnapshot {
+  lastUpdated: string;
+  users: Record<string, { bytesIn: number; bytesOut: number }>;
+}
+
+export const getCumulativeSnapshot = async (): Promise<CumulativeSnapshot | null> => {
+  const docRef = doc(db, COLLECTION_NAME, 'cumulative_snapshot');
+  const snapshot = await getDoc(docRef);
+  if (snapshot.exists()) {
+    return snapshot.data() as CumulativeSnapshot;
+  }
+  return null;
+};
+
+export const saveCumulativeSnapshot = async (snapshotData: CumulativeSnapshot): Promise<void> => {
+  const docRef = doc(db, COLLECTION_NAME, 'cumulative_snapshot');
+  await setDoc(docRef, snapshotData, { merge: false });
+};
+
 export const syncReconstructedDayLog = async (
   date: string,
   downloadBytes: number,

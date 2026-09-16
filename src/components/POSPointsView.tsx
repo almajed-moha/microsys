@@ -46,6 +46,7 @@ import {
   NetworkSettings,
   AppUser,
   NetworkTenant,
+  InvoiceRecord,
 } from '../types';
 import { calculatePOSInventory, calculatePOSBalance } from '../utils/storage';
 import { exportElementToPdf } from '../utils/pdfExport';
@@ -57,6 +58,7 @@ interface POSPointsViewProps {
   categories: CardCategory[];
   dispatches: CardBatchDispatch[];
   sales: SalesRecord[];
+  invoices: InvoiceRecord[];
   payments: PaymentRecord[];
   settings: NetworkSettings;
   allUsers?: AppUser[];
@@ -76,6 +78,7 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
   categories,
   dispatches,
   sales,
+  invoices,
   payments,
   settings,
   allUsers = [],
@@ -327,20 +330,24 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
 
   // Overall POS summary
   const summary = useMemo(() => {
-    const totalDebt = (posPoints || []).reduce((acc, p) => acc + (p?.currentDebt || 0), 0);
+    let totalDebt = 0;
     const activeCount = (posPoints || []).filter((p) => p?.status === 'active').length;
     let totalCardsSold = 0;
     let totalCardsRemaining = 0;
 
     (posPoints || []).forEach((p) => {
       if (!p) return;
-      const inv = calculatePOSInventory(p.id, dispatches, sales);
+      const inv = calculatePOSInventory(p.id, dispatches, sales, invoices);
+      const balance = calculatePOSBalance(p.id, sales, payments, dispatches, invoices);
+      if (balance.currentDebt > 0) {
+        totalDebt += balance.currentDebt;
+      }
       totalCardsSold += inv?.totalSold || 0;
       totalCardsRemaining += inv?.totalRemaining || 0;
     });
 
     return { totalDebt, activeCount, totalCardsSold, totalCardsRemaining };
-  }, [posPoints, dispatches, sales]);
+  }, [posPoints, dispatches, sales, invoices, payments]);
 
   const handleExportPdf = async () => {
     setIsExportingPdf(true);
@@ -577,9 +584,10 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {filteredPOS.map((pos) => {
-                  const inv = calculatePOSInventory(pos.id, dispatches, sales);
+                  const inv = calculatePOSInventory(pos.id, dispatches, sales, invoices);
+                  const balance = calculatePOSBalance(pos.id, sales, payments, dispatches, invoices);
                   const maxDebt = pos.maxDebtLimit || 0;
-                  const currentDebt = pos.currentDebt || 0;
+                  const currentDebt = balance.currentDebt || 0;
                   const isOverDebt = maxDebt > 0 && currentDebt > maxDebt;
                   const debtPercentage = maxDebt > 0 ? (currentDebt / maxDebt) * 100 : 0;
                   const excessAmount = Math.max(0, currentDebt - maxDebt);
@@ -670,8 +678,13 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
                             ? 'text-amber-400'
                             : 'text-emerald-400'
                         }`}>
-                          {currentDebt.toLocaleString()} <span className="text-[10px] font-sans text-slate-400">{settings.currencySymbol}</span>
+                          {Math.abs(currentDebt).toLocaleString()} <span className="text-[10px] font-sans text-slate-400">{settings.currencySymbol}</span>
                         </div>
+                        {currentDebt < 0 && (
+                          <div className="text-[10px] font-bold text-emerald-400 mt-0.5">
+                            رصيد دائن (له)
+                          </div>
+                        )}
                         {isOverDebt && (
                           <div className="text-[10px] font-bold text-rose-400 mt-0.5">
                             مستحق التوريد فوراً
@@ -822,9 +835,10 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
       {viewMode === 'grid' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {filteredPOS.map((pos) => {
-            const inv = calculatePOSInventory(pos.id, dispatches, sales);
+            const inv = calculatePOSInventory(pos.id, dispatches, sales, invoices);
+            const balance = calculatePOSBalance(pos.id, sales, payments, dispatches, invoices);
             const maxDebt = pos.maxDebtLimit || 0;
-            const currentDebt = pos.currentDebt || 0;
+            const currentDebt = balance.currentDebt || 0;
             const isOverDebt = maxDebt > 0 && currentDebt > maxDebt;
             const debtPercentage = maxDebt > 0 ? (currentDebt / maxDebt) * 100 : 0;
             const excessAmount = Math.max(0, currentDebt - maxDebt);
@@ -944,7 +958,9 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
                       : 'bg-slate-800/60 border-slate-700/50'
                   }`}>
                     <div className="flex items-center justify-between text-xs mb-1.5">
-                      <span className="font-semibold text-slate-400">الرصيد المتبقي (المديونية):</span>
+                      <span className="font-semibold text-slate-400">
+                        {(pos.currentDebt || 0) < 0 ? 'رصيد دائن (دفعة مقدمة):' : 'الرصيد المتبقي (المديونية):'}
+                      </span>
                       <span
                         className={`font-mono font-black text-sm ${
                           isOverDebt
@@ -954,7 +970,7 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
                             : 'text-emerald-400'
                         }`}
                       >
-                        {(pos.currentDebt ?? 0).toLocaleString()} {settings.currencySymbol}
+                        {Math.abs(pos.currentDebt ?? 0).toLocaleString()} {settings.currencySymbol}
                       </span>
                     </div>
 
@@ -1265,8 +1281,9 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
 
       {/* Delete POS Confirmation Modal */}
       {deletingPOS && (() => {
-        const inv = calculatePOSInventory(deletingPOS.id, dispatches, sales);
-        const hasUnsettledActivity = (deletingPOS.currentDebt || 0) > 0 || (inv?.totalRemaining || 0) > 0;
+        const inv = calculatePOSInventory(deletingPOS.id, dispatches, sales, invoices);
+        const balance = calculatePOSBalance(deletingPOS.id, sales, payments, dispatches, invoices);
+        const hasUnsettledActivity = (balance.currentDebt || 0) > 0 || (inv?.totalRemaining || 0) > 0;
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 animate-fade-in">

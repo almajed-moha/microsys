@@ -59,6 +59,34 @@ const formatBytes = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
+const parseMikrotikUptimeToSeconds = (uptime?: string): number => {
+  if (!uptime) return 0;
+  let totalSec = 0;
+  
+  const matchW = uptime.match(/(\d+)w/);
+  const matchD = uptime.match(/(\d+)d/);
+  const matchH = uptime.match(/(\d+)h/);
+  const matchM = uptime.match(/(\d+)m/);
+  const matchS = uptime.match(/(\d+)s/);
+
+  if (matchW) totalSec += parseInt(matchW[1]) * 7 * 24 * 3600;
+  if (matchD) totalSec += parseInt(matchD[1]) * 24 * 3600;
+  if (matchH) totalSec += parseInt(matchH[1]) * 3600;
+  if (matchM) totalSec += parseInt(matchM[1]) * 60;
+  if (matchS) totalSec += parseInt(matchS[1]);
+
+  if (uptime.includes(':')) {
+    const parts = uptime.split(/[wd ]/).filter(Boolean).pop()?.split(':') || [];
+    if (parts.length === 3) {
+      totalSec += parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
+    } else if (parts.length === 2) {
+       totalSec += parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    }
+  }
+
+  return totalSec;
+};
+
 export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps> = ({
   isOpen,
   onClose,
@@ -133,7 +161,12 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
             const hasQuota = Boolean(u.limitBytesTotal && u.limitBytesTotal > 0);
             const isQuotaExpired = hasQuota && used >= (u.limitBytesTotal || 0);
 
-            if (isQuotaExpired) {
+            const limitUptimeSec = parseMikrotikUptimeToSeconds(u.limitUptime);
+            const usedUptimeSec = parseMikrotikUptimeToSeconds(u.uptimeUsed);
+            const hasTimeLimit = limitUptimeSec > 0;
+            const isTimeExpired = hasTimeLimit && usedUptimeSec >= limitUptimeSec;
+
+            if (isQuotaExpired || isTimeExpired) {
               itemsMap.set(`um-${u.name}`, {
                 id: u.id || u.name,
                 name: u.name,
@@ -146,7 +179,7 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
                 limitUptime: u.limitUptime,
                 uptimeUsed: u.uptimeUsed,
                 comment: u.comment,
-                expireReason: 'traffic-limit',
+                expireReason: isQuotaExpired ? 'traffic-limit' : 'uptime-limit',
                 lastSeen: u.lastSeen,
               });
             }

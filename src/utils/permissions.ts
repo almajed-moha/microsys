@@ -452,9 +452,9 @@ export function getRoleDefaultPermissions(role: UserRole): UserPermissions {
           view: true,
           createOrder: true,
           processOrder: true,
-          rejectOrder: false,
-          deleteOrder: false,
-      exportOrders: false,
+          rejectOrder: true,
+          deleteOrder: true,
+      exportOrders: true,
         },
         expenses: {
           view: false,
@@ -546,7 +546,7 @@ export function getRoleDefaultPermissions(role: UserRole): UserPermissions {
           createOrder: true,
           processOrder: false,
           rejectOrder: false,
-          deleteOrder: false,
+          deleteOrder: true,
       exportOrders: false,
         },
         expenses: {

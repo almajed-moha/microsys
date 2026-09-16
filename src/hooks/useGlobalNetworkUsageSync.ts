@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { MikroTikConfig, HotspotActiveUser, CardCategory, DataSyncHistoryItem } from '../types';
 import { fetchMikrotikSessions, fetchUserManagerDailyReport } from '../utils/mikrotikApi';
 import { syncCurrentActiveUsersToDailyLog } from './useNetworkUsageTracker';
+import { runCumulativeSync } from './useCumulativeSync';
 import {
   syncReconstructedDayLog,
   getDailyNetworkLog,
@@ -435,12 +436,36 @@ export function useGlobalNetworkUsageSync(
     };
   }, [isEnabled, config?.host, intervalSeconds, runSyncCycle]);
 
-  // Periodic deep reconcile every 10 cycles (e.g. 10 minutes)
+  // Comprehensive Cumulative Sync on Mount & every 10 cycles
+  const hasRunInitialCumulative = useRef(false);
   useEffect(() => {
-    if (cycleCount > 0 && cycleCount % 10 === 0) {
-      reconcileYesterdayAndToday().catch(() => {});
+    if (!config?.host) return;
+    
+    if (!hasRunInitialCumulative.current) {
+      hasRunInitialCumulative.current = true;
+      console.log('Running initial cumulative sync on mount to catch up missed data...');
+      runCumulativeSync(config).then(res => {
+        if (res.success && res.totalAddedBytes && res.totalAddedBytes > 0) {
+          addHistoryItem({
+            timestamp: new Date().toLocaleTimeString('ar-YE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            type: 'auto',
+            success: true,
+            downAddedBytes: res.downAdded,
+            upAddedBytes: res.upAdded,
+            totalAddedBytes: res.totalAddedBytes,
+            activeUsersCount: 0,
+            message: res.message + ' (بعد فتح البرنامج)',
+            durationMs: 0,
+            fastMode: false,
+          });
+          refreshTodayLog();
+        }
+      }).catch(console.error);
+    } else if (cycleCount > 0 && cycleCount % 10 === 0) {
+      // Also run periodically
+      runCumulativeSync(config).catch(console.error);
     }
-  }, [cycleCount, reconcileYesterdayAndToday]);
+  }, [cycleCount, config, refreshTodayLog, addHistoryItem]);
 
   return {
     isEnabled,
