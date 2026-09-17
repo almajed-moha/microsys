@@ -621,6 +621,22 @@ export async function disconnectUserManagerUser(config: Partial<MikroTikConfig>,
 }
 
 // 21b. Update User Manager User (Edit card, password, profile, comment, disabled status)
+export async function assignProfileToUserManagerUser(config: Partial<MikroTikConfig>, username: string, profileName: string): Promise<boolean> {
+  try {
+    const res = await fetch("/api/mikrotik/um/assign-profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ options: config, username, profileName }),
+    });
+    const data = await res.json();
+    return data.success;
+  } catch (error) {
+    console.warn("assignProfileToUserManagerUser error:", error);
+    return false;
+  }
+}
+
+
 export async function updateUserManagerUser(
   config: Partial<MikroTikConfig>,
   userData: {

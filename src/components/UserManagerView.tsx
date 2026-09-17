@@ -81,6 +81,7 @@ import { exportElementToPdf } from '../utils/pdfExport';
 import { UserManagerCardEditModal } from './UserManagerCardEditModal';
 import { UserManagerCardSessionsModal } from './UserManagerCardSessionsModal';
 import { UserManagerDailyUsageReportView } from './UserManagerDailyUsageReportView';
+import { MikrotikExpiredCardsModal } from './MikrotikExpiredCardsModal';
 
 interface UserManagerViewProps {
   settings: NetworkSettings;
@@ -125,6 +126,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
   // Modals for Editing and Sessions
   const [cardToEdit, setCardToEdit] = useState<UserManagerUser | null>(null);
   const [cardForSessions, setCardForSessions] = useState<UserManagerUser | null>(null);
+  const [showExpiredCardsModal, setShowExpiredCardsModal] = useState(false);
 
   // Actions Loading State
   const [isDeletingUser, setIsDeletingUser] = useState(false);
@@ -1037,6 +1039,13 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
             </div>
 
             <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
+              <button
+                onClick={() => setShowExpiredCardsModal(true)}
+                className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold transition flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span className="hidden sm:inline">الكروت المنتهية</span>
+              </button>
               <button
                 onClick={() => setActiveTab('batch')}
                 className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-purple-600/20"
@@ -2774,6 +2783,16 @@ set [find] use-radius=yes radius-accounting=yes`}
         onClose={() => setCardForSessions(null)}
         onEditProfile={(u) => {
           setCardToEdit(u);
+        }}
+      />
+
+      <MikrotikExpiredCardsModal
+        isOpen={showExpiredCardsModal}
+        onClose={() => setShowExpiredCardsModal(false)}
+        config={config}
+        sessions={[]}
+        onCardsDeleted={() => {
+          fetchAllUMData();
         }}
       />
     </div>

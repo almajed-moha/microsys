@@ -25,6 +25,7 @@ import {
 import {
   updateUserManagerUser,
   resetUserManagerUserCounters,
+  assignProfileToUserManagerUser,
   formatBytesToHuman
 } from '../utils/mikrotikApi';
 
@@ -61,6 +62,7 @@ export const UserManagerCardEditModal: React.FC<UserManagerCardEditModalProps> =
 
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [isAssigning, setIsAssigning] = useState(false);
   const [feedback, setFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
   // Sync state when user prop changes
@@ -79,6 +81,24 @@ export const UserManagerCardEditModal: React.FC<UserManagerCardEditModalProps> =
       setFeedback(null);
     }
   }, [user, profiles]);
+
+  const handleAssignProfile = async () => {
+    if (!user || !actualProfile) return;
+    if (!confirm(`هل أنت متأكد من إضافة وتجديد الباقة (${actualProfile}) للكارت (${user.name})؟ هذا سيضيف رصيد الباقة الجديد إلى الكارت.`)) return;
+
+    setIsAssigning(true);
+    setFeedback(null);
+
+    const ok = await assignProfileToUserManagerUser(config, user.name, actualProfile);
+    setIsAssigning(false);
+
+    if (ok) {
+      setFeedback({ success: true, message: `تم إضافة باقة (${actualProfile}) بنجاح إلى الكارت.` });
+      // We don't automatically close so the user sees the success message
+    } else {
+      setFeedback({ success: false, message: 'تعذر إضافة الباقة للكارت بالراوتر.' });
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -259,17 +279,28 @@ export const UserManagerCardEditModal: React.FC<UserManagerCardEditModalProps> =
               </span>
               <span className="text-[11px] text-purple-400">تغيير البروفايل يغير السرعة والحصة</span>
             </label>
-            <select
-              value={actualProfile}
-              onChange={(e) => setActualProfile(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white font-medium focus:outline-none focus:border-purple-500 transition"
-            >
-              {profiles.map((p) => (
-                <option key={p.id || p.name} value={p.name}>
-                  {p.name} {p.nameForUsers ? `— (${p.nameForUsers})` : ''} {p.price ? `[${p.price} ريال]` : ''}
-                </option>
-              ))}
-            </select>
+            <div className="flex gap-2">
+              <select
+                value={actualProfile}
+                onChange={(e) => setActualProfile(e.target.value)}
+                className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white font-medium focus:outline-none focus:border-purple-500 transition"
+              >
+                {profiles.map((p) => (
+                  <option key={p.id || p.name} value={p.name}>
+                    {p.name} {p.nameForUsers ? `— (${p.nameForUsers})` : ''} {p.price ? `[${p.price} ريال]` : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleAssignProfile}
+                disabled={isAssigning}
+                className="flex items-center justify-center bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl px-4 transition disabled:opacity-50"
+                title="إضافة هذه الباقة للكارت كباقة إضافية أو تجديد"
+              >
+                {isAssigning ? <RefreshCw className="w-5 h-5 animate-spin" /> : <span className="text-xl font-bold">+</span>}
+              </button>
+            </div>
           </div>
 
           {/* Status Toggle (Active / Disabled) */}
