@@ -128,8 +128,13 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
             // Also check uptime limit if reached
             const hasTimeLimit = Boolean(u.limitUptime && u.limitUptime !== '0s');
             const isTimeExpired = hasTimeLimit && u.uptime && u.uptime === u.limitUptime;
+            const usedUptimeSec = parseMikrotikUptimeToSeconds(u.uptime);
 
-            if (isQuotaExpired || isTimeExpired) {
+            if (isQuotaExpired || isTimeExpired || u.disabled) {
+              if (u.disabled && !isQuotaExpired && !isTimeExpired && used === 0 && usedUptimeSec === 0) {
+                  continue;
+              }
+
               itemsMap.set(`hs-${u.name}`, {
                 id: u.id || u.name,
                 name: u.name,
@@ -142,7 +147,7 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
                 limitUptime: u.limitUptime,
                 uptimeUsed: u.uptime,
                 comment: u.comment,
-                expireReason: isQuotaExpired ? 'traffic-limit' : 'uptime-limit',
+                expireReason: isQuotaExpired ? 'traffic-limit' : (isTimeExpired ? 'uptime-limit' : 'manual'),
                 lastSeen: undefined,
               });
             }
@@ -155,6 +160,7 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
       // 2. Check User Manager users if available
       try {
         const umUsers = await fetchUserManagerUsers(config);
+        console.log("UM Users count:", umUsers?.length);
         if (Array.isArray(umUsers)) {
           for (const u of umUsers) {
             const used = (u.downloadUsed || 0) + (u.uploadUsed || 0) || (u.totalBytes || 0);
@@ -166,7 +172,22 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
             const hasTimeLimit = limitUptimeSec > 0;
             const isTimeExpired = hasTimeLimit && usedUptimeSec >= limitUptimeSec;
 
-            if (isQuotaExpired || isTimeExpired) {
+            if (u.name === 'UM-88405' || u.name === 'UM-88402') {
+                console.log(`Checking user: ${u.name}, used: ${used}, limitBytesTotal: ${u.limitBytesTotal}, hasQuota: ${hasQuota}, isQuotaExpired: ${isQuotaExpired}`);
+                console.log(`Checking user: ${u.name}, limitUptimeSec: ${limitUptimeSec}, usedUptimeSec: ${usedUptimeSec}, hasTimeLimit: ${hasTimeLimit}, isTimeExpired: ${isTimeExpired}`);
+            }
+
+            if (isQuotaExpired || isTimeExpired || u.disabled) {
+              // Ignore newly created disabled cards that have NO usage at all (if preferred),
+              // but usually we want to see all disabled cards so we can clean them up.
+              // However, if a card has 0 usage and is disabled, it might be a new card the admin disabled.
+              // We will only include it if it's expired by quota/time, OR (it is disabled AND has some usage).
+              // Wait, the user might want to delete ALL disabled cards. Let's include them.
+              if (u.disabled && !isQuotaExpired && !isTimeExpired && used === 0 && usedUptimeSec === 0) {
+                  // Skip brand new unused cards that are disabled
+                  continue;
+              }
+
               itemsMap.set(`um-${u.name}`, {
                 id: u.id || u.name,
                 name: u.name,
@@ -179,7 +200,7 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
                 limitUptime: u.limitUptime,
                 uptimeUsed: u.uptimeUsed,
                 comment: u.comment,
-                expireReason: isQuotaExpired ? 'traffic-limit' : 'uptime-limit',
+                expireReason: isQuotaExpired ? 'traffic-limit' : (isTimeExpired ? 'uptime-limit' : 'manual'),
                 lastSeen: u.lastSeen,
               });
             }
@@ -623,10 +644,15 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
                               <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
                               نفذ رصيد البيانات (Quota)
                             </span>
-                          ) : (
+                          ) : card.expireReason === 'uptime-limit' ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
                               <Clock size={11} />
                               انتهى وقت الصلاحية
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
+                              <ShieldAlert size={11} />
+                              الكارت معطل (Disabled)
                             </span>
                           )}
                         </td>
