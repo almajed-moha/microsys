@@ -83,6 +83,34 @@ import { UserManagerCardSessionsModal } from './UserManagerCardSessionsModal';
 import { UserManagerDailyUsageReportView } from './UserManagerDailyUsageReportView';
 import { MikrotikExpiredCardsModal } from './MikrotikExpiredCardsModal';
 
+const parseMikrotikUptimeToSeconds = (uptime?: string): number => {
+  if (!uptime) return 0;
+  let totalSec = 0;
+  
+  const matchW = uptime.match(/(\d+)w/);
+  const matchD = uptime.match(/(\d+)d/);
+  const matchH = uptime.match(/(\d+)h/);
+  const matchM = uptime.match(/(\d+)m/);
+  const matchS = uptime.match(/(\d+)s/);
+
+  if (matchW) totalSec += parseInt(matchW[1]) * 7 * 24 * 3600;
+  if (matchD) totalSec += parseInt(matchD[1]) * 24 * 3600;
+  if (matchH) totalSec += parseInt(matchH[1]) * 3600;
+  if (matchM) totalSec += parseInt(matchM[1]) * 60;
+  if (matchS) totalSec += parseInt(matchS[1]);
+
+  if (uptime.includes(':')) {
+    const parts = uptime.split(/[wd ]/).filter(Boolean).pop()?.split(':') || [];
+    if (parts.length === 3) {
+      totalSec += parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
+    } else if (parts.length === 2) {
+       totalSec += parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    }
+  }
+
+  return totalSec;
+};
+
 interface UserManagerViewProps {
   settings: NetworkSettings;
   config: MikroTikConfig;
@@ -118,7 +146,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
   // Search & Filters
   const [userSearch, setUserSearch] = useState('');
   const [profileFilter, setProfileFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active_now' | 'has_usage' | 'unused' | 'disabled'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active_now' | 'has_usage' | 'unused' | 'disabled' | 'expired'>('all');
   const [userSortBy, setUserSortBy] = useState<'name' | 'usage_desc' | 'uptime_desc'>('usage_desc');
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -703,8 +731,19 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
       
       let matchesStatus = true;
       const totalBytes = u.totalBytes || ((u.downloadUsed || 0) + (u.uploadUsed || 0));
+
+      const hasQuota = Boolean(u.limitBytesTotal && u.limitBytesTotal > 0);
+      const isQuotaExpired = hasQuota && totalBytes >= (u.limitBytesTotal || 0);
+      const limitUptimeSec = parseMikrotikUptimeToSeconds(u.limitUptime);
+      const usedUptimeSec = parseMikrotikUptimeToSeconds(u.uptimeUsed);
+      const hasTimeLimit = limitUptimeSec > 0;
+      const isTimeExpired = hasTimeLimit && usedUptimeSec >= limitUptimeSec;
+      const isExpired = isQuotaExpired || isTimeExpired;
+
       if (statusFilter === 'disabled') {
-        matchesStatus = Boolean(u.disabled);
+        matchesStatus = Boolean(u.disabled) && !isExpired;
+      } else if (statusFilter === 'expired') {
+        matchesStatus = isExpired;
       } else if (statusFilter === 'has_usage') {
         matchesStatus = totalBytes > 0;
       } else if (statusFilter === 'unused') {
@@ -1023,7 +1062,8 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                 <option value="active_now">نشطة وغير معطلة</option>
                 <option value="has_usage">كروت سحبت بيانات</option>
                 <option value="unused">كروت جديدة لم تُستخدم</option>
-                <option value="disabled">كروت معطلة</option>
+                <option value="disabled">كروت معطلة يدوياً</option>
+                <option value="expired">كروت منتهية (رصيد/وقت)</option>
               </select>
 
               {/* Sort By */}
@@ -1089,8 +1129,15 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                   ) : (
                     filteredUsers.map((u, idx) => {
                       const totalBytes = u.totalBytes || ((u.downloadUsed || 0) + (u.uploadUsed || 0));
-                      const hasLimit = u.limitBytesTotal && u.limitBytesTotal > 0;
-                      const percentUsed = hasLimit ? Math.min(100, Math.round((totalBytes / u.limitBytesTotal!) * 100)) : null;
+                      const hasLimit = Boolean(u.limitBytesTotal && u.limitBytesTotal > 0);
+                      const percentUsed = hasLimit ? Math.min(100, Math.round((totalBytes / (u.limitBytesTotal as number)) * 100)) : null;
+
+                      const isQuotaExpired = hasLimit && totalBytes >= (u.limitBytesTotal || 0);
+                      const limitUptimeSec = parseMikrotikUptimeToSeconds(u.limitUptime);
+                      const usedUptimeSec = parseMikrotikUptimeToSeconds(u.uptimeUsed);
+                      const hasTimeLimit = limitUptimeSec > 0;
+                      const isTimeExpired = hasTimeLimit && usedUptimeSec >= limitUptimeSec;
+                      const isExpired = isQuotaExpired || isTimeExpired;
 
                       return (
                         <tr key={u.id || u.name || `um-user-row-${idx}`} className="hover:bg-slate-800/40 transition">
@@ -1212,12 +1259,16 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
 
                           {/* Status */}
                           <td className="p-3.5">
-                            {u.disabled ? (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                                معطل (Disabled)
+                            {isExpired ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                منتهي ({isQuotaExpired ? 'رصيد' : 'وقت'})
+                              </span>
+                            ) : u.disabled ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                                معطل يدوياً
                               </span>
                             ) : (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                                 نشط (Active)
                               </span>
                             )}
