@@ -33,9 +33,6 @@ export const STORAGE_KEYS = {
   ISP_TRAFFIC_LOGS: 'mikrotik_pos_isp_traffic_logs',
 };
 
-// Unified collections for both desktop and mobile/preview environments to ensure zero desynchronization
-const DEV_PREFIX = '';
-
 export const COLLECTION_MAP: Record<string, string> = {
   [STORAGE_KEYS.USERS]: 'users',
   [STORAGE_KEYS.TENANTS]: 'tenants',
@@ -67,22 +64,56 @@ export function getIsCloudHydrated(): boolean {
   return isCloudHydrated;
 }
 
+// Track deleted IDs across sessions so deleted items are never revived by stale local storage
+const DELETED_IDS_KEY = 'mikrotik_pos_deleted_ids';
+
+function getDeletedIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(DELETED_IDS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function addDeletedId(id: string) {
+  if (typeof window === 'undefined' || !id) return;
+  try {
+    const set = getDeletedIds();
+    set.add(String(id));
+    // Keep only last 2000 deleted IDs to prevent unbounded storage growth
+    const arr = Array.from(set).slice(-2000);
+    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(arr));
+  } catch (e) {
+    console.warn('Failed to save deleted ID:', e);
+  }
+}
+
+function removeDeletedId(id: string) {
+  if (typeof window === 'undefined' || !id) return;
+  try {
+    const set = getDeletedIds();
+    if (set.has(String(id))) {
+      set.delete(String(id));
+      localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(Array.from(set)));
+    }
+  } catch (e) {
+    console.warn('Failed to remove deleted ID:', e);
+  }
+}
+
 /**
  * Detect whether the app is currently running inside Google AI Studio / Development environment.
  */
 export function isStudioDevEnvironment(): boolean {
-  if (typeof window === 'undefined') return false;
-  const host = window.location.hostname || '';
-  return (
-    host.includes('ais-dev-') ||
-    host === 'localhost' ||
-    host === '127.0.0.1' ||
-    localStorage.getItem('mikrotik_pos_disable_cloud_write') === 'true'
-  );
+  return false;
 }
 
 // Global event emitter helper for sync status
-export const emitSyncStatus = (status: 'syncing' | 'synced' | 'error' | 'dev-locked') => {
+export const emitSyncStatus = (status: 'syncing' | 'synced' | 'error' | 'dev-locked' | 'online') => {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('cloud-sync-status', { detail: status }));
   }
@@ -93,27 +124,73 @@ export function setIsReceivingRemote(status: boolean) {
 }
 
 /**
+ * Immediately save or update a single document in Firestore with full sanitization.
+ * Guarantees real-time persistence across all devices without waiting for batch sync.
+ */
+export async function saveDocumentToFirestore(storageKey: string, item: any): Promise<boolean> {
+  const collectionName = COLLECTION_MAP[storageKey];
+  if (!collectionName || !db || !item || !item.id) return false;
+
+  const docId = String(item.id);
+  removeDeletedId(docId);
+
+  try {
+    emitSyncStatus('syncing');
+    await ensureAuthenticatedSession();
+    const docRef = doc(db, collectionName, docId);
+
+    const dataToSave = { ...item };
+    // Sanitize undefined values for Firestore compatibility
+    Object.keys(dataToSave).forEach((key) => {
+      if (dataToSave[key] === undefined) delete dataToSave[key];
+    });
+
+    await setDoc(docRef, dataToSave, { merge: true });
+
+    // Update in-memory lastKnownState
+    if (!lastKnownState[storageKey]) lastKnownState[storageKey] = [];
+    const idx = lastKnownState[storageKey].findIndex((x) => String(x?.id) === docId);
+    if (idx >= 0) {
+      lastKnownState[storageKey][idx] = { ...dataToSave };
+    } else {
+      lastKnownState[storageKey].push({ ...dataToSave });
+    }
+
+    emitSyncStatus('synced');
+    console.log(`[CloudSync] Document ${docId} successfully saved to ${collectionName}.`);
+    return true;
+  } catch (err) {
+    console.error(`[CloudSync] Error saving document ${docId} to ${collectionName}:`, err);
+    emitSyncStatus('error');
+    return false;
+  }
+}
+
+/**
  * Permanently delete an individual document from Firestore and update memory tracking state
  */
 export async function deleteDocumentFromFirestore(storageKey: string, docId: string): Promise<boolean> {
   const collectionName = COLLECTION_MAP[storageKey];
   if (!collectionName || !db || !docId) return false;
 
+  const cleanId = String(docId);
+  addDeletedId(cleanId);
+
   // 1. Immediately prune from lastKnownState to prevent diff collision
   if (lastKnownState[storageKey]) {
-    lastKnownState[storageKey] = lastKnownState[storageKey].filter((item) => String(item?.id) !== String(docId));
+    lastKnownState[storageKey] = lastKnownState[storageKey].filter((item) => String(item?.id) !== cleanId);
   }
 
   try {
     emitSyncStatus('syncing');
     await ensureAuthenticatedSession();
-    const docRef = doc(db, collectionName, String(docId));
+    const docRef = doc(db, collectionName, cleanId);
     await deleteDoc(docRef);
-    console.log(`[CloudSync] Document ${docId} permanently deleted from ${collectionName} in Firestore.`);
+    console.log(`[CloudSync] Document ${cleanId} permanently deleted from ${collectionName} in Firestore.`);
     emitSyncStatus('synced');
     return true;
   } catch (err) {
-    console.error(`[CloudSync] Error deleting document ${docId} from ${collectionName}:`, err);
+    console.error(`[CloudSync] Error deleting document ${cleanId} from ${collectionName}:`, err);
     emitSyncStatus('error');
     return false;
   }
@@ -134,6 +211,7 @@ export async function clearCollectionInFirestore(storageKey: string): Promise<vo
     const batch = writeBatch(db);
     let count = 0;
     for (const d of snap.docs) {
+      addDeletedId(d.id);
       batch.delete(d.ref);
       count++;
       if (count === 490) {
@@ -154,7 +232,7 @@ export async function clearCollectionInFirestore(storageKey: string): Promise<vo
 
 /**
  * Synchronize a state array to Firestore
- * Enforces session authentication and atomic batch updates
+ * Enforces session authentication and atomic batch updates with zero-data-loss protection
  */
 export async function syncArrayToFirestore(storageKey: string, currentArray: any[]) {
   // Hydration Lock: Never write to cloud before remote data has finished loading initially
@@ -167,33 +245,44 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
   if (!collectionName || !db || isReceivingRemoteUpdate) return;
   if (!Array.isArray(currentArray)) return;
 
+  // SAFETY GUARD: If currentArray is unexpectedly empty while previously populated,
+  // do NOT wipe the entire collection in Firestore!
+  const previousArray = lastKnownState[storageKey] || [];
+  if (currentArray.length === 0 && previousArray.length > 0) {
+    console.warn(`[CloudSync Safety] Blocked accidental empty wipe for collection ${collectionName}.`);
+    return;
+  }
+
   emitSyncStatus('syncing');
 
   // Ensure client is authenticated before performing operations
   await ensureAuthenticatedSession();
 
-  const previousArray = lastKnownState[storageKey] || [];
-
   // Create maps for lookup
-  const currentMap = new Map(currentArray.map(item => [item?.id || String(Math.random()), item]));
-  const previousMap = new Map(previousArray.map(item => [item?.id, item]));
+  const currentMap = new Map(currentArray.map((item) => [String(item?.id || Math.random()), item]));
+  const previousMap = new Map(previousArray.map((item) => [String(item?.id), item]));
+  const deletedSet = getDeletedIds();
 
   const toAddOrUpdate: any[] = [];
   const toDelete: string[] = [];
 
   // Find added or updated items
   for (const [id, currentItem] of currentMap.entries()) {
-    if (!id) continue;
+    if (!id || id === 'undefined' || id === 'null') continue;
+    // If it was marked as deleted previously, unmark it because it's in active state
+    if (deletedSet.has(id)) {
+      removeDeletedId(id);
+    }
     const previousItem = previousMap.get(id);
     if (!previousItem || JSON.stringify(currentItem) !== JSON.stringify(previousItem)) {
       toAddOrUpdate.push(currentItem);
     }
   }
 
-  // Find deleted items (only if previous state was explicitly tracked and not a partial load)
+  // Find deleted items (ONLY if explicitly tracked in deletedSet to prevent accidental wipe)
   for (const id of previousMap.keys()) {
     if (!id) continue;
-    if (!currentMap.has(id)) {
+    if (!currentMap.has(id) && deletedSet.has(id)) {
       toDelete.push(id);
     }
   }
@@ -211,10 +300,10 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
     for (const item of toAddOrUpdate) {
       if (!item.id) continue;
       const docRef = doc(db, collectionName, String(item.id));
-      
+
       const dataToSave = { ...item };
       // Sanitize undefined values
-      Object.keys(dataToSave).forEach(key => {
+      Object.keys(dataToSave).forEach((key) => {
         if (dataToSave[key] === undefined) delete dataToSave[key];
       });
 
@@ -241,7 +330,7 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
     if (opCount > 0) {
       await batch.commit();
     }
-    
+
     lastKnownState[storageKey] = [...currentArray];
     emitSyncStatus('synced');
   } catch (error) {
@@ -250,13 +339,115 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
   }
 }
 
+// Debounce map for automatic background sync
+const syncTimeouts: Record<string, ReturnType<typeof setTimeout>> = {};
+
+/**
+ * Debounced synchronization of state array to Firestore
+ */
+export function debouncedSyncArrayToFirestore(storageKey: string, currentArray: any[], delay = 800) {
+  if (syncTimeouts[storageKey]) {
+    clearTimeout(syncTimeouts[storageKey]);
+  }
+  syncTimeouts[storageKey] = setTimeout(() => {
+    syncArrayToFirestore(storageKey, currentArray);
+  }, delay);
+}
+
+/**
+ * Intelligent zero-data-loss merge between remote Firestore data and local storage data.
+ * - Never wipes local records if the cloud collection is empty.
+ * - Preserves newly created local records and uploads them to cloud.
+ * - Discards records that were explicitly deleted.
+ */
+export function mergeCloudAndLocal<T extends { id?: string | number }>(
+  storageKey: string,
+  remoteItems: T[] | undefined
+): T[] {
+  const deletedSet = getDeletedIds();
+
+  // 1. Read existing local data from localStorage cache
+  let localItems: T[] = [];
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          localItems = parsed;
+        }
+      }
+    } catch {
+      localItems = [];
+    }
+  }
+
+  // Filter out any explicitly deleted records from local cache
+  localItems = localItems.filter((item) => item?.id && !deletedSet.has(String(item.id)));
+
+  // If remoteItems is not provided, return cleaned local items
+  if (!remoteItems) return localItems;
+
+  // Filter out any explicitly deleted records from remote items
+  const cleanRemoteItems = remoteItems.filter((item) => item?.id && !deletedSet.has(String(item.id)));
+
+  // Case A: Cloud is empty (0 docs in Firestore), but local storage has valid data
+  if (cleanRemoteItems.length === 0) {
+    if (localItems.length > 0) {
+      console.log(`[CloudSync] Cloud collection for ${storageKey} is empty, preserving and seeding ${localItems.length} local items.`);
+      // Immediately push local data to Firestore to seed the cloud
+      syncArrayToFirestore(storageKey, localItems);
+      return localItems;
+    }
+    return [];
+  }
+
+  // Case B: Cloud has items, local storage has 0 items (e.g. brand new device opening shared link)
+  if (localItems.length === 0) {
+    lastKnownState[storageKey] = [...cleanRemoteItems];
+    return cleanRemoteItems;
+  }
+
+  // Case C: Both cloud and local have items -> Merge by ID
+  const remoteMap = new Map(cleanRemoteItems.map((item) => [String(item.id), item]));
+  const merged: T[] = [...cleanRemoteItems];
+  let localItemsToUpload: T[] = [];
+
+  for (const localItem of localItems) {
+    const id = String(localItem?.id);
+    if (!id || deletedSet.has(id)) continue;
+
+    if (!remoteMap.has(id)) {
+      // This is a local item created on this device that has not yet reached the cloud!
+      merged.push(localItem);
+      localItemsToUpload.push(localItem);
+    }
+  }
+
+  // If there were local items not in cloud, immediately upload them so they're permanently saved
+  if (localItemsToUpload.length > 0) {
+    console.log(`[CloudSync] Uploading ${localItemsToUpload.length} locally created items for ${storageKey} to Firestore.`);
+    localItemsToUpload.forEach((item) => {
+      saveDocumentToFirestore(storageKey, item);
+    });
+  }
+
+  lastKnownState[storageKey] = [...merged];
+  return merged;
+}
+
 export async function fetchUsersFromCloud(): Promise<any[]> {
   if (!db) return [];
   await ensureAuthenticatedSession();
   try {
     const snap = await getDocs(collection(db, COLLECTION_MAP[STORAGE_KEYS.USERS]));
     const items: any[] = [];
-    snap.forEach((d) => items.push({ id: d.id, ...d.data() }));
+    const deletedSet = getDeletedIds();
+    snap.forEach((d) => {
+      if (!deletedSet.has(d.id)) {
+        items.push({ id: d.id, ...d.data() });
+      }
+    });
     return items;
   } catch (err) {
     console.warn('Failed to fetch users from cloud:', err);
@@ -272,15 +463,19 @@ export async function syncSettingsToFirestore(settings: any, tenantId?: string):
 
   try {
     await ensureAuthenticatedSession();
-    const effectiveId = (tenantId && tenantId !== 'system') ? tenantId : 'net-612524';
+    const effectiveId = tenantId && tenantId !== 'system' ? tenantId : 'net-612524';
     emitSyncStatus('syncing');
     const tenantDocRef = doc(db, 'tenants', effectiveId);
-    await setDoc(tenantDocRef, {
-      settings: {
-        ...settings,
-        updatedAt: new Date().toISOString(),
+    await setDoc(
+      tenantDocRef,
+      {
+        settings: {
+          ...settings,
+          updatedAt: new Date().toISOString(),
+        },
       },
-    }, { merge: true });
+      { merge: true }
+    );
     console.log(`[CloudSync] Settings successfully synchronized to Firestore for tenant ${effectiveId}.`);
     emitSyncStatus('synced');
   } catch (err) {
@@ -309,7 +504,7 @@ export async function loadSettingsFromFirestore(tenantId?: string): Promise<any 
 }
 
 /**
- * Load all collections from Firestore on startup
+ * Load all collections from Firestore on startup with zero data loss
  */
 export async function loadAllDataFromFirestore(): Promise<Record<string, any> | null> {
   if (!db) return null;
@@ -317,7 +512,7 @@ export async function loadAllDataFromFirestore(): Promise<Record<string, any> | 
   await ensureAuthenticatedSession();
 
   const results: Record<string, any> = {};
-  let totalDocsFound = 0;
+  const deletedSet = getDeletedIds();
 
   try {
     for (const [storageKey, collectionName] of Object.entries(COLLECTION_MAP)) {
@@ -325,18 +520,18 @@ export async function loadAllDataFromFirestore(): Promise<Record<string, any> | 
         const snap = await getDocs(collection(db, collectionName));
         const items: any[] = [];
         snap.forEach((d) => {
-          items.push({ id: d.id, ...d.data() });
+          if (!deletedSet.has(d.id)) {
+            items.push({ id: d.id, ...d.data() });
+          }
         });
         results[storageKey] = items;
-        lastKnownState[storageKey] = [...items];
-        totalDocsFound += items.length;
       } catch (collErr) {
         console.warn(`Could not read collection ${collectionName}:`, collErr);
       }
     }
 
     setCloudHydrated(true);
-    emitSyncStatus(isStudioDevEnvironment() ? 'dev-locked' : 'synced');
+    emitSyncStatus('synced');
     return results;
   } catch (err) {
     console.warn('Failed to load online Firestore data:', err);
@@ -362,14 +557,19 @@ export function subscribeToCloudUpdates(
           collection(db, collectionName),
           (snapshot) => {
             const items: any[] = [];
+            const deletedSet = getDeletedIds();
             snapshot.forEach((d) => {
-              items.push({ id: d.id, ...d.data() });
+              if (!deletedSet.has(d.id)) {
+                items.push({ id: d.id, ...d.data() });
+              }
             });
-            
-            lastKnownState[storageKey] = [...items];
+
+            // Perform intelligent merge with local storage before updating state
+            const resolved = mergeCloudAndLocal(storageKey, items);
+
             setIsReceivingRemote(true);
-            onUpdate(storageKey, items);
-            setTimeout(() => setIsReceivingRemote(false), 200);
+            onUpdate(storageKey, resolved);
+            setTimeout(() => setIsReceivingRemote(false), 300);
           },
           (error) => {
             console.warn(`Live listener error on ${collectionName}:`, error);
@@ -393,9 +593,9 @@ export function subscribeToCloudUpdates(
 export async function forceSyncAllToCloud(dataState: Record<string, any[]>) {
   if (!db) return false;
   await ensureAuthenticatedSession();
-  
+
   for (const [storageKey, items] of Object.entries(dataState)) {
-    if (Array.isArray(items) && COLLECTION_MAP[storageKey]) {
+    if (Array.isArray(items) && COLLECTION_MAP[storageKey] && items.length > 0) {
       await syncArrayToFirestore(storageKey, items);
     }
   }

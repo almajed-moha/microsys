@@ -91,6 +91,10 @@ import {
   forceSyncAllToCloud,
   deleteDocumentFromFirestore,
   clearCollectionInFirestore,
+  saveDocumentToFirestore,
+  debouncedSyncArrayToFirestore,
+  mergeCloudAndLocal,
+  getIsCloudHydrated,
 } from './services/cloudSync';
 import { initialActivityLogs, buildActivityLog } from './utils/auditLogger';
 import { applyCreationAudit, applyUpdateAudit } from './utils/auditTrigger';
@@ -596,34 +600,58 @@ export default function App() {
 
   useEffect(() => {
     saveData(STORAGE_KEYS.SALES, sales);
+    if (getIsCloudHydrated()) {
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.SALES, sales);
+    }
   }, [sales]);
 
   useEffect(() => {
     saveData(STORAGE_KEYS.PAYMENTS, payments);
+    if (getIsCloudHydrated()) {
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.PAYMENTS, payments);
+    }
   }, [payments]);
 
   useEffect(() => {
     saveData(STORAGE_KEYS.SETTINGS, settings);
-  }, [settings]);
+    if (getIsCloudHydrated()) {
+      syncSettingsToFirestore(settings, effectiveTenantId);
+    }
+  }, [settings, effectiveTenantId]);
 
   useEffect(() => {
     saveData(STORAGE_KEYS.USERS, users);
+    if (getIsCloudHydrated()) {
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.USERS, users);
+    }
   }, [users]);
 
   useEffect(() => {
     saveData(STORAGE_KEYS.CUSTOMERS, customers);
+    if (getIsCloudHydrated()) {
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CUSTOMERS, customers);
+    }
   }, [customers]);
 
   useEffect(() => {
     saveData(STORAGE_KEYS.INVOICES, invoices);
+    if (getIsCloudHydrated()) {
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.INVOICES, invoices);
+    }
   }, [invoices]);
 
   useEffect(() => {
     saveData(STORAGE_KEYS.CATEGORIES, categories);
+    if (getIsCloudHydrated()) {
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CATEGORIES, categories);
+    }
   }, [categories]);
 
   useEffect(() => {
     saveData(STORAGE_KEYS.POS_POINTS, posPoints);
+    if (getIsCloudHydrated()) {
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.POS_POINTS, posPoints);
+    }
   }, [posPoints]);
 
   // Master synchronization effect to ensure 100% data consistency for all POS debts
@@ -653,22 +681,37 @@ export default function App() {
 
   useEffect(() => {
     saveData(STORAGE_KEYS.EXPENSES, expenses);
+    if (getIsCloudHydrated()) {
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.EXPENSES, expenses);
+    }
   }, [expenses]);
 
   useEffect(() => {
     saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, expenseCategories);
+    if (getIsCloudHydrated()) {
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.EXPENSE_CATEGORIES, expenseCategories);
+    }
   }, [expenseCategories]);
 
   useEffect(() => {
     saveData(STORAGE_KEYS.DISPATCHES, dispatches);
+    if (getIsCloudHydrated()) {
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.DISPATCHES, dispatches);
+    }
   }, [dispatches]);
 
   useEffect(() => {
     saveData(STORAGE_KEYS.TENANTS, tenants);
+    if (getIsCloudHydrated()) {
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.TENANTS, tenants);
+    }
   }, [tenants]);
 
   useEffect(() => {
     saveData(STORAGE_KEYS.ORDERS, orders);
+    if (getIsCloudHydrated()) {
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.ORDERS, orders);
+    }
   }, [orders]);
 
   useEffect(() => {
@@ -677,6 +720,9 @@ export default function App() {
 
   useEffect(() => {
     saveData(STORAGE_KEYS.ACTIVITY_LOGS, activityLogs);
+    if (getIsCloudHydrated()) {
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.ACTIVITY_LOGS, activityLogs);
+    }
   }, [activityLogs]);
 
   // Online Real-time Cloud Synchronization across all devices (PC, Mobile, Tablets)
@@ -1015,7 +1061,10 @@ export default function App() {
         );
         setUsers(updatedUsers);
         saveData(STORAGE_KEYS.USERS, updatedUsers);
+        const updatedUser = updatedUsers.find((u) => u.networkId === finalTenantToSave.id && u.username === finalTenantToSave.adminUsername);
+        if (updatedUser) saveDocumentToFirestore(STORAGE_KEYS.USERS, updatedUser);
       }
+      saveDocumentToFirestore(STORAGE_KEYS.TENANTS, finalTenantToSave);
     } else {
       const adminExists = users.some(u => (u.username || '').toLowerCase() === (finalTenantToSave.adminUsername || '').toLowerCase());
       if (adminExists) {
@@ -1024,6 +1073,7 @@ export default function App() {
       }
 
       updatedTenants = [...tenants, finalTenantToSave];
+      saveDocumentToFirestore(STORAGE_KEYS.TENANTS, finalTenantToSave);
       
       const newAdmin: AppUser = {
         id: `user-${Date.now()}`,
@@ -1043,6 +1093,7 @@ export default function App() {
       const updatedUsers = [...users, newAdmin];
       setUsers(updatedUsers);
       saveData(STORAGE_KEYS.USERS, updatedUsers);
+      saveDocumentToFirestore(STORAGE_KEYS.USERS, newAdmin);
 
       // Initialize default card categories and expense categories for this new tenant
       const defaultCategoriesForNewTenant: CardCategory[] = [
@@ -1278,6 +1329,7 @@ export default function App() {
     });
 
     setPosPoints((prev) => [...prev, newPos]);
+    saveDocumentToFirestore(STORAGE_KEYS.POS_POINTS, newPos);
 
     // Create synchronized Portal user for the POS Point
     const rawPosUser: AppUser = {
@@ -1301,6 +1353,7 @@ export default function App() {
       actionTitle: 'إنشاء حساب مستخدم لنقطة البيع',
     });
     setUsers((prev) => [...prev.filter((u) => u.posPointId !== newPos.id && u.username !== finalUsername), posUser]);
+    saveDocumentToFirestore(STORAGE_KEYS.USERS, posUser);
 
     logUserActivity(
       'إضافة نقطة بيع وحساب بوابة',
@@ -1320,6 +1373,7 @@ export default function App() {
     });
 
     setPosPoints((prev) => prev.map((p) => (p.id === updatedPOS.id ? updatedPOS : p)));
+    saveDocumentToFirestore(STORAGE_KEYS.POS_POINTS, updatedPOS);
 
     // Synchronize POS portal user account
     setUsers((prev) => {
@@ -1459,6 +1513,7 @@ export default function App() {
 
     const nextInvoices = [newInvoice, ...invoices];
     setInvoices(nextInvoices);
+    saveDocumentToFirestore(STORAGE_KEYS.INVOICES, newInvoice);
 
     // Adjust category warehouse stock for each item in the invoice
     setCategories((prevCategories) => {
@@ -1544,6 +1599,7 @@ export default function App() {
 
     const nextInvoices = invoices.map((inv) => (inv.id === updatedInvoice.id ? updatedInvoice : inv));
     setInvoices(nextInvoices);
+    saveDocumentToFirestore(STORAGE_KEYS.INVOICES, updatedInvoice);
     setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
     setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, payments));
     
@@ -1683,6 +1739,7 @@ export default function App() {
       saveData(STORAGE_KEYS.ORDERS, next);
       return next;
     });
+    saveDocumentToFirestore(STORAGE_KEYS.ORDERS, newOrder);
 
     logUserActivity(
       'طلب كروت جديد',
@@ -1706,6 +1763,7 @@ export default function App() {
     setOrders((prev) =>
       prev.map((ord) => (ord.id === orderId ? updated : ord))
     );
+    saveDocumentToFirestore(STORAGE_KEYS.ORDERS, updated);
 
     logUserActivity(
       'إلغاء طلب كروت',
@@ -1770,6 +1828,7 @@ export default function App() {
     setOrders((prev) =>
       prev.map((ord) => (ord.id === orderId ? updated : ord))
     );
+    saveDocumentToFirestore(STORAGE_KEYS.ORDERS, updated);
     
     logUserActivity(
       'تحديث حالة طلب كروت',
@@ -1862,6 +1921,8 @@ export default function App() {
     setOrders((prev) =>
       prev.map((ord) => (ord.id === orderId ? updatedOrder : ord))
     );
+    saveDocumentToFirestore(STORAGE_KEYS.INVOICES, newInvoice);
+    saveDocumentToFirestore(STORAGE_KEYS.ORDERS, updatedOrder);
 
     // Log Activity
     logUserActivity(
@@ -1967,6 +2028,7 @@ export default function App() {
       details: `إضافة البند (${rawCat.name})`,
     });
     setExpenseCategories((prev) => [...prev, newCat]);
+    saveDocumentToFirestore(STORAGE_KEYS.EXPENSE_CATEGORIES, newCat);
     logUserActivity(
       'إضافة بند مصروفات',
       'expenses',
@@ -1983,6 +2045,7 @@ export default function App() {
       actionTitle: 'تعديل بند المصروفات',
     });
     setExpenseCategories((prev) => prev.map((c) => (c.id === updatedCat.id ? updatedCat : c)));
+    saveDocumentToFirestore(STORAGE_KEYS.EXPENSE_CATEGORIES, updatedCat);
   };
 
   const handleDeleteExpenseCategory = (catId: string) => {
@@ -2027,6 +2090,7 @@ export default function App() {
 
     const nextSales = [newSale, ...sales];
     setSales(nextSales);
+    saveDocumentToFirestore(STORAGE_KEYS.SALES, newSale);
     setPosPoints((prev) => refreshPOSBalances(prev, invoices, nextSales, payments));
     setCustomers((prev) => refreshCustomerBalances(prev, invoices, payments));
   };
@@ -2039,6 +2103,7 @@ export default function App() {
     });
     const nextSales = sales.map((s) => (s.id === updatedSale.id ? updatedSale : s));
     setSales(nextSales);
+    saveDocumentToFirestore(STORAGE_KEYS.SALES, updatedSale);
     setPosPoints((prev) => refreshPOSBalances(prev, invoices, nextSales, payments));
     setCustomers((prev) => refreshCustomerBalances(prev, invoices, payments));
   };
@@ -2084,6 +2149,7 @@ export default function App() {
     });
 
     setCategories((prev) => [...prev, newCat]);
+    saveDocumentToFirestore(STORAGE_KEYS.CATEGORIES, newCat);
     logUserActivity(
       'إضافة فئة كروت',
       'categories',
@@ -2102,6 +2168,7 @@ export default function App() {
     });
 
     setCategories((prev) => prev.map((c) => (c.id === updatedCat.id ? updatedCat : c)));
+    saveDocumentToFirestore(STORAGE_KEYS.CATEGORIES, updatedCat);
     logUserActivity(
       'تعديل فئة كروت',
       'categories',
@@ -2169,6 +2236,7 @@ export default function App() {
     });
 
     setDispatches((prev) => [newDispatch, ...prev]);
+    saveDocumentToFirestore(STORAGE_KEYS.DISPATCHES, newDispatch);
 
     setCategories((prev) =>
       prev.map((c) =>
@@ -2190,6 +2258,7 @@ export default function App() {
     });
 
     setDispatches((prev) => prev.map((d) => (d.id === updatedDispatch.id ? updatedDispatch : d)));
+    saveDocumentToFirestore(STORAGE_KEYS.DISPATCHES, updatedDispatch);
 
     if (qtyDiff !== 0) {
       setCategories((prev) =>
@@ -2293,6 +2362,7 @@ export default function App() {
 
     const nextPayments = [newPayment, ...payments];
     setPayments(nextPayments);
+    saveDocumentToFirestore(STORAGE_KEYS.PAYMENTS, newPayment);
 
     setPosPoints((prev) => refreshPOSBalances(prev, invoices, sales, nextPayments));
     setCustomers((prev) => refreshCustomerBalances(prev, invoices, nextPayments));
@@ -2320,6 +2390,7 @@ export default function App() {
 
     const nextPayments = payments.map((p) => (p.id === updatedPayment.id ? updatedPayment : p));
     setPayments(nextPayments);
+    saveDocumentToFirestore(STORAGE_KEYS.PAYMENTS, updatedPayment);
     setPosPoints((prev) => refreshPOSBalances(prev, invoices, sales, nextPayments));
     setCustomers((prev) => refreshCustomerBalances(prev, invoices, nextPayments));
     logUserActivity(
@@ -2390,6 +2461,7 @@ export default function App() {
     });
 
     setUsers((prev) => [...prev, newUser]);
+    saveDocumentToFirestore(STORAGE_KEYS.USERS, newUser);
     logUserActivity(
       'إضافة مستخدم جديد',
       'users',
@@ -2421,6 +2493,7 @@ export default function App() {
     });
 
     setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+    saveDocumentToFirestore(STORAGE_KEYS.USERS, updatedUser);
 
     // If this user is tied to a POS Point, update POS credentials too!
     if (updatedUser.posPointId) {
@@ -2517,15 +2590,61 @@ export default function App() {
       try {
         results = await loadTenantDataFromFirestore(user.networkId, setSyncMessage);
         if (results) {
-          if (results[STORAGE_KEYS.USERS]) { setUsers(results[STORAGE_KEYS.USERS]); saveData(STORAGE_KEYS.USERS, results[STORAGE_KEYS.USERS]); }
-          if (results[STORAGE_KEYS.CATEGORIES]) { setCategories(results[STORAGE_KEYS.CATEGORIES]); saveData(STORAGE_KEYS.CATEGORIES, results[STORAGE_KEYS.CATEGORIES]); }
-          if (results[STORAGE_KEYS.POS_POINTS]) { setPosPoints(results[STORAGE_KEYS.POS_POINTS]); saveData(STORAGE_KEYS.POS_POINTS, results[STORAGE_KEYS.POS_POINTS]); }
-          if (results[STORAGE_KEYS.INVOICES]) { setInvoices(results[STORAGE_KEYS.INVOICES]); saveData(STORAGE_KEYS.INVOICES, results[STORAGE_KEYS.INVOICES]); }
-          if (results[STORAGE_KEYS.PAYMENTS]) { setPayments(results[STORAGE_KEYS.PAYMENTS]); saveData(STORAGE_KEYS.PAYMENTS, results[STORAGE_KEYS.PAYMENTS]); }
-          if (results[STORAGE_KEYS.EXPENSES]) { setExpenses(results[STORAGE_KEYS.EXPENSES]); saveData(STORAGE_KEYS.EXPENSES, results[STORAGE_KEYS.EXPENSES]); }
-          if (results[STORAGE_KEYS.ORDERS]) { setOrders(results[STORAGE_KEYS.ORDERS]); saveData(STORAGE_KEYS.ORDERS, results[STORAGE_KEYS.ORDERS]); }
-          if (results[STORAGE_KEYS.CUSTOMERS]) { setCustomers(results[STORAGE_KEYS.CUSTOMERS]); saveData(STORAGE_KEYS.CUSTOMERS, results[STORAGE_KEYS.CUSTOMERS]); }
-          if (results[STORAGE_KEYS.TENANTS]) { setTenants(results[STORAGE_KEYS.TENANTS]); saveData(STORAGE_KEYS.TENANTS, results[STORAGE_KEYS.TENANTS]); }
+          if (results[STORAGE_KEYS.USERS]) {
+            const merged = mergeCloudAndLocal(STORAGE_KEYS.USERS, results[STORAGE_KEYS.USERS]);
+            setUsers(merged);
+            saveData(STORAGE_KEYS.USERS, merged);
+          }
+          if (results[STORAGE_KEYS.CATEGORIES]) {
+            const merged = mergeCloudAndLocal(STORAGE_KEYS.CATEGORIES, results[STORAGE_KEYS.CATEGORIES]);
+            setCategories(merged);
+            saveData(STORAGE_KEYS.CATEGORIES, merged);
+          }
+          if (results[STORAGE_KEYS.POS_POINTS]) {
+            const merged = mergeCloudAndLocal(STORAGE_KEYS.POS_POINTS, results[STORAGE_KEYS.POS_POINTS]);
+            setPosPoints(merged);
+            saveData(STORAGE_KEYS.POS_POINTS, merged);
+          }
+          if (results[STORAGE_KEYS.INVOICES]) {
+            const merged = mergeCloudAndLocal(STORAGE_KEYS.INVOICES, results[STORAGE_KEYS.INVOICES]);
+            setInvoices(merged);
+            saveData(STORAGE_KEYS.INVOICES, merged);
+          }
+          if (results[STORAGE_KEYS.PAYMENTS]) {
+            const merged = mergeCloudAndLocal(STORAGE_KEYS.PAYMENTS, results[STORAGE_KEYS.PAYMENTS]);
+            setPayments(merged);
+            saveData(STORAGE_KEYS.PAYMENTS, merged);
+          }
+          if (results[STORAGE_KEYS.EXPENSES]) {
+            const merged = mergeCloudAndLocal(STORAGE_KEYS.EXPENSES, results[STORAGE_KEYS.EXPENSES]);
+            setExpenses(merged);
+            saveData(STORAGE_KEYS.EXPENSES, merged);
+          }
+          if (results[STORAGE_KEYS.SALES]) {
+            const merged = mergeCloudAndLocal(STORAGE_KEYS.SALES, results[STORAGE_KEYS.SALES]);
+            setSales(merged);
+            saveData(STORAGE_KEYS.SALES, merged);
+          }
+          if (results[STORAGE_KEYS.DISPATCHES]) {
+            const merged = mergeCloudAndLocal(STORAGE_KEYS.DISPATCHES, results[STORAGE_KEYS.DISPATCHES]);
+            setDispatches(merged);
+            saveData(STORAGE_KEYS.DISPATCHES, merged);
+          }
+          if (results[STORAGE_KEYS.ORDERS]) {
+            const merged = mergeCloudAndLocal(STORAGE_KEYS.ORDERS, results[STORAGE_KEYS.ORDERS]);
+            setOrders(merged);
+            saveData(STORAGE_KEYS.ORDERS, merged);
+          }
+          if (results[STORAGE_KEYS.CUSTOMERS]) {
+            const merged = mergeCloudAndLocal(STORAGE_KEYS.CUSTOMERS, results[STORAGE_KEYS.CUSTOMERS]);
+            setCustomers(merged);
+            saveData(STORAGE_KEYS.CUSTOMERS, merged);
+          }
+          if (results[STORAGE_KEYS.TENANTS]) {
+            const merged = mergeCloudAndLocal(STORAGE_KEYS.TENANTS, results[STORAGE_KEYS.TENANTS]);
+            setTenants(merged);
+            saveData(STORAGE_KEYS.TENANTS, merged);
+          }
         }
       } catch (err) {
         console.error("Failed to sync from cloud", err);
@@ -2533,15 +2652,18 @@ export default function App() {
       setIsSyncing(false);
     }
     
-    // We update the local instance of the user after syncing from cloud 
-    // to ensure lastLogin is updated on top of cloud data
+    // Ensure the logged in user is registered and updated in local storage and cloud
     setUsers((currentUsers) => {
-      const updatedUsers = currentUsers.map((u) =>
-        u.id === user.id
-          ? { ...u, lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16) }
-          : u
-      );
+      const exists = currentUsers.some((u) => u.id === user.id);
+      const updatedUsers = exists
+        ? currentUsers.map((u) =>
+            u.id === user.id
+              ? { ...u, lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16) }
+              : u
+          )
+        : [...currentUsers, { ...user, lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16) }];
       saveData(STORAGE_KEYS.USERS, updatedUsers);
+      saveDocumentToFirestore(STORAGE_KEYS.USERS, { ...user, lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16) });
       return updatedUsers;
     });
 

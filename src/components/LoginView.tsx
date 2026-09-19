@@ -131,7 +131,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         );
 
         if (!targetUser) {
-           setErrorMessage(`تم الاتصال بالسحابة بنجاح ووجدنا ${cloudUsers.length} مستخدمين، لكن لم نعثر على المستخدم: ${usernameInput}. الأسماء المتوفرة: ${cloudUsers.map(u => u.username).join(', ')}`);
+           setErrorMessage(`اسم المستخدم أو رقم الهاتف (${usernameInput}) غير مسجل في النظام. تأكد من صحة البيانات أو تواصل مع إدارة الشبكة.`);
            setIsShaking(true);
            setIsLoggingIn(false);
            setTimeout(() => setIsShaking(false), 500);
@@ -139,7 +139,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         }
       } catch (err: any) {
         console.warn('Fallback fetch failed:', err);
-        setErrorMessage('تعذر الاتصال بالسحابة: ' + (err.message || err.toString()));
+        setErrorMessage('تعذر التحقق من السحابة: تأكد من اتصال الإنترنت وحاول مجدداً.');
         setIsLoggingIn(false);
         return;
       }
@@ -200,7 +200,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         );
 
         if (!targetUser) {
-           setErrorMessage(`تم الاتصال بالسحابة بنجاح ووجدنا ${cloudUsers.length} مستخدمين، لكن لم نعثر على المستخدم: ${pinUsernameInput}`);
+           setErrorMessage(`اسم المستخدم أو رقم الهاتف (${pinUsernameInput}) غير مسجل في النظام.`);
            setIsShaking(true);
            setIsLoggingIn(false);
            setTimeout(() => setIsShaking(false), 500);
@@ -208,7 +208,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         }
       } catch (err: any) {
         console.warn('Fallback fetch failed:', err);
-        setErrorMessage('تعذر الاتصال بالسحابة: ' + (err.message || err.toString()));
+        setErrorMessage('تعذر التحقق من السحابة: تأكد من اتصال الإنترنت وحاول مجدداً.');
         setIsLoggingIn(false);
         return;
       }

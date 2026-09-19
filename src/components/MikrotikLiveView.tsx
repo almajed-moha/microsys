@@ -131,6 +131,12 @@ interface MikrotikLiveViewProps {
   onOpenDataSync?: () => void;
 }
 
+import {
+  evaluateCardExpirationStatus,
+  parseMikrotikUptimeToSeconds,
+  formatBytesHuman,
+} from '../utils/cardExpiration';
+
 export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   settings,
   categories = [],
@@ -182,11 +188,16 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
     'active_users' | 'all_users' | 'profiles' | 'user_manager' | 'maintenance' | 'interfaces' | 'remote_control' | 'hosts' | 'diagnostics' | 'ai_assistant' | 'settings' | 'daily_logs' | 'files'
   >('active_users');
 
-  // Search & Filter States
+  // Search & Advanced Filter States
   const [activeUserSearch, setActiveUserSearch] = useState('');
   const [allUserSearch, setAllUserSearch] = useState('');
   const [userProfileFilter, setUserProfileFilter] = useState('all');
-  const [configuredUserCardStatus, setConfiguredUserCardStatus] = useState<'all' | 'expired' | 'active_quota' | 'unlimited'>('all');
+  const [configuredUserCardStatus, setConfiguredUserCardStatus] = useState<
+    'all' | 'expired_all' | 'expired_quota' | 'expired_uptime' | 'manually_disabled' | 'active_quota' | 'unlimited'
+  >('all');
+  const [userUsageFilter, setUserUsageFilter] = useState<'all' | 'has_usage' | 'zero_usage'>('all');
+  const [userSortBy, setUserSortBy] = useState<'default' | 'usage_desc' | 'uptime_desc' | 'expired_first' | 'name_asc'>('default');
+  const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
@@ -429,15 +440,15 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   const handleBulkDeleteExpired = async () => {
     const expiredIds = configuredUsers
       .filter((u) => {
-        const totalUsed = (u.bytesIn || 0) + (u.bytesOut || 0);
-        return u.limitBytesTotal && u.limitBytesTotal > 0 && totalUsed >= u.limitBytesTotal;
+        const st = evaluateCardExpirationStatus(u, categories);
+        return st.isExpired;
       })
       .map((u) => u.id);
 
     if (expiredIds.length === 0) {
       setCommandFeedback({
         success: false,
-        message: 'لا توجد كروت منتهية الرصيد حالياً لحذفها.',
+        message: 'لا توجد كروت منتهية الرصيد أو الصلاحية حالياً لحذفها.',
       });
       setTimeout(() => setCommandFeedback(null), 4000);
       setShowExpiredDeleteConfirm(false);
@@ -770,36 +781,92 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
     );
   });
 
-  // Filtered configured users
-  const filteredConfiguredUsers = configuredUsers.filter((u) => {
-    const q = (allUserSearch || '').toLowerCase();
-    const matchesSearch =
-      (u.name || '').toLowerCase().includes(q) ||
-      (u.comment && (u.comment || '').toLowerCase().includes(q)) ||
-      (u.profile && (u.profile || '').toLowerCase().includes(q));
-    const matchesProfile = userProfileFilter === 'all' || u.profile === userProfileFilter;
+  // Summary counts across all configured users using centralized evaluator
+  const configuredCardsSummary = useMemo(() => {
+    let expiredTotal = 0;
+    let expiredQuota = 0;
+    let expiredTime = 0;
+    let manuallyDisabled = 0;
+    let activeQuota = 0;
+    let unlimited = 0;
 
-    const totalUsed = (u.bytesIn || 0) + (u.bytesOut || 0);
-    const isExpired = Boolean(u.limitBytesTotal && u.limitBytesTotal > 0 && totalUsed >= u.limitBytesTotal);
-    const hasQuota = Boolean(u.limitBytesTotal && u.limitBytesTotal > 0);
-
-    let matchesStatus = true;
-    if (configuredUserCardStatus === 'expired') {
-      matchesStatus = isExpired;
-    } else if (configuredUserCardStatus === 'active_quota') {
-      matchesStatus = hasQuota && !isExpired;
-    } else if (configuredUserCardStatus === 'unlimited') {
-      matchesStatus = !hasQuota;
+    for (const u of configuredUsers) {
+      const st = evaluateCardExpirationStatus(u, categories);
+      if (st.isExpired) expiredTotal++;
+      if (st.isQuotaExpired) expiredQuota++;
+      if (st.isTimeExpired) expiredTime++;
+      if (st.isManuallyDisabled) manuallyDisabled++;
+      if (st.statusType === 'active_quota') activeQuota++;
+      if (st.statusType === 'unlimited') unlimited++;
     }
 
-    return matchesSearch && matchesProfile && matchesStatus;
-  });
+    return {
+      expiredTotal,
+      expiredQuota,
+      expiredTime,
+      manuallyDisabled,
+      activeQuota,
+      unlimited,
+      total: configuredUsers.length,
+    };
+  }, [configuredUsers, categories]);
 
-  // Calculate expired count across all configured users
-  const totalExpiredCardsCount = configuredUsers.filter((u) => {
-    const totalUsed = (u.bytesIn || 0) + (u.bytesOut || 0);
-    return u.limitBytesTotal && u.limitBytesTotal > 0 && totalUsed >= u.limitBytesTotal;
-  }).length;
+  // Backward compatibility alias for bulk delete
+  const totalExpiredCardsCount = configuredCardsSummary.expiredTotal;
+
+  // Filtered and sorted configured users
+  const filteredConfiguredUsers = useMemo(() => {
+    const list = configuredUsers.filter((u) => {
+      const q = (allUserSearch || '').toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        (u.name || '').toLowerCase().includes(q) ||
+        (u.comment && (u.comment || '').toLowerCase().includes(q)) ||
+        (u.profile && (u.profile || '').toLowerCase().includes(q));
+      const matchesProfile = userProfileFilter === 'all' || u.profile === userProfileFilter;
+      if (!matchesSearch || !matchesProfile) return false;
+
+      const st = evaluateCardExpirationStatus(u, categories);
+
+      // Status filter
+      if (configuredUserCardStatus === 'expired_all' && !st.isExpired) return false;
+      if (configuredUserCardStatus === 'expired_quota' && !st.isQuotaExpired) return false;
+      if (configuredUserCardStatus === 'expired_uptime' && !st.isTimeExpired) return false;
+      if (configuredUserCardStatus === 'manually_disabled' && !st.isManuallyDisabled) return false;
+      if (configuredUserCardStatus === 'active_quota' && st.statusType !== 'active_quota') return false;
+      if (configuredUserCardStatus === 'unlimited' && st.statusType !== 'unlimited') return false;
+
+      // Usage filter
+      if (userUsageFilter === 'has_usage' && st.totalBytesUsed === 0 && st.usedUptimeSec === 0) return false;
+      if (userUsageFilter === 'zero_usage' && (st.totalBytesUsed > 0 || st.usedUptimeSec > 0)) return false;
+
+      return true;
+    });
+
+    // Sorting
+    list.sort((a, b) => {
+      const stA = evaluateCardExpirationStatus(a, categories);
+      const stB = evaluateCardExpirationStatus(b, categories);
+
+      if (userSortBy === 'usage_desc') {
+        return stB.totalBytesUsed - stA.totalBytesUsed;
+      }
+      if (userSortBy === 'uptime_desc') {
+        return stB.usedUptimeSec - stA.usedUptimeSec;
+      }
+      if (userSortBy === 'expired_first') {
+        if (stA.isExpired && !stB.isExpired) return -1;
+        if (!stA.isExpired && stB.isExpired) return 1;
+        return stB.totalBytesUsed - stA.totalBytesUsed;
+      }
+      if (userSortBy === 'name_asc') {
+        return (a.name || '').localeCompare(b.name || '');
+      }
+      return 0;
+    });
+
+    return list;
+  }, [configuredUsers, allUserSearch, userProfileFilter, configuredUserCardStatus, userUsageFilter, userSortBy, categories]);
 
   // Calculate live aggregate bandwidth
   const totalDownloadBytes = (activeUsers || []).reduce((acc, u) => acc + (u?.bytesOut || 0), 0);
@@ -1447,7 +1514,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
           <div className="space-y-3 bg-slate-900/60 p-3.5 rounded-xl border border-slate-800">
             {/* Top row: Status Tabs & Bulk Action Buttons */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-              {/* Filter Tabs: All / Expired / Active Quota / Unlimited */}
+              {/* Filter Tabs: All / Expired (All) / Expired Quota / Expired Time / Manually Disabled / Active Quota / Unlimited */}
               <div className="flex flex-wrap items-center gap-1.5 text-xs">
                 <button
                   onClick={() => setConfiguredUserCardStatus('all')}
@@ -1458,60 +1525,119 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
                   }`}
                 >
                   <span>كافة الكروت</span>
-                  <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-900/60 text-indigo-200">
+                  <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-900/60 text-indigo-200 font-mono">
                     {configuredUsers.length}
                   </span>
                 </button>
 
+                {/* All Expired */}
                 <button
-                  onClick={() => setConfiguredUserCardStatus('expired')}
+                  onClick={() => setConfiguredUserCardStatus(configuredUserCardStatus === 'expired_all' ? 'all' : 'expired_all')}
                   className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 ${
-                    configuredUserCardStatus === 'expired'
-                      ? 'bg-rose-600 text-white shadow-xs'
-                      : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/20'
+                    configuredUserCardStatus === 'expired_all'
+                      ? 'bg-rose-600 text-white shadow-sm'
+                      : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30'
                   }`}
+                  title="عرض الكروت التي نفذ رصيدها أو انتهى وقتها تلقائياً"
                 >
                   <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
-                  <span>الكروت المنتهية (نفذ الرصيد)</span>
+                  <span>المنتهية (الكل)</span>
                   <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-rose-900/60 text-rose-200 font-mono font-bold">
-                    {totalExpiredCardsCount}
+                    {configuredCardsSummary.expiredTotal}
                   </span>
                 </button>
 
+                {/* Quota Expired */}
                 <button
-                  onClick={() => setConfiguredUserCardStatus('active_quota')}
-                  className={`px-3 py-1.5 rounded-lg font-medium transition ${
-                    configuredUserCardStatus === 'active_quota'
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                  onClick={() => setConfiguredUserCardStatus(configuredUserCardStatus === 'expired_quota' ? 'all' : 'expired_quota')}
+                  className={`px-2.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1 ${
+                    configuredUserCardStatus === 'expired_quota'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'bg-slate-800 hover:bg-slate-700 text-rose-300'
                   }`}
+                  title="كروت استهلكت كامل حجم البيانات المحدد (Data Quota)"
                 >
-                  <span>كروت برصيد نشط</span>
+                  <span>نفد الرصيد</span>
+                  <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-900/60 text-rose-300 font-mono font-bold">
+                    {configuredCardsSummary.expiredQuota}
+                  </span>
                 </button>
 
+                {/* Uptime Expired */}
                 <button
-                  onClick={() => setConfiguredUserCardStatus('unlimited')}
-                  className={`px-3 py-1.5 rounded-lg font-medium transition ${
-                    configuredUserCardStatus === 'unlimited'
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                  onClick={() => setConfiguredUserCardStatus(configuredUserCardStatus === 'expired_uptime' ? 'all' : 'expired_uptime')}
+                  className={`px-2.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1 ${
+                    configuredUserCardStatus === 'expired_uptime'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-slate-800 hover:bg-slate-700 text-amber-300'
+                  }`}
+                  title="كروت استهلكت كامل مدة الاتصال المسموحة (Uptime Limit)"
+                >
+                  <span>نفد الوقت</span>
+                  <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-900/60 text-amber-300 font-mono font-bold">
+                    {configuredCardsSummary.expiredTime}
+                  </span>
+                </button>
+
+                {/* Manually Disabled - Distinct separation */}
+                <button
+                  onClick={() => setConfiguredUserCardStatus(configuredUserCardStatus === 'manually_disabled' ? 'all' : 'manually_disabled')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 ${
+                    configuredUserCardStatus === 'manually_disabled'
+                      ? 'bg-slate-600 text-white shadow-sm'
+                      : 'bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                  }`}
+                  title="كروت معطلة يدوياً من قِبل المسؤول (وليست منتهية الرصيد تلقائياً)"
+                >
+                  <Power className="w-3 h-3 text-slate-400" />
+                  <span>معطلة يدوياً</span>
+                  <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-900/60 text-slate-300 font-mono">
+                    {configuredCardsSummary.manuallyDisabled}
+                  </span>
+                </button>
+
+                {/* Active with Quota */}
+                <button
+                  onClick={() => setConfiguredUserCardStatus(configuredUserCardStatus === 'active_quota' ? 'all' : 'active_quota')}
+                  className={`px-2.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1 ${
+                    configuredUserCardStatus === 'active_quota'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-slate-800 hover:bg-slate-700 text-emerald-300'
                   }`}
                 >
-                  <span>كروت مفتوحة / غير محددة</span>
+                  <span>نشطة برصيد</span>
+                  <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-900/60 text-emerald-300 font-mono">
+                    {configuredCardsSummary.activeQuota}
+                  </span>
+                </button>
+
+                {/* Unlimited */}
+                <button
+                  onClick={() => setConfiguredUserCardStatus(configuredUserCardStatus === 'unlimited' ? 'all' : 'unlimited')}
+                  className={`px-2.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1 ${
+                    configuredUserCardStatus === 'unlimited'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-400'
+                  }`}
+                >
+                  <span>مفتوحة</span>
+                  <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-900/60 text-slate-400 font-mono">
+                    {configuredCardsSummary.unlimited}
+                  </span>
                 </button>
               </div>
 
               {/* Action Buttons: Delete Expired & Delete Selected */}
               <div className="flex flex-wrap items-center gap-2">
-                {totalExpiredCardsCount > 0 && (
+                {configuredCardsSummary.expiredTotal > 0 && (
                   <button
                     onClick={() => setShowExpiredDeleteConfirm(true)}
                     disabled={isBulkDeleting}
                     className="px-3 py-1.5 rounded-lg bg-rose-600/90 hover:bg-rose-600 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-                    title="حذف جميع الكروت التي استهلكت رصيدها بالكامل دفعة واحدة"
+                    title="حذف جميع الكروت المنتهية (رصيد أو وقت) بنقرة واحدة"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>حذف كافة المنتهية ({totalExpiredCardsCount})</span>
+                    <span>حذف المنتهية ({configuredCardsSummary.expiredTotal})</span>
                   </button>
                 )}
 
@@ -1536,10 +1662,10 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
               </div>
             </div>
 
-            {/* Bottom row: Search & Profile Filter */}
+            {/* Middle row: Search & Profile Filter & Advanced Filter Toggle */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-                <div className="relative w-full sm:w-72">
+              <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+                <div className="relative w-full sm:w-64">
                   <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
                   <input
                     type="text"
@@ -1552,7 +1678,6 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
 
                 {/* Profile Filter Dropdown */}
                 <div className="flex items-center gap-1.5 text-xs text-slate-300">
-                  <span>تصفية بالبروفايل:</span>
                   <select
                     value={userProfileFilter}
                     onChange={(e) => setUserProfileFilter(e.target.value)}
@@ -1566,11 +1691,29 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
                     ))}
                   </select>
                 </div>
+
+                {/* Advanced Search Filter Toggle Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border ${
+                    showAdvancedFilter || configuredUserCardStatus !== 'all' || userUsageFilter !== 'all' || userSortBy !== 'default'
+                      ? 'bg-indigo-600/20 text-indigo-300 border-indigo-500/50 shadow-xs'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                  }`}
+                  title="فتح/إغلاق خيارات الفلترة المتقدمة للكروت"
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>فلتر بحث متقدم</span>
+                  {(configuredUserCardStatus !== 'all' || userUsageFilter !== 'all' || userSortBy !== 'default') && (
+                    <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
+                  )}
+                </button>
               </div>
 
               <div className="flex items-center gap-3 text-xs text-slate-400">
                 <span>
-                  المعروض: <strong className="text-indigo-400 font-mono font-bold">{filteredConfiguredUsers.length}</strong> كرت
+                  المعروض: <strong className="text-indigo-400 font-mono font-bold">{filteredConfiguredUsers.length}</strong> من <span className="font-mono">{configuredUsers.length}</span> كرت
                 </span>
                 {selectedUserIds.length > 0 && (
                   <button
@@ -1582,6 +1725,77 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
                 )}
               </div>
             </div>
+
+            {/* Collapsible Advanced Filter Panel */}
+            {showAdvancedFilter && (
+              <div className="p-3.5 rounded-xl bg-slate-950/70 border border-indigo-500/30 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs animate-in fade-in duration-200">
+                {/* Advanced Status Selector */}
+                <div className="space-y-1">
+                  <label className="text-slate-400 font-semibold block">حالة الكرت الدقيقة:</label>
+                  <select
+                    value={configuredUserCardStatus}
+                    onChange={(e) => setConfiguredUserCardStatus(e.target.value as any)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="all">كافة الحالات (بدون استثناء)</option>
+                    <option value="expired_all">🔴 المنتهية فقط (رصيد أو وقت أو تلقائي)</option>
+                    <option value="expired_quota">🛑 منتهية الرصيد فقط (استنفذت الميجابايت)</option>
+                    <option value="expired_uptime">⏱️ منتهية الوقت فقط (استنفذت الساعات)</option>
+                    <option value="manually_disabled">⛔ معطلة يدوياً فقط (بواسطة المسؤول)</option>
+                    <option value="active_quota">🟢 نشطة ومتبقي رصيد/وقت</option>
+                    <option value="unlimited">♾️ كروت مفتوحة غير محددة</option>
+                  </select>
+                </div>
+
+                {/* Usage Filter */}
+                <div className="space-y-1">
+                  <label className="text-slate-400 font-semibold block">مستوى الاستهلاك الفعلي:</label>
+                  <select
+                    value={userUsageFilter}
+                    onChange={(e) => setUserUsageFilter(e.target.value as any)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="all">كافة الكروت (مستهلكة وجديدة)</option>
+                    <option value="has_usage">📊 كروت تم استخدامها (سحب بيانات أو وقت)</option>
+                    <option value="zero_usage">✨ كروت جديدة لم تُستخدم بعد (0 بايت)</option>
+                  </select>
+                </div>
+
+                {/* Smart Sorting */}
+                <div className="space-y-1">
+                  <label className="text-slate-400 font-semibold block">ترتيب النتائج حسب:</label>
+                  <select
+                    value={userSortBy}
+                    onChange={(e) => setUserSortBy(e.target.value as any)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="default">الترتيب الافتراضي للراوتر</option>
+                    <option value="expired_first">🚨 الكروت المنتهية أولاً في القمة</option>
+                    <option value="usage_desc">📈 الأعلى استهلاكاً للبيانات</option>
+                    <option value="uptime_desc">⏳ الأطول استخداماً للوقت</option>
+                    <option value="name_asc">🔤 أبجدياً بحسب اسم الكارت</option>
+                  </select>
+                </div>
+
+                {/* Reset & Quick Filter Button */}
+                <div className="flex items-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfiguredUserCardStatus('all');
+                      setUserUsageFilter('all');
+                      setUserSortBy('default');
+                      setAllUserSearch('');
+                      setUserProfileFilter('all');
+                    }}
+                    className="w-full py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition border border-slate-700 flex items-center justify-center gap-1.5"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                    <span>إعادة ضبط الفلاتر</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Configured Users Table with Checkboxes */}
@@ -1630,17 +1844,22 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
                     </tr>
                   ) : (
                     filteredConfiguredUsers.map((user) => {
-                      const totalUsed = (user.bytesIn || 0) + (user.bytesOut || 0);
-                      const isExpired = Boolean(
-                        user.limitBytesTotal && user.limitBytesTotal > 0 && totalUsed >= user.limitBytesTotal
-                      );
+                      const st = evaluateCardExpirationStatus(user, categories);
                       const isSelected = selectedUserIds.includes(user.id);
 
                       return (
                         <tr
                           key={user.id}
                           className={`hover:bg-slate-800/40 transition ${
-                            isSelected ? 'bg-indigo-950/20' : isExpired ? 'bg-rose-950/10' : ''
+                            isSelected
+                              ? 'bg-indigo-950/20'
+                              : st.isQuotaExpired
+                              ? 'bg-rose-950/15'
+                              : st.isTimeExpired
+                              ? 'bg-amber-950/10'
+                              : st.isManuallyDisabled
+                              ? 'bg-slate-900/40 opacity-80'
+                              : ''
                           }`}
                         >
                           <td className="p-3.5 text-center">
@@ -1667,33 +1886,33 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
                             <div className="flex items-center gap-2">
                               <div
                                 className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold font-mono ${
-                                  isExpired
+                                  st.isExpired
                                     ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400'
+                                    : st.isManuallyDisabled
+                                    ? 'bg-slate-500/10 border border-slate-600/30 text-slate-400'
                                     : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
                                 }`}
                               >
-                                <Key className="w-3.5 h-3.5" />
+                                {st.isManuallyDisabled ? (
+                                  <Power className="w-3.5 h-3.5 text-slate-400" />
+                                ) : (
+                                  <Key className="w-3.5 h-3.5" />
+                                )}
                               </div>
                               <span className="font-bold text-white font-mono">{user.name}</span>
                             </div>
                           </td>
 
                           <td className="p-3.5">
-                            {isExpired ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
-                                <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
-                                منتهي الرصيد
-                              </span>
-                            ) : user.limitBytesTotal ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                                نشط (متبقي رصيد)
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-slate-400">
-                                غير محدد
-                              </span>
-                            )}
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${st.statusBadgeClass}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${
+                                st.isQuotaExpired ? 'bg-rose-400' :
+                                st.isTimeExpired ? 'bg-amber-400' :
+                                st.isManuallyDisabled ? 'bg-slate-400' :
+                                st.statusType === 'active_quota' ? 'bg-emerald-400' : 'bg-slate-400'
+                              }`} />
+                              {st.statusLabel}
+                            </span>
                           </td>
 
                           <td className="p-3.5">
@@ -1703,11 +1922,18 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
                           </td>
 
                           <td className="p-3.5 font-mono text-emerald-400">
-                            {user.limitBytesTotal ? formatBytesToHuman(user.limitBytesTotal) : 'غير محدود'}
+                            {st.limitBytesTotal > 0 ? formatBytesHuman(st.limitBytesTotal) : 'غير محدود'}
                           </td>
 
                           <td className="p-3.5 font-mono text-cyan-400">
-                            {formatBytesToHuman(totalUsed)}
+                            <div>
+                              <span>{formatBytesHuman(st.totalBytesUsed)}</span>
+                              {st.percentQuotaUsed !== null && (
+                                <span className="block text-[10px] text-slate-400 font-sans">
+                                  ({st.percentQuotaUsed}%)
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           <td className="p-3.5 font-mono text-slate-300">{user.limitUptime || 'غير محدد'}</td>

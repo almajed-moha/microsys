@@ -17,7 +17,7 @@ import {
   Filter,
   ShieldAlert,
 } from 'lucide-react';
-import { MikroTikConfig, MikrotikCallerSession, HotspotConfiguredUser } from '../types';
+import { MikroTikConfig, MikrotikCallerSession, HotspotConfiguredUser, CardCategory } from '../types';
 import {
   fetchConfiguredHotspotUsers,
   fetchUserManagerUsers,
@@ -26,6 +26,7 @@ import {
   deleteUserManagerUser,
 } from '../utils/mikrotikApi';
 import { printElementDocument, exportElementToPdf } from '../utils/pdfExport';
+import { evaluateCardExpirationStatus, parseMikrotikUptimeToSeconds } from '../utils/cardExpiration';
 
 interface ExpiredCardItem {
   id: string;
@@ -48,6 +49,7 @@ interface MikrotikExpiredCardsModalProps {
   onClose: () => void;
   config: Partial<MikroTikConfig>;
   sessions: MikrotikCallerSession[];
+  categories?: CardCategory[];
   onCardsDeleted?: () => void;
 }
 
@@ -59,39 +61,12 @@ const formatBytes = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-const parseMikrotikUptimeToSeconds = (uptime?: string): number => {
-  if (!uptime) return 0;
-  let totalSec = 0;
-  
-  const matchW = uptime.match(/(\d+)w/);
-  const matchD = uptime.match(/(\d+)d/);
-  const matchH = uptime.match(/(\d+)h/);
-  const matchM = uptime.match(/(\d+)m/);
-  const matchS = uptime.match(/(\d+)s/);
-
-  if (matchW) totalSec += parseInt(matchW[1]) * 7 * 24 * 3600;
-  if (matchD) totalSec += parseInt(matchD[1]) * 24 * 3600;
-  if (matchH) totalSec += parseInt(matchH[1]) * 3600;
-  if (matchM) totalSec += parseInt(matchM[1]) * 60;
-  if (matchS) totalSec += parseInt(matchS[1]);
-
-  if (uptime.includes(':')) {
-    const parts = uptime.split(/[wd ]/).filter(Boolean).pop()?.split(':') || [];
-    if (parts.length === 3) {
-      totalSec += parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
-    } else if (parts.length === 2) {
-       totalSec += parseInt(parts[0]) * 60 + parseInt(parts[1]);
-    }
-  }
-
-  return totalSec;
-};
-
 export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps> = ({
   isOpen,
   onClose,
   config,
   sessions,
+  categories = [],
   onCardsDeleted,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -121,33 +96,30 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
         const hotspotUsers = await fetchConfiguredHotspotUsers(config);
         if (Array.isArray(hotspotUsers)) {
           for (const u of hotspotUsers) {
-            const used = (u.bytesIn || 0) + (u.bytesOut || 0);
-            const hasQuota = Boolean(u.limitBytesTotal && u.limitBytesTotal > 0);
-            const isQuotaExpired = hasQuota && used >= (u.limitBytesTotal || 0);
+            const status = evaluateCardExpirationStatus(u, categories);
 
-            // Also check uptime limit if reached
-            const hasTimeLimit = Boolean(u.limitUptime && u.limitUptime !== '0s');
-            const isTimeExpired = hasTimeLimit && u.uptime && u.uptime === u.limitUptime;
-            const usedUptimeSec = parseMikrotikUptimeToSeconds(u.uptime);
-
-            if (isQuotaExpired || isTimeExpired || u.disabled) {
-              if (u.disabled && !isQuotaExpired && !isTimeExpired && used === 0 && usedUptimeSec === 0) {
-                  continue;
-              }
+            // A card is included ONLY if genuinely expired (quota, uptime, or comment expired)
+            // It is NEVER included if merely manually disabled!
+            if (status.isExpired) {
+              const expireReason: 'traffic-limit' | 'uptime-limit' | 'session-expired' = status.isQuotaExpired
+                ? 'traffic-limit'
+                : status.isTimeExpired
+                ? 'uptime-limit'
+                : 'session-expired';
 
               itemsMap.set(`hs-${u.name}`, {
                 id: u.id || u.name,
                 name: u.name,
                 source: 'hotspot',
                 profile: u.profile,
-                totalLimitBytes: u.limitBytesTotal,
-                totalUsedBytes: used,
+                totalLimitBytes: status.quotaLimitBytes || u.limitBytesTotal,
+                totalUsedBytes: status.totalBytesUsed,
                 downloadBytes: u.bytesOut || 0,
                 uploadBytes: u.bytesIn || 0,
                 limitUptime: u.limitUptime,
                 uptimeUsed: u.uptime,
                 comment: u.comment,
-                expireReason: isQuotaExpired ? 'traffic-limit' : (isTimeExpired ? 'uptime-limit' : 'manual'),
+                expireReason,
                 lastSeen: undefined,
               });
             }
@@ -160,47 +132,31 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
       // 2. Check User Manager users if available
       try {
         const umUsers = await fetchUserManagerUsers(config);
-        console.log("UM Users count:", umUsers?.length);
         if (Array.isArray(umUsers)) {
           for (const u of umUsers) {
-            const used = (u.downloadUsed || 0) + (u.uploadUsed || 0) || (u.totalBytes || 0);
-            const hasQuota = Boolean(u.limitBytesTotal && u.limitBytesTotal > 0);
-            const isQuotaExpired = hasQuota && used >= (u.limitBytesTotal || 0);
+            const status = evaluateCardExpirationStatus(u, categories);
 
-            const limitUptimeSec = parseMikrotikUptimeToSeconds(u.limitUptime);
-            const usedUptimeSec = parseMikrotikUptimeToSeconds(u.uptimeUsed);
-            const hasTimeLimit = limitUptimeSec > 0;
-            const isTimeExpired = hasTimeLimit && usedUptimeSec >= limitUptimeSec;
-
-            if (u.name === 'UM-88405' || u.name === 'UM-88402') {
-                console.log(`Checking user: ${u.name}, used: ${used}, limitBytesTotal: ${u.limitBytesTotal}, hasQuota: ${hasQuota}, isQuotaExpired: ${isQuotaExpired}`);
-                console.log(`Checking user: ${u.name}, limitUptimeSec: ${limitUptimeSec}, usedUptimeSec: ${usedUptimeSec}, hasTimeLimit: ${hasTimeLimit}, isTimeExpired: ${isTimeExpired}`);
-            }
-
-            if (isQuotaExpired || isTimeExpired || u.disabled) {
-              // Ignore newly created disabled cards that have NO usage at all (if preferred),
-              // but usually we want to see all disabled cards so we can clean them up.
-              // However, if a card has 0 usage and is disabled, it might be a new card the admin disabled.
-              // We will only include it if it's expired by quota/time, OR (it is disabled AND has some usage).
-              // Wait, the user might want to delete ALL disabled cards. Let's include them.
-              if (u.disabled && !isQuotaExpired && !isTimeExpired && used === 0 && usedUptimeSec === 0) {
-                  // Skip brand new unused cards that are disabled
-                  continue;
-              }
+            // Genuinely expired check - NO conflation with disabled cards
+            if (status.isExpired) {
+              const expireReason: 'traffic-limit' | 'uptime-limit' | 'session-expired' = status.isQuotaExpired
+                ? 'traffic-limit'
+                : status.isTimeExpired
+                ? 'uptime-limit'
+                : 'session-expired';
 
               itemsMap.set(`um-${u.name}`, {
                 id: u.id || u.name,
                 name: u.name,
                 source: 'user-manager',
                 profile: u.actualProfile || u.customer,
-                totalLimitBytes: u.limitBytesTotal,
-                totalUsedBytes: used,
+                totalLimitBytes: status.quotaLimitBytes || u.limitBytesTotal,
+                totalUsedBytes: status.totalBytesUsed,
                 downloadBytes: u.downloadUsed || 0,
                 uploadBytes: u.uploadUsed || 0,
                 limitUptime: u.limitUptime,
                 uptimeUsed: u.uptimeUsed,
                 comment: u.comment,
-                expireReason: isQuotaExpired ? 'traffic-limit' : (isTimeExpired ? 'uptime-limit' : 'manual'),
+                expireReason,
                 lastSeen: u.lastSeen,
               });
             }
@@ -648,6 +604,11 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
                               <Clock size={11} />
                               انتهى وقت الصلاحية
+                            </span>
+                          ) : card.expireReason === 'session-expired' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-orange-100 text-orange-800 border border-orange-200">
+                              <ShieldAlert size={11} />
+                              منتهي تلقائياً (تجاوز الحد)
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-800 border border-slate-200">

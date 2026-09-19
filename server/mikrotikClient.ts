@@ -230,6 +230,34 @@ export function formatSecondsToUptime(sec: number): string {
   return parts.length > 0 ? parts.join(' ') : '0s';
 }
 
+// Parse MikroTik byte limit strings (e.g. "500M", "1G", "1024K", "1048576") to numeric bytes
+export function parseMikrotikBytes(val: any): number {
+  if (val === undefined || val === null || val === '') return 0;
+  if (typeof val === 'number') return isNaN(val) || val < 0 ? 0 : Math.round(val);
+
+  const str = String(val).trim().toUpperCase();
+  if (/^\d+$/.test(str)) {
+    return parseInt(str, 10);
+  }
+
+  const match = str.match(/^([\d.]+)\s*([KMGTPE]?)(?:I?B)?$/);
+  if (match) {
+    const num = parseFloat(match[1]);
+    const unit = match[2];
+    switch (unit) {
+      case 'K': return Math.round(num * 1024);
+      case 'M': return Math.round(num * 1024 * 1024);
+      case 'G': return Math.round(num * 1024 * 1024 * 1024);
+      case 'T': return Math.round(num * 1024 * 1024 * 1024 * 1024);
+      case 'P': return Math.round(num * 1024 * 1024 * 1024 * 1024 * 1024);
+      default: return Math.round(num);
+    }
+  }
+
+  const fallback = Number(val);
+  return isNaN(fallback) || fallback < 0 ? 0 : fallback;
+}
+
 // -------------------------------------------------------------
 // RouterOS Binary API (Port 8728 / 8729) Length Encoder / Decoder
 // -------------------------------------------------------------
@@ -1679,9 +1707,11 @@ public static async kickHotspotUser(options: MikroTikConnectionOptions, userIdOr
           password: u.password,
           profile: u.profile || u.group || 'default',
           limitUptime: u['limit-uptime'] || u.limitUptime,
-          limitBytesTotal: Number(u['limit-bytes-total']) || 0,
-          bytesIn: Number(u['bytes-in']) || 0,
-          bytesOut: Number(u['bytes-out']) || 0,
+          limitBytesTotal: parseMikrotikBytes(u['limit-bytes-total'] || u.limitBytesTotal),
+          limitBytesIn: parseMikrotikBytes(u['limit-bytes-in'] || u.limitBytesIn),
+          limitBytesOut: parseMikrotikBytes(u['limit-bytes-out'] || u.limitBytesOut),
+          bytesIn: parseMikrotikBytes(u['bytes-in'] || u.bytesIn),
+          bytesOut: parseMikrotikBytes(u['bytes-out'] || u.bytesOut),
           uptime: u.uptime || '0s',
           disabled: u.disabled === 'true' || u.disabled === true,
           comment: u.comment,
@@ -1707,9 +1737,11 @@ public static async kickHotspotUser(options: MikroTikConnectionOptions, userIdOr
       password: u['password'],
       profile: u['profile'] || u['group'] || 'default',
       limitUptime: u['limit-uptime'],
-      limitBytesTotal: Number(u['limit-bytes-total']) || 0,
-      bytesIn: Number(u['bytes-in']) || 0,
-      bytesOut: Number(u['bytes-out']) || 0,
+      limitBytesTotal: parseMikrotikBytes(u['limit-bytes-total']),
+      limitBytesIn: parseMikrotikBytes(u['limit-bytes-in']),
+      limitBytesOut: parseMikrotikBytes(u['limit-bytes-out']),
+      bytesIn: parseMikrotikBytes(u['bytes-in']),
+      bytesOut: parseMikrotikBytes(u['bytes-out']),
       uptime: u['uptime'] || '0s',
       disabled: u['disabled'] === 'true',
       comment: u['comment'],
@@ -2163,7 +2195,7 @@ if (command === 'reboot') {
                 uploadUsed: totalUl,
                 totalBytes,
                 limitUptime: u['limit-uptime'] || u.limitUptime || (lim ? lim['uptime-limit'] : undefined),
-                limitBytesTotal: Number(u['limit-bytes-total'] || u.limitBytesTotal) || (lim ? Number(lim['download-limit'] || lim['total-limit']) || 0 : 0),
+                limitBytesTotal: parseMikrotikBytes(u['limit-bytes-total'] || u.limitBytesTotal) || (lim ? parseMikrotikBytes(lim['download-limit'] || lim['total-limit']) : 0),
                 disabled: u.disabled === 'true' || u.disabled === true || u.disabled === 'yes',
                 comment: u.comment || '',
                 sharedUsers: Number(u['shared-users'] || u.sharedUsers) || 1,
@@ -2202,7 +2234,7 @@ if (command === 'reboot') {
                 uploadUsed: ul,
                 totalBytes: dl + ul,
                 limitUptime: u['limit-uptime'] || u.limitUptime,
-                limitBytesTotal: Number(u['limit-bytes-total'] || u.limitBytesTotal) || 0,
+                limitBytesTotal: parseMikrotikBytes(u['limit-bytes-total'] || u.limitBytesTotal),
                 disabled: u.disabled === 'true' || u.disabled === true,
                 comment: u.comment || '',
                 sharedUsers: Number(u['shared-users'] || u.sharedUsers) || 1,
@@ -2317,7 +2349,7 @@ if (command === 'reboot') {
             uploadUsed: totalUl,
             totalBytes,
             limitUptime: u['limit-uptime'] || (lim ? lim['uptime-limit'] : undefined),
-            limitBytesTotal: Number(u['limit-bytes-total']) || (lim ? Number(lim['download-limit'] || lim['total-limit']) || 0 : 0),
+            limitBytesTotal: parseMikrotikBytes(u['limit-bytes-total']) || (lim ? parseMikrotikBytes(lim['download-limit'] || lim['total-limit']) : 0),
             disabled: u['disabled'] === 'true' || u['disabled'] === 'yes',
             comment: u['comment'] || '',
             sharedUsers: Number(u['shared-users']) || 1,
@@ -2362,7 +2394,7 @@ if (command === 'reboot') {
             uploadUsed: ul,
             totalBytes: dl + ul,
             limitUptime: u['limit-uptime'],
-            limitBytesTotal: Number(u['limit-bytes-total']) || 0,
+            limitBytesTotal: parseMikrotikBytes(u['limit-bytes-total']),
             disabled: u['disabled'] === 'true',
             comment: u['comment'] || '',
             sharedUsers: Number(u['shared-users']) || 1,
@@ -2409,7 +2441,7 @@ if (command === 'reboot') {
             uploadUsed: ul,
             totalBytes: dl + ul,
             limitUptime: u['limit-uptime'],
-            limitBytesTotal: Number(u['limit-bytes-total']) || 0,
+            limitBytesTotal: parseMikrotikBytes(u['limit-bytes-total']),
             disabled: u['disabled'] === 'true',
             comment: u['comment'] || '',
             sharedUsers: 1,
@@ -3364,7 +3396,8 @@ if (command === 'reboot') {
     // Fallback to RouterOS API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
     const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
-    await client.connect(options.user || 'admin', options.password || '');
+    await client.connect();
+    await client.login(options.username, options.password || '');
     try {
       try {
         await client.sendSentence(["/user-manager/user-profile/add", `=user=${username}`, `=profile=${profileName}`]);

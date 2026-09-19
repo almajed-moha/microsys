@@ -82,34 +82,7 @@ import { UserManagerCardEditModal } from './UserManagerCardEditModal';
 import { UserManagerCardSessionsModal } from './UserManagerCardSessionsModal';
 import { UserManagerDailyUsageReportView } from './UserManagerDailyUsageReportView';
 import { MikrotikExpiredCardsModal } from './MikrotikExpiredCardsModal';
-
-const parseMikrotikUptimeToSeconds = (uptime?: string): number => {
-  if (!uptime) return 0;
-  let totalSec = 0;
-  
-  const matchW = uptime.match(/(\d+)w/);
-  const matchD = uptime.match(/(\d+)d/);
-  const matchH = uptime.match(/(\d+)h/);
-  const matchM = uptime.match(/(\d+)m/);
-  const matchS = uptime.match(/(\d+)s/);
-
-  if (matchW) totalSec += parseInt(matchW[1]) * 7 * 24 * 3600;
-  if (matchD) totalSec += parseInt(matchD[1]) * 24 * 3600;
-  if (matchH) totalSec += parseInt(matchH[1]) * 3600;
-  if (matchM) totalSec += parseInt(matchM[1]) * 60;
-  if (matchS) totalSec += parseInt(matchS[1]);
-
-  if (uptime.includes(':')) {
-    const parts = uptime.split(/[wd ]/).filter(Boolean).pop()?.split(':') || [];
-    if (parts.length === 3) {
-      totalSec += parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
-    } else if (parts.length === 2) {
-       totalSec += parseInt(parts[0]) * 60 + parseInt(parts[1]);
-    }
-  }
-
-  return totalSec;
-};
+import { evaluateCardExpirationStatus, parseMikrotikUptimeToSeconds } from '../utils/cardExpiration';
 
 interface UserManagerViewProps {
   settings: NetworkSettings;
@@ -729,27 +702,19 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
         (u.actualProfile && (u.actualProfile || '').toLowerCase().includes(q));
       const matchesProfile = profileFilter === 'all' || u.actualProfile === profileFilter;
       
+      const cardStatus = evaluateCardExpirationStatus(u, categories);
+
       let matchesStatus = true;
-      const totalBytes = u.totalBytes || ((u.downloadUsed || 0) + (u.uploadUsed || 0));
-
-      const hasQuota = Boolean(u.limitBytesTotal && u.limitBytesTotal > 0);
-      const isQuotaExpired = hasQuota && totalBytes >= (u.limitBytesTotal || 0);
-      const limitUptimeSec = parseMikrotikUptimeToSeconds(u.limitUptime);
-      const usedUptimeSec = parseMikrotikUptimeToSeconds(u.uptimeUsed);
-      const hasTimeLimit = limitUptimeSec > 0;
-      const isTimeExpired = hasTimeLimit && usedUptimeSec >= limitUptimeSec;
-      const isExpired = isQuotaExpired || isTimeExpired;
-
       if (statusFilter === 'disabled') {
-        matchesStatus = Boolean(u.disabled) && !isExpired;
+        matchesStatus = cardStatus.isManuallyDisabled;
       } else if (statusFilter === 'expired') {
-        matchesStatus = isExpired;
+        matchesStatus = cardStatus.isExpired;
       } else if (statusFilter === 'has_usage') {
-        matchesStatus = totalBytes > 0;
+        matchesStatus = cardStatus.totalBytesUsed > 0;
       } else if (statusFilter === 'unused') {
-        matchesStatus = totalBytes === 0 && !u.disabled;
+        matchesStatus = cardStatus.totalBytesUsed === 0 && !cardStatus.isManuallyDisabled && !cardStatus.isExpired;
       } else if (statusFilter === 'active_now') {
-        matchesStatus = !u.disabled && (totalBytes > 0 || (u.uptimeUsed && u.uptimeUsed !== '0s'));
+        matchesStatus = !cardStatus.isManuallyDisabled && !cardStatus.isExpired && (cardStatus.totalBytesUsed > 0 || cardStatus.usedUptimeSec > 0);
       }
 
       return matchesSearch && matchesProfile && matchesStatus;
@@ -1128,16 +1093,14 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                     </tr>
                   ) : (
                     filteredUsers.map((u, idx) => {
-                      const totalBytes = u.totalBytes || ((u.downloadUsed || 0) + (u.uploadUsed || 0));
-                      const hasLimit = Boolean(u.limitBytesTotal && u.limitBytesTotal > 0);
-                      const percentUsed = hasLimit ? Math.min(100, Math.round((totalBytes / (u.limitBytesTotal as number)) * 100)) : null;
+                      const cardStatus = evaluateCardExpirationStatus(u, categories);
+                      const totalBytes = cardStatus.totalBytesUsed;
+                      const hasLimit = cardStatus.hasQuota;
+                      const percentUsed = cardStatus.percentQuotaUsed;
 
-                      const isQuotaExpired = hasLimit && totalBytes >= (u.limitBytesTotal || 0);
-                      const limitUptimeSec = parseMikrotikUptimeToSeconds(u.limitUptime);
-                      const usedUptimeSec = parseMikrotikUptimeToSeconds(u.uptimeUsed);
-                      const hasTimeLimit = limitUptimeSec > 0;
-                      const isTimeExpired = hasTimeLimit && usedUptimeSec >= limitUptimeSec;
-                      const isExpired = isQuotaExpired || isTimeExpired;
+                      const isExpired = cardStatus.isExpired;
+                      const isQuotaExpired = cardStatus.isQuotaExpired;
+                      const isTimeExpired = cardStatus.isTimeExpired;
 
                       return (
                         <tr key={u.id || u.name || `um-user-row-${idx}`} className="hover:bg-slate-800/40 transition">
@@ -1259,19 +1222,14 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
 
                           {/* Status */}
                           <td className="p-3.5">
-                            {isExpired ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                                منتهي ({isQuotaExpired ? 'رصيد' : 'وقت'})
-                              </span>
-                            ) : u.disabled ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                                معطل يدوياً
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                نشط (Active)
-                              </span>
-                            )}
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${cardStatus.statusBadgeClass}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${
+                                cardStatus.isQuotaExpired ? 'bg-rose-400' :
+                                cardStatus.isTimeExpired ? 'bg-amber-400' :
+                                cardStatus.isManuallyDisabled ? 'bg-slate-400' : 'bg-emerald-400'
+                              }`} />
+                              {cardStatus.statusLabel}
+                            </span>
                           </td>
 
                           {/* Actions */}
@@ -2842,6 +2800,7 @@ set [find] use-radius=yes radius-accounting=yes`}
         onClose={() => setShowExpiredCardsModal(false)}
         config={config}
         sessions={[]}
+        categories={categories}
         onCardsDeleted={() => {
           fetchAllUMData();
         }}

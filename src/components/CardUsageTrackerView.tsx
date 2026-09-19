@@ -106,7 +106,7 @@ export const CardUsageTrackerView: React.FC<CardUsageTrackerViewProps> = ({
   // UI state
   const [activeTab, setActiveTab] = useState<'ledger' | 'hourly' | 'history'>('ledger');
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'expired'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'total' | 'download' | 'uptime' | 'newest'>('total');
 
@@ -138,12 +138,27 @@ export const CardUsageTrackerView: React.FC<CardUsageTrackerViewProps> = ({
     setIsISPSettingsOpen(false);
   };
 
+  // Helper to determine card quota & expiration in tracker
+  const getRecordQuotaInfo = (record: CardDailyUsageRecord) => {
+    const cat = categories.find((c) => c.id === record.categoryId || c.name === record.categoryName);
+    const quotaBytes = record.cardQuotaBytes || cat?.quotaBytes || 0;
+    const isExpired = quotaBytes > 0 && record.totalBytes >= quotaBytes;
+    return { quotaBytes, isExpired };
+  };
+
+  const expiredCardsCount = useMemo(() => {
+    return dateRecords.filter((r) => getRecordQuotaInfo(r).isExpired).length;
+  }, [dateRecords, categories]);
+
   // Filtered card records
   const filteredRecords = useMemo(() => {
     return dateRecords.filter((record) => {
+      const { isExpired } = getRecordQuotaInfo(record);
+
       // Status filter
       if (statusFilter === 'active' && !record.isActive) return false;
       if (statusFilter === 'inactive' && record.isActive) return false;
+      if (statusFilter === 'expired' && !isExpired) return false;
 
       // Category filter
       if (categoryFilter !== 'all' && record.categoryId !== categoryFilter && record.categoryName !== categoryFilter) {
@@ -171,7 +186,7 @@ export const CardUsageTrackerView: React.FC<CardUsageTrackerViewProps> = ({
       if (sortBy === 'newest') return new Date(b.lastSeenTime).getTime() - new Date(a.lastSeenTime).getTime();
       return (b.totalBytes || 0) - (a.totalBytes || 0);
     });
-  }, [dateRecords, statusFilter, categoryFilter, searchTerm, sortBy]);
+  }, [dateRecords, statusFilter, categoryFilter, searchTerm, sortBy, categories]);
 
   // Hourly breakdown calculation
   const hourlyData = useMemo(() => {
@@ -788,6 +803,7 @@ export const CardUsageTrackerView: React.FC<CardUsageTrackerViewProps> = ({
               <option value="all">كل الحالات ({dateRecords.length})</option>
               <option value="active">متصل الآن ({activeNowCount})</option>
               <option value="inactive">منقطع ({dateRecords.length - activeNowCount})</option>
+              <option value="expired">منتهية الرصيد ({expiredCardsCount})</option>
             </select>
 
             {/* Category Filter */}
@@ -964,22 +980,30 @@ export const CardUsageTrackerView: React.FC<CardUsageTrackerViewProps> = ({
                         </td>
 
                         <td className="py-3 px-4">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                              record.isActive
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : 'bg-slate-100 text-slate-600 border border-slate-200'
-                            }`}
-                          >
-                            {record.isActive ? (
-                              <>
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                                متصل الآن
-                              </>
-                            ) : (
-                              'منقطع'
-                            )}
-                          </span>
+                          {(() => {
+                            const { isExpired } = getRecordQuotaInfo(record);
+                            if (isExpired) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                  منتهي الرصيد
+                                </span>
+                              );
+                            }
+                            if (record.isActive) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                                  متصل الآن
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                منقطع
+                              </span>
+                            );
+                          })()}
                         </td>
                       </tr>
                     );
