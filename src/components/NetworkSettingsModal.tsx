@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Settings,
   Save,
@@ -27,9 +27,14 @@ import {
   ShieldAlert,
   Activity,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Radio,
+  Building2,
+  CheckCircle2,
+  Network
 } from 'lucide-react';
-import { NetworkSettings, MikroTikConfig, AppUser } from '../types';
+import { NetworkSettings, MikroTikConfig, AppUser, NetworkTenant } from '../types';
+import { defaultNetworkSettings } from '../mockData';
 import { exportToJSON, downloadFile } from '../utils/storage';
 import { hasPermission } from '../utils/permissions';
 import { RemoteMikrotikWizardModal } from './RemoteMikrotikWizardModal';
@@ -37,50 +42,101 @@ import { testMikroTikConnection, ConnectionTestResult, isPrivateIp } from '../ut
 
 interface NetworkSettingsModalProps {
   settings: NetworkSettings;
-  onSaveSettings: (settings: NetworkSettings) => void;
+  onSaveSettings: (settings: NetworkSettings, tenantId?: string) => void;
   onResetData: () => void;
+  onResetNetworkData?: (tenantId: string) => void;
   allAppData: any;
   onRestoreData: (data: any) => void;
   onOpenBackupModal?: () => void;
   onForceCloudSync?: () => void;
   onClose: () => void;
   activeUser?: AppUser;
+  tenants?: NetworkTenant[];
+  currentTenantId?: string | null;
 }
 
 export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
   settings,
   onSaveSettings,
   onResetData,
+  onResetNetworkData,
   allAppData,
   onRestoreData,
   onOpenBackupModal,
   onForceCloudSync,
   onClose,
   activeUser,
+  tenants = [],
+  currentTenantId,
 }) => {
-  const isNetworkAdmin =
-    activeUser?.role === 'network_admin' ||
-    activeUser?.role === 'system_owner' ||
-    activeUser?.role === 'super_admin' ||
-    hasPermission(activeUser, 'settings', 'editNetworkProfile');
+  const isSystemAdmin =
+    activeUser?.role === 'system_owner' || activeUser?.role === 'super_admin';
 
-  const [formData, setFormData] = useState<NetworkSettings>({
-    ...settings,
-    isLocked: settings.isLocked ?? true,
-    themeMode: settings.themeMode || 'dark',
-    mikrotikConfig: settings.mikrotikConfig || {
-      host: settings.mikrotikIp || '192.168.88.1',
-      port: 8728,
-      protocol: 'auto',
-      username: 'admin',
-      password: '',
-      useSsl: false,
-      autoRefreshInterval: 5,
-      isLocked: settings.isLocked ?? true,
+  // Determine which tenant is being configured
+  const initialTenantId = useMemo(() => {
+    if (activeUser?.networkId && activeUser.networkId !== 'system') {
+      return activeUser.networkId;
     }
+    if (currentTenantId && currentTenantId !== 'all') {
+      return currentTenantId;
+    }
+    return tenants[0]?.id || 'net-default';
+  }, [activeUser?.networkId, currentTenantId, tenants]);
+
+  const [selectedTenantId, setSelectedTenantId] = useState<string>(initialTenantId);
+
+  const selectedTenant = useMemo(() => {
+    return tenants.find((t) => t.id === selectedTenantId) || null;
+  }, [tenants, selectedTenantId]);
+
+  const canEditThisTenant = useMemo(() => {
+    if (isSystemAdmin) return true;
+    if (activeUser?.role === 'network_admin' && activeUser?.networkId === selectedTenantId) return true;
+    return hasPermission(activeUser, 'settings', 'editNetworkProfile', selectedTenant || undefined);
+  }, [isSystemAdmin, activeUser, selectedTenantId, selectedTenant]);
+
+  const isNetworkAdmin = canEditThisTenant;
+
+  // Helper to extract clean isolated settings for a given tenant
+  const getTenantIsolatedSettings = (tenant: NetworkTenant | null, baseSettings: NetworkSettings): NetworkSettings => {
+    if (!tenant) return baseSettings;
+    const tSettings = tenant.settings || baseSettings;
+    const host = tSettings.mikrotikConfig?.host || tSettings.mikrotikIp || '192.168.88.1';
+    return {
+      ...defaultNetworkSettings,
+      ...tSettings,
+      networkName: tenant.name || tSettings.networkName || 'شبكة لاسلكية',
+      isLocked: tSettings.isLocked ?? true,
+      themeMode: tSettings.themeMode || baseSettings.themeMode || 'dark',
+      mikrotikIp: host,
+      mikrotikConfig: tSettings.mikrotikConfig || {
+        host,
+        port: 8728,
+        protocol: 'auto',
+        username: 'admin',
+        password: '',
+        useSsl: false,
+        autoRefreshInterval: 5,
+        isLocked: tSettings.isLocked ?? true,
+      },
+    };
+  };
+
+  const [formData, setFormData] = useState<NetworkSettings>(() => {
+    const targetTenant = tenants.find((t) => t.id === initialTenantId) || null;
+    return getTenantIsolatedSettings(targetTenant, settings);
   });
 
-  const isFieldsDisabled = !isNetworkAdmin || formData.isLocked;
+  // Switch form data when switching tenant
+  const handleTenantChange = (newTenantId: string) => {
+    setSelectedTenantId(newTenantId);
+    setTestResult(null);
+    const newTenant = tenants.find((t) => t.id === newTenantId) || null;
+    const nextSettings = getTenantIsolatedSettings(newTenant, settings);
+    setFormData(nextSettings);
+  };
+
+  const isFieldsDisabled = !canEditThisTenant || formData.isLocked;
 
   const [showRemoteWizard, setShowRemoteWizard] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
@@ -96,7 +152,7 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
     } catch (err: any) {
       setTestResult({
         success: false,
-        error: err.message || 'فشل الاتصال بالمايكروتك',
+        error: err.message || `فشل الاتصال براوتر شبكة ${selectedTenant?.name || formData.networkName}`,
       });
     } finally {
       setTestingConnection(false);
@@ -105,8 +161,8 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isNetworkAdmin) {
-      alert('عذراً، بيانات وإعدادات الشبكة مثبتة وأساسية في النظام ولا يمكن تعديلها إلا بواسطة مدير الشبكة.');
+    if (!canEditThisTenant) {
+      alert('عذراً، بيانات وإعدادات الشبكة مثبتة ومحمية ولا يمكن تعديلها إلا بواسطة مدير الشبكة المصرح له.');
       return;
     }
     const cleanHost = (formData.mikrotikConfig?.host || formData.mikrotikIp || '192.168.88.1').trim();
@@ -123,17 +179,45 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
           }
         : undefined,
     };
-    onSaveSettings(finalSettings);
+    onSaveSettings(finalSettings, selectedTenantId);
     onClose();
   };
 
   const handleBackupDownload = () => {
-    const jsonStr = exportToJSON(allAppData);
+    const networkScopedData = {
+      backupType: 'single_network',
+      tenantId: selectedTenantId,
+      tenantName: selectedTenant?.name || formData.networkName,
+      exportDate: new Date().toISOString(),
+      categories: (allAppData.categories || []).filter((c: any) => !c.networkId || c.networkId === selectedTenantId),
+      posPoints: (allAppData.posPoints || []).filter((p: any) => !p.networkId || p.networkId === selectedTenantId),
+      invoices: (allAppData.invoices || []).filter((i: any) => !i.networkId || i.networkId === selectedTenantId),
+      expenses: (allAppData.expenses || []).filter((e: any) => !e.networkId || e.networkId === selectedTenantId),
+      dispatches: (allAppData.dispatches || []).filter((d: any) => !d.networkId || d.networkId === selectedTenantId),
+      sales: (allAppData.sales || []).filter((s: any) => !s.networkId || s.networkId === selectedTenantId),
+      payments: (allAppData.payments || []).filter((p: any) => !p.networkId || p.networkId === selectedTenantId),
+      orders: (allAppData.orders || []).filter((o: any) => !o.networkId || o.networkId === selectedTenantId),
+      settings: formData,
+    };
+    const jsonStr = exportToJSON(networkScopedData);
+    const safeName = (formData.networkName || selectedTenantId || 'network').replace(/[^a-zA-Z0-9_\u0600-\u06FF]/g, '_');
     downloadFile(
       jsonStr,
-      `mikrotik-pos-backup-${new Date().toISOString().split('T')[0]}.json`,
+      `backup-${safeName}-${new Date().toISOString().split('T')[0]}.json`,
       'application/json'
     );
+  };
+
+  const handleReset = () => {
+    if (onResetNetworkData && selectedTenantId) {
+      onResetNetworkData(selectedTenantId);
+      onClose();
+    } else {
+      if (confirm(`هل أنت متأكد من تصفير وإعادة تعيين بيانات شبكة (${selectedTenant?.name || formData.networkName}) إلى البيانات الافتراضية؟`)) {
+        onResetData();
+        onClose();
+      }
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -144,7 +228,7 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
     reader.onload = (event) => {
       try {
         const parsed = JSON.parse(event.target?.result as string);
-        if (confirm('هل أنت متأكد من استعادة هذه النسخة الاحتياطية؟ سيتم استبدال البيانات الحالية.')) {
+        if (confirm(`هل أنت متأكد من استعادة هذه النسخة الاحتياطية لشبكة (${selectedTenant?.name || formData.networkName})؟`)) {
           onRestoreData(parsed);
           onClose();
         }
