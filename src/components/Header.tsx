@@ -30,6 +30,7 @@ import {
   X,
   CheckCircle2,
   RefreshCw,
+  History,
 } from 'lucide-react';
 import { NetworkSettings, POSPoint, SalesRecord, PaymentRecord, AppUser, NetworkTenant } from '../types';
 import { NavView } from './Sidebar';
@@ -183,6 +184,7 @@ export const Header: React.FC<HeaderProps> = ({
     card_usage_tracker: 'الاستعلام المستمر وتتبع استهلاك الكروت ومطابقة المزود',
     mikrotik: 'مراقبة المايكروتك والمشتركين المباشر',
     users: 'إدارة المستخدمين والأدوار ومصفوفة الصلاحيات',
+    audit_logs: 'سجل نشاط المستخدمين والرقابة والعمليات الحساسة',
     customers: 'إدارة العملاء والمديونيات',
     mikrotik_sessions: 'إحصائيات المتصلين وجلسات المايكروتك',
     sales: 'حركة المبيعات وفواتير الكروت',
@@ -734,20 +736,33 @@ export const Header: React.FC<HeaderProps> = ({
 
                       {/* Go to Users & Permissions (if permitted) */}
                       {hasPermission(activeUser, 'usersAndPermissions', 'view', activeTenant) && (
-                        <button
-                          onClick={() => {
-                            setIsUserMenuOpen(false);
-                            if (onOpenUsers) {
-                              onOpenUsers();
-                            } else {
-                              setCurrentTab('users');
-                            }
-                          }}
-                          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-slate-200 hover:bg-slate-800 hover:text-white transition"
-                        >
-                          <Shield className="w-4 h-4 text-purple-400" />
-                          <span>إدارة المستخدمين والصلاحيات</span>
-                        </button>
+                        <>
+                          <button
+                            onClick={() => {
+                              setIsUserMenuOpen(false);
+                              if (onOpenUsers) {
+                                onOpenUsers();
+                              } else {
+                                setCurrentTab('users');
+                              }
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-slate-200 hover:bg-slate-800 hover:text-white transition"
+                          >
+                            <Shield className="w-4 h-4 text-purple-400" />
+                            <span>إدارة المستخدمين والصلاحيات</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setIsUserMenuOpen(false);
+                              setCurrentTab('audit_logs');
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-slate-200 hover:bg-slate-800 hover:text-white transition"
+                          >
+                            <History className="w-4 h-4 text-indigo-400" />
+                            <span>سجل نشاط المستخدمين والرقابة</span>
+                          </button>
+                        </>
                       )}
 
                       {/* Backup & Database (if permitted) */}

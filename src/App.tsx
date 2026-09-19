@@ -22,6 +22,7 @@ import {
   SaleReceiptModal,
   OfficialPaymentReceiptModal,
   UsersAndPermissionsView,
+  AuditLogView,
   LoginView,
   AccessDeniedView,
   IncomeStatementModal,
@@ -2874,6 +2875,7 @@ export default function App() {
       mikrotik: 'mikrotik',
       mikrotik_sessions: 'mikrotik',
       users: 'usersAndPermissions',
+      audit_logs: 'usersAndPermissions',
       customers: 'pos',
       sales: 'invoices',
       dispatches: 'categories',
@@ -3074,6 +3076,7 @@ export default function App() {
           invoices: scopedInvoices.length,
           expenses: scopedExpenses.length,
           users: scopedUsers.length,
+          auditLogs: scopedActivityLogs.length,
           orders: scopedOrders.length,
           pendingOrders: scopedOrders.filter((o) => o.status === 'pending').length,
         }}
@@ -3408,6 +3411,20 @@ export default function App() {
                   onOpenLoginView={(target) => handleOpenLoginPortal(target)}
                   onClearLogs={() => setActivityLogs([])}
                 />
+              )}
+
+        {activeView === 'audit_logs' && (
+                <div className="p-4 sm:p-6 lg:p-8">
+                  <AuditLogView
+                    activityLogs={scopedActivityLogs}
+                    users={scopedUsers}
+                    activeUser={activeUser}
+                    settings={settings}
+                    tenants={tenants}
+                    allUsers={users}
+                    onClearLogs={() => setActivityLogs([])}
+                  />
+                </div>
               )}
 
               {/* Legacy fallback tabs */}

@@ -28,6 +28,7 @@ import {
   Server,
   Info,
   Database,
+  History,
 } from 'lucide-react';
 import {
   NetworkSettings,
@@ -56,6 +57,7 @@ export type NavView =
   | 'payments'
   | 'categories'
   | 'users'
+  | 'audit_logs'
   | 'sales'
   | 'dispatches'
   | 'orders'
@@ -91,6 +93,7 @@ interface SidebarProps {
     invoices?: number;
     expenses?: number;
     users?: number;
+    auditLogs?: number;
     orders?: number;
     pendingOrders?: number;
   };
@@ -161,6 +164,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const invoicesCount = counts?.invoices ?? invoices?.length ?? 0;
   const expensesCount = counts?.expenses ?? expenses?.length ?? 0;
   const usersCount = counts?.users ?? users?.length ?? 0;
+  const auditLogsCount = counts?.auditLogs ?? 0;
   const ordersCount = counts?.orders ?? orders?.length ?? 0;
   const pendingOrdersCount = counts?.pendingOrders ?? orders?.filter((o) => o.status === 'pending').length ?? 0;
 
@@ -302,6 +306,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: `${usersCount}`,
       color: 'text-purple-400',
       activeBg: 'bg-purple-600 text-white shadow-lg shadow-purple-600/30',
+    },
+    {
+      id: 'audit_logs' as NavView,
+      permissionModule: 'usersAndPermissions' as const,
+      label: 'سجل نشاط المستخدمين',
+      icon: History,
+      badge: auditLogsCount > 0 ? `${auditLogsCount}` : undefined,
+      color: 'text-indigo-400',
+      activeBg: 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30',
     },
   ];
 

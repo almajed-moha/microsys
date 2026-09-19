@@ -30,7 +30,8 @@ import {
   Crown,
   Lock,
   Radio,
-  Sliders
+  Sliders,
+  Edit3,
 } from 'lucide-react';
 import { UserActivityLog, AppUser, NetworkSettings, NetworkTenant } from '../types';
 import { exportAuditLogsToExcel } from '../utils/auditLogger';
@@ -673,6 +674,32 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
                 />
               </div>
             )}
+
+            {/* Quick Deletions Filter Pill */}
+            <button
+              onClick={() => setSelectedActionTypeFilter((prev) => (prev === 'delete' ? 'all' : 'delete'))}
+              className={`mr-1 px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
+                selectedActionTypeFilter === 'delete'
+                  ? 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-600/30'
+                  : 'bg-rose-950/30 text-rose-300 border-rose-800/40 hover:bg-rose-900/40'
+              }`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>عمليات الحذف الحساسة</span>
+            </button>
+
+            {/* Quick Modifications Filter Pill */}
+            <button
+              onClick={() => setSelectedActionTypeFilter((prev) => (prev === 'update' ? 'all' : 'update'))}
+              className={`mr-1 px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
+                selectedActionTypeFilter === 'update'
+                  ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-600/30'
+                  : 'bg-blue-950/30 text-blue-300 border-blue-800/40 hover:bg-blue-900/40'
+              }`}
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>عمليات التعديل</span>
+            </button>
 
             {/* Quick Manager Filter Pill */}
             <button

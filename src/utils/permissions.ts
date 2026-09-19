@@ -1531,6 +1531,7 @@ export function getViewNameArabic(view: string): string {
     mikrotik_sessions: 'إحصائيات المتصلين',
     mikrotik: 'المايكروتك والمشتركين المباشر',
     users: 'إدارة المستخدمين والصلاحيات',
+    audit_logs: 'سجل نشاط المستخدمين والرقابة',
     sales: 'المبيعات',
     dispatches: 'تسليم الدفعات',
   };
