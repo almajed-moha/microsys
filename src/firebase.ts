@@ -16,20 +16,22 @@ export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId)
 export const auth = getAuth(app);
 
 let cachedAccessToken: string | null = null;
+let hasAttemptedAnonymous = false;
 
 export const getGoogleAccessToken = () => cachedAccessToken;
 
 /**
- * Ensures that the client has an active, authenticated Firebase session.
- * Prevents unauthenticated external access while allowing seamless synchronization.
+ * Ensures that the client has an active, authenticated Firebase session if available.
+ * Does not block or repeat failing anonymous auth requests.
  */
 export const ensureAuthenticatedSession = async (): Promise<FirebaseUser | null> => {
   if (auth.currentUser) return auth.currentUser;
+  if (hasAttemptedAnonymous) return auth.currentUser;
+  hasAttemptedAnonymous = true;
   try {
     const cred = await signInAnonymously(auth);
     return cred.user;
   } catch (error) {
-    console.warn('Authentication session initialization warning:', error);
     return null;
   }
 };

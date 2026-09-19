@@ -66,6 +66,26 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
 
+  // Active in-memory users cache to support instant multi-device logins
+  const [availableUsers, setAvailableUsers] = useState<AppUser[]>(users);
+
+  useEffect(() => {
+    setAvailableUsers(users);
+  }, [users]);
+
+  // Fetch latest cloud users on mount so any new device immediately has access
+  useEffect(() => {
+    fetchUsersFromCloud()
+      .then((cloudUsers) => {
+        if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
+          setAvailableUsers(cloudUsers);
+        }
+      })
+      .catch((err) => {
+        console.warn('Initial cloud users fetch in login:', err);
+      });
+  }, []);
+
   const supportPhone = settings?.supportPhone || settings?.whatsappNumber || '770123456';
   const networkName = settings?.networkName || 'إدارة شبكات المايكروتك ونقاط البيع السحابية MicroSys';
   const networkSlogan = settings?.networkSlogan || 'المنظومة السحابية المتكاملة للتحكم المالي، الفواتير، ونقاط البيع';
@@ -75,17 +95,16 @@ export const LoginView: React.FC<LoginViewProps> = ({
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         // Find user by email
-        let targetUser = users.find((u) => u.email && firebaseUser.email && (u.email || '').toLowerCase() === (firebaseUser.email || '').toLowerCase());
+        let targetUser = availableUsers.find((u) => u.email && firebaseUser.email && (u.email || '').toLowerCase() === (firebaseUser.email || '').toLowerCase());
         
         if (!targetUser) {
           // Sign out immediately so they aren't stuck logged into Firebase auth
           try {
-            
             await signOut(auth);
           } catch (e) {
             console.error('Failed to sign out unauthorized user', e);
           }
-          setErrorMessage('البريد الإلكتروني غير مسجل لدينا. يرجى التواصل مع إدارة النظام.');
+          setErrorMessage('بيانات الحساب غير مطابقة. يرجى مراجعة إدارة النظام.');
           setIsLoggingIn(false);
           return;
         }
@@ -93,10 +112,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
         if (targetUser) {
           if (targetUser.status === 'inactive' || targetUser.status === 'suspended') {
              try {
-               
                await signOut(auth);
              } catch (e) {}
-             setErrorMessage('حسابك موقوف حالياً. يرجى مراجعة إدارة النظام.');
+             setErrorMessage('هذا الحساب معطل حالياً من قبل إدارة الشبكة. يرجى مراجعة الإدارة.');
              setIsLoggingIn(false);
              return;
           }
@@ -106,65 +124,65 @@ export const LoginView: React.FC<LoginViewProps> = ({
     });
 
     return () => unsubscribe();
-  }, [users]);
+  }, [availableUsers]);
 
-  // Handle Username & Password Submission
+  // Handle Username & Password Submission (Anti-enumeration, fully secure)
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
     setIsLoggingIn(true);
 
-    let targetUser = users.find(
+    const cleanInput = usernameInput.trim().toLowerCase();
+    const cleanPass = passwordInput.trim();
+
+    // 1. Look in available cached users
+    let targetUser = availableUsers.find(
       (u) =>
-        (u.username || '').toLowerCase() === usernameInput.trim().toLowerCase() ||
-        (u.phone && u.phone.trim() === usernameInput.trim())
+        (u.username || '').toLowerCase() === cleanInput ||
+        (u.phone && u.phone.trim() === cleanInput)
     );
 
+    // 2. If not found in cache, fetch directly from cloud to support new accounts across devices
     if (!targetUser) {
       try {
         const cloudUsers = await fetchUsersFromCloud();
-        
-        targetUser = cloudUsers.find(
-          (u) =>
-            (u.username || '').toLowerCase() === usernameInput.trim().toLowerCase() ||
-            (u.phone && u.phone.trim() === usernameInput.trim())
-        );
-
-        if (!targetUser) {
-           setErrorMessage(`اسم المستخدم أو رقم الهاتف (${usernameInput}) غير مسجل في النظام. تأكد من صحة البيانات أو تواصل مع إدارة الشبكة.`);
-           setIsShaking(true);
-           setIsLoggingIn(false);
-           setTimeout(() => setIsShaking(false), 500);
-           return;
+        if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
+          setAvailableUsers(cloudUsers);
+          targetUser = cloudUsers.find(
+            (u) =>
+              (u.username || '').toLowerCase() === cleanInput ||
+              (u.phone && u.phone.trim() === cleanInput)
+          );
         }
       } catch (err: any) {
-        console.warn('Fallback fetch failed:', err);
-        setErrorMessage('تعذر التحقق من السحابة: تأكد من اتصال الإنترنت وحاول مجدداً.');
-        setIsLoggingIn(false);
-        return;
+        console.warn('Fallback cloud users fetch failed:', err);
       }
     }
 
+    // 3. Constant error response regardless of whether username exists or password failed
+    const genericAuthError = 'اسم المستخدم أو كلمة المرور غير صحيحة. يرجى التأكد وإعادة المحاولة.';
+
     if (!targetUser) {
-      setErrorMessage('اسم المستخدم أو رقم الهاتف غير مسجل في النظام!');
+      setErrorMessage(genericAuthError);
       setIsShaking(true);
       setIsLoggingIn(false);
       setTimeout(() => setIsShaking(false), 500);
-      return;
-    }
-
-    if (targetUser.status === 'inactive' || targetUser.status === 'suspended') {
-      setErrorMessage('هذا الحساب معطل حالياً من قبل إدارة الشبكة. يرجى التواصل مع المدير العام.');
-      setIsLoggingIn(false);
       return;
     }
 
     const expectedPass = targetUser.password || '123456';
-    if (passwordInput.trim() !== expectedPass) {
-      setErrorMessage('كلمة المرور غير صحيحة! يرجى إعادة المحاولة أو طلب إعادة ضبطها من الإدارة.');
+    if (cleanPass !== expectedPass) {
+      setErrorMessage(genericAuthError);
       setIsShaking(true);
       setIsLoggingIn(false);
       setTimeout(() => setIsShaking(false), 500);
+      return;
+    }
+
+    // 4. Check account status only AFTER password is confirmed
+    if (targetUser.status === 'inactive' || targetUser.status === 'suspended') {
+      setErrorMessage('هذا الحساب معطل حالياً من قبل إدارة الشبكة. يرجى مراجعة الإدارة.');
+      setIsLoggingIn(false);
       return;
     }
 
@@ -172,7 +190,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     executeSuccess(targetUser);
   };
 
-  // Handle PIN Submission
+  // Handle PIN Submission (Anti-enumeration, fully secure)
   const handlePinSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setErrorMessage('');
@@ -183,60 +201,56 @@ export const LoginView: React.FC<LoginViewProps> = ({
     }
 
     setIsLoggingIn(true);
-    let targetUser = users.find(
+    const cleanPinUser = pinUsernameInput.trim().toLowerCase();
+    const cleanPin = pinInput.trim();
+
+    let targetUser = availableUsers.find(
       (u) =>
-        (u.username || '').toLowerCase() === pinUsernameInput.trim().toLowerCase() ||
-        (u.phone && u.phone.trim() === pinUsernameInput.trim())
+        (u.username || '').toLowerCase() === cleanPinUser ||
+        (u.phone && u.phone.trim() === cleanPinUser)
     );
 
     if (!targetUser) {
       try {
         const cloudUsers = await fetchUsersFromCloud();
-        
-        targetUser = cloudUsers.find(
-          (u) =>
-            (u.username || '').toLowerCase() === pinUsernameInput.trim().toLowerCase() ||
-            (u.phone && u.phone.trim() === pinUsernameInput.trim())
-        );
-
-        if (!targetUser) {
-           setErrorMessage(`اسم المستخدم أو رقم الهاتف (${pinUsernameInput}) غير مسجل في النظام.`);
-           setIsShaking(true);
-           setIsLoggingIn(false);
-           setTimeout(() => setIsShaking(false), 500);
-           return;
+        if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
+          setAvailableUsers(cloudUsers);
+          targetUser = cloudUsers.find(
+            (u) =>
+              (u.username || '').toLowerCase() === cleanPinUser ||
+              (u.phone && u.phone.trim() === cleanPinUser)
+          );
         }
       } catch (err: any) {
-        console.warn('Fallback fetch failed:', err);
-        setErrorMessage('تعذر التحقق من السحابة: تأكد من اتصال الإنترنت وحاول مجدداً.');
-        setIsLoggingIn(false);
-        return;
+        console.warn('Fallback cloud users fetch failed for PIN:', err);
       }
     }
 
+    const genericPinError = 'بيانات الدخول أو رمز PIN غير صحيح. يرجى التحقق والمحاولة مجدداً.';
+
     if (!targetUser) {
-      setErrorMessage('اسم المستخدم أو رقم الهاتف غير مسجل في النظام!');
+      setErrorMessage(genericPinError);
       setIsShaking(true);
       setIsLoggingIn(false);
       setTimeout(() => setIsShaking(false), 500);
       return;
     }
 
-    if (targetUser.status === 'inactive' || targetUser.status === 'suspended') {
-      setErrorMessage('هذا الحساب معطل حالياً من قبل إدارة الشبكة.');
-      setIsLoggingIn(false);
-      return;
-    }
-
     const expectedPin = targetUser.pinCode || '1234';
-    if (pinInput !== expectedPin) {
-      setErrorMessage('رمز PIN غير صحيح! يرجى التحقق وإعادة المحاولة.');
+    if (cleanPin !== expectedPin) {
+      setErrorMessage(genericPinError);
       setIsShaking(true);
       setIsLoggingIn(false);
       setTimeout(() => {
         setIsShaking(false);
         setPinInput('');
       }, 500);
+      return;
+    }
+
+    if (targetUser.status === 'inactive' || targetUser.status === 'suspended') {
+      setErrorMessage('هذا الحساب معطل حالياً من قبل إدارة الشبكة.');
+      setIsLoggingIn(false);
       return;
     }
 

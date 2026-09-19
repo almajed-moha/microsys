@@ -95,6 +95,7 @@ import {
   debouncedSyncArrayToFirestore,
   mergeCloudAndLocal,
   getIsCloudHydrated,
+  setCloudHydrated,
 } from './services/cloudSync';
 import { initialActivityLogs, buildActivityLog } from './utils/auditLogger';
 import { applyCreationAudit, applyUpdateAudit } from './utils/auditTrigger';
@@ -254,13 +255,13 @@ export default function App() {
 
   const [selectedTenantFilter, setSelectedTenantFilter] = useState<string>('all');
 
-  // Helper to extract or fallback tenant ID for any item
+  // Helper to extract tenant ID for any item with strict network isolation
   const getRecordTenantId = useCallback((record?: { networkId?: string }) => {
     if (record?.networkId && record.networkId !== '' && record.networkId !== 'system') {
       return record.networkId;
     }
-    return tenants[0]?.id || 'net-microsys';
-  }, [tenants]);
+    return '';
+  }, []);
 
   // Active effective tenant for filtering data
   const effectiveTenantId: string | null = useMemo(() => {
@@ -270,7 +271,7 @@ export default function App() {
     if (activeUser?.networkId && activeUser.networkId !== 'system') {
       return activeUser.networkId;
     }
-    return tenants[0]?.id || 'net-microsys';
+    return tenants[0]?.id || null;
   }, [activeUser?.role, activeUser?.networkId, selectedTenantFilter, tenants]);
 
   // Current tenant ID for assigning to new records
@@ -281,7 +282,7 @@ export default function App() {
     if (selectedTenantFilter !== 'all' && selectedTenantFilter) {
       return selectedTenantFilter;
     }
-    return tenants[0]?.id || 'net-microsys';
+    return tenants[0]?.id || 'net-612524';
   }, [activeUser?.networkId, selectedTenantFilter, tenants]);
 
   // Automatically derive current tenant object for settings and branding sync
@@ -449,10 +450,13 @@ export default function App() {
   );
 
   const scopedCustomers = useMemo(() => 
-    (activeUser?.networkId && activeUser.networkId !== 'system')
-      ? customers.filter((c) => c.networkId === activeUser.networkId)
-      : customers,
-  [customers, activeUser?.networkId]);
+    effectiveTenantId
+      ? customers.filter((c) => getRecordTenantId(c) === effectiveTenantId)
+      : (activeUser?.role === 'system_owner' && selectedTenantFilter === 'all'
+          ? customers
+          : customers.filter((c) => getRecordTenantId(c) === currentTenantId)),
+    [customers, effectiveTenantId, getRecordTenantId, activeUser?.role, selectedTenantFilter, currentTenantId]
+  );
 
   const scopedActivityLogs = useMemo(() => 
     effectiveTenantId ? activityLogs.filter((l) => getRecordTenantId(l) === effectiveTenantId) : activityLogs,
@@ -772,10 +776,15 @@ export default function App() {
               localStorage.setItem(`mikrotik_pos_settings_${activeTenant.id}`, JSON.stringify(tenantSettings));
             }
           }
+          // Safely unlock outbound sync once cloud collections are loaded into memory
+          setCloudHydrated(true);
+        } else {
+          setCloudHydrated(true);
         }
       })
       .catch((err) => {
         console.warn('Initial cloud fetch:', err);
+        setCloudHydrated(true);
       });
 
     // 2. Real-time Live Sync: Instantly updates whenever changes occur on other devices
@@ -1148,6 +1157,7 @@ export default function App() {
         saveData(STORAGE_KEYS.CATEGORIES, nextCats);
         return nextCats;
       });
+      defaultCategoriesForNewTenant.forEach((c) => saveDocumentToFirestore(STORAGE_KEYS.CATEGORIES, c));
 
       const defaultExpenseCategoriesForNewTenant: ExpenseCategory[] = [
         { id: `expcat-${finalTenantToSave.id}-1`, networkId: finalTenantToSave.id, name: 'سعات وخطوط الإنترنت (Bandwidth)' },
@@ -1161,6 +1171,7 @@ export default function App() {
         saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, nextExpCats);
         return nextExpCats;
       });
+      defaultExpenseCategoriesForNewTenant.forEach((ec) => saveDocumentToFirestore(STORAGE_KEYS.EXPENSE_CATEGORIES, ec));
     }
     setTenants(updatedTenants);
     saveData(STORAGE_KEYS.TENANTS, updatedTenants);
@@ -2591,59 +2602,48 @@ export default function App() {
         results = await loadTenantDataFromFirestore(user.networkId, setSyncMessage);
         if (results) {
           if (results[STORAGE_KEYS.USERS]) {
-            const merged = mergeCloudAndLocal(STORAGE_KEYS.USERS, results[STORAGE_KEYS.USERS]);
-            setUsers(merged);
-            saveData(STORAGE_KEYS.USERS, merged);
+            setUsers(results[STORAGE_KEYS.USERS]);
+            saveData(STORAGE_KEYS.USERS, results[STORAGE_KEYS.USERS]);
           }
           if (results[STORAGE_KEYS.CATEGORIES]) {
-            const merged = mergeCloudAndLocal(STORAGE_KEYS.CATEGORIES, results[STORAGE_KEYS.CATEGORIES]);
-            setCategories(merged);
-            saveData(STORAGE_KEYS.CATEGORIES, merged);
+            setCategories(results[STORAGE_KEYS.CATEGORIES]);
+            saveData(STORAGE_KEYS.CATEGORIES, results[STORAGE_KEYS.CATEGORIES]);
           }
           if (results[STORAGE_KEYS.POS_POINTS]) {
-            const merged = mergeCloudAndLocal(STORAGE_KEYS.POS_POINTS, results[STORAGE_KEYS.POS_POINTS]);
-            setPosPoints(merged);
-            saveData(STORAGE_KEYS.POS_POINTS, merged);
+            setPosPoints(results[STORAGE_KEYS.POS_POINTS]);
+            saveData(STORAGE_KEYS.POS_POINTS, results[STORAGE_KEYS.POS_POINTS]);
           }
           if (results[STORAGE_KEYS.INVOICES]) {
-            const merged = mergeCloudAndLocal(STORAGE_KEYS.INVOICES, results[STORAGE_KEYS.INVOICES]);
-            setInvoices(merged);
-            saveData(STORAGE_KEYS.INVOICES, merged);
+            setInvoices(results[STORAGE_KEYS.INVOICES]);
+            saveData(STORAGE_KEYS.INVOICES, results[STORAGE_KEYS.INVOICES]);
           }
           if (results[STORAGE_KEYS.PAYMENTS]) {
-            const merged = mergeCloudAndLocal(STORAGE_KEYS.PAYMENTS, results[STORAGE_KEYS.PAYMENTS]);
-            setPayments(merged);
-            saveData(STORAGE_KEYS.PAYMENTS, merged);
+            setPayments(results[STORAGE_KEYS.PAYMENTS]);
+            saveData(STORAGE_KEYS.PAYMENTS, results[STORAGE_KEYS.PAYMENTS]);
           }
           if (results[STORAGE_KEYS.EXPENSES]) {
-            const merged = mergeCloudAndLocal(STORAGE_KEYS.EXPENSES, results[STORAGE_KEYS.EXPENSES]);
-            setExpenses(merged);
-            saveData(STORAGE_KEYS.EXPENSES, merged);
+            setExpenses(results[STORAGE_KEYS.EXPENSES]);
+            saveData(STORAGE_KEYS.EXPENSES, results[STORAGE_KEYS.EXPENSES]);
           }
           if (results[STORAGE_KEYS.SALES]) {
-            const merged = mergeCloudAndLocal(STORAGE_KEYS.SALES, results[STORAGE_KEYS.SALES]);
-            setSales(merged);
-            saveData(STORAGE_KEYS.SALES, merged);
+            setSales(results[STORAGE_KEYS.SALES]);
+            saveData(STORAGE_KEYS.SALES, results[STORAGE_KEYS.SALES]);
           }
           if (results[STORAGE_KEYS.DISPATCHES]) {
-            const merged = mergeCloudAndLocal(STORAGE_KEYS.DISPATCHES, results[STORAGE_KEYS.DISPATCHES]);
-            setDispatches(merged);
-            saveData(STORAGE_KEYS.DISPATCHES, merged);
+            setDispatches(results[STORAGE_KEYS.DISPATCHES]);
+            saveData(STORAGE_KEYS.DISPATCHES, results[STORAGE_KEYS.DISPATCHES]);
           }
           if (results[STORAGE_KEYS.ORDERS]) {
-            const merged = mergeCloudAndLocal(STORAGE_KEYS.ORDERS, results[STORAGE_KEYS.ORDERS]);
-            setOrders(merged);
-            saveData(STORAGE_KEYS.ORDERS, merged);
+            setOrders(results[STORAGE_KEYS.ORDERS]);
+            saveData(STORAGE_KEYS.ORDERS, results[STORAGE_KEYS.ORDERS]);
           }
           if (results[STORAGE_KEYS.CUSTOMERS]) {
-            const merged = mergeCloudAndLocal(STORAGE_KEYS.CUSTOMERS, results[STORAGE_KEYS.CUSTOMERS]);
-            setCustomers(merged);
-            saveData(STORAGE_KEYS.CUSTOMERS, merged);
+            setCustomers(results[STORAGE_KEYS.CUSTOMERS]);
+            saveData(STORAGE_KEYS.CUSTOMERS, results[STORAGE_KEYS.CUSTOMERS]);
           }
           if (results[STORAGE_KEYS.TENANTS]) {
-            const merged = mergeCloudAndLocal(STORAGE_KEYS.TENANTS, results[STORAGE_KEYS.TENANTS]);
-            setTenants(merged);
-            saveData(STORAGE_KEYS.TENANTS, merged);
+            setTenants(results[STORAGE_KEYS.TENANTS]);
+            saveData(STORAGE_KEYS.TENANTS, results[STORAGE_KEYS.TENANTS]);
           }
         }
       } catch (err) {

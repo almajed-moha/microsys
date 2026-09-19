@@ -438,7 +438,6 @@ export function mergeCloudAndLocal<T extends { id?: string | number }>(
 
 export async function fetchUsersFromCloud(): Promise<any[]> {
   if (!db) return [];
-  await ensureAuthenticatedSession();
   try {
     const snap = await getDocs(collection(db, COLLECTION_MAP[STORAGE_KEYS.USERS]));
     const items: any[] = [];
@@ -462,7 +461,6 @@ export async function syncSettingsToFirestore(settings: any, tenantId?: string):
   if (!db || isReceivingRemoteUpdate || !settings || typeof settings !== 'object') return;
 
   try {
-    await ensureAuthenticatedSession();
     const effectiveId = tenantId && tenantId !== 'system' ? tenantId : 'net-612524';
     emitSyncStatus('syncing');
     const tenantDocRef = doc(db, 'tenants', effectiveId);
@@ -490,7 +488,6 @@ export async function syncSettingsToFirestore(settings: any, tenantId?: string):
 export async function loadSettingsFromFirestore(tenantId?: string): Promise<any | null> {
   if (!db || !tenantId) return null;
   try {
-    await ensureAuthenticatedSession();
     const tenantDocRef = doc(db, 'tenants', tenantId);
     const snap = await getDoc(tenantDocRef);
     if (snap.exists()) {
@@ -509,8 +506,6 @@ export async function loadSettingsFromFirestore(tenantId?: string): Promise<any 
 export async function loadAllDataFromFirestore(): Promise<Record<string, any> | null> {
   if (!db) return null;
 
-  await ensureAuthenticatedSession();
-
   const results: Record<string, any> = {};
   const deletedSet = getDeletedIds();
 
@@ -525,12 +520,12 @@ export async function loadAllDataFromFirestore(): Promise<Record<string, any> | 
           }
         });
         results[storageKey] = items;
+        lastKnownState[storageKey] = [...items];
       } catch (collErr) {
         console.warn(`Could not read collection ${collectionName}:`, collErr);
       }
     }
 
-    setCloudHydrated(true);
     emitSyncStatus('synced');
     return results;
   } catch (err) {
@@ -549,38 +544,34 @@ export function subscribeToCloudUpdates(
 
   const unsubscribes: Unsubscribe[] = [];
 
-  // Guarantee authentication before subscribing
-  ensureAuthenticatedSession().then(() => {
-    for (const [storageKey, collectionName] of Object.entries(COLLECTION_MAP)) {
-      try {
-        const unsub = onSnapshot(
-          collection(db, collectionName),
-          (snapshot) => {
-            const items: any[] = [];
-            const deletedSet = getDeletedIds();
-            snapshot.forEach((d) => {
-              if (!deletedSet.has(d.id)) {
-                items.push({ id: d.id, ...d.data() });
-              }
-            });
+  for (const [storageKey, collectionName] of Object.entries(COLLECTION_MAP)) {
+    try {
+      const unsub = onSnapshot(
+        collection(db, collectionName),
+        (snapshot) => {
+          const items: any[] = [];
+          const deletedSet = getDeletedIds();
+          snapshot.forEach((d) => {
+            if (!deletedSet.has(d.id)) {
+              items.push({ id: d.id, ...d.data() });
+            }
+          });
 
-            // Perform intelligent merge with local storage before updating state
-            const resolved = mergeCloudAndLocal(storageKey, items);
-
-            setIsReceivingRemote(true);
-            onUpdate(storageKey, resolved);
-            setTimeout(() => setIsReceivingRemote(false), 300);
-          },
-          (error) => {
-            console.warn(`Live listener error on ${collectionName}:`, error);
-          }
-        );
-        unsubscribes.push(unsub);
-      } catch (e) {
-        console.warn(`Failed to set up listener for ${collectionName}:`, e);
-      }
+          // Cloud snapshot is the single authoritative source of truth across devices
+          lastKnownState[storageKey] = [...items];
+          setIsReceivingRemote(true);
+          onUpdate(storageKey, items);
+          setTimeout(() => setIsReceivingRemote(false), 300);
+        },
+        (error) => {
+          console.warn(`Live listener error on ${collectionName}:`, error);
+        }
+      );
+      unsubscribes.push(unsub);
+    } catch (e) {
+      console.warn(`Failed to set up listener for ${collectionName}:`, e);
     }
-  });
+  }
 
   return () => {
     unsubscribes.forEach((unsub) => unsub());
