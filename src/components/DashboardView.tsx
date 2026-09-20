@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   TrendingUp,
   CreditCard,
@@ -15,7 +15,12 @@ import {
   FileSpreadsheet,
   Calculator,
   PieChart as PieIcon,
-  BarChart3
+  BarChart3,
+  SlidersHorizontal,
+  LayoutGrid,
+  Eye,
+  Layers,
+  CheckCircle2
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -40,9 +45,17 @@ import {
   CardBatchDispatch,
   NetworkSettings,
   InvoiceRecord,
-  ExpenseRecord
+  ExpenseRecord,
+  AppUser,
+  DashboardTabId,
+  UserDashboardPreferences
 } from '../types';
 import { calculateComprehensiveFinancials, isDateInPeriod } from '../utils/financialCalculations';
+import {
+  DashboardCustomizerModal,
+  ALL_DASHBOARD_TABS,
+  DEFAULT_VISIBLE_TABS
+} from './DashboardCustomizerModal';
 
 interface DashboardViewProps {
   categories: CardCategory[];
@@ -53,6 +66,8 @@ interface DashboardViewProps {
   invoices?: InvoiceRecord[];
   expenses?: ExpenseRecord[];
   settings: NetworkSettings;
+  activeUser?: AppUser;
+  onUpdateUserPreferences?: (preferences: UserDashboardPreferences) => void;
   onNavigateToTab: (tab: string) => void;
   onSelectPOSForStatement: (posId: string) => void;
   onOpenQuickSale: () => void;
@@ -75,6 +90,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   invoices = [],
   expenses = [],
   settings,
+  activeUser,
+  onUpdateUserPreferences,
   onNavigateToTab,
   onSelectPOSForStatement,
   onOpenAI,
@@ -84,6 +101,71 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   canViewIncomeStatement = true,
 }) => {
   const currency = settings?.currencySymbol || 'ر.ي';
+
+  // Dashboard Tabs & Customization State
+  const [preferences, setPreferences] = useState<UserDashboardPreferences>(() => {
+    if (activeUser?.dashboardPreferences && activeUser.dashboardPreferences.visibleTabs?.length > 0) {
+      return activeUser.dashboardPreferences;
+    }
+    const storageKey = `dashboard_tabs_prefs_${activeUser?.id || 'default'}`;
+    try {
+      const cached = localStorage.getItem(storageKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && Array.isArray(parsed.visibleTabs) && parsed.visibleTabs.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error('Error loading dashboard preferences:', e);
+    }
+    return {
+      visibleTabs: DEFAULT_VISIBLE_TABS,
+      viewMode: 'tabbed',
+      defaultTab: 'all',
+    };
+  });
+
+  const [activeTab, setActiveTab] = useState<DashboardTabId | 'all'>(() => {
+    return preferences.defaultTab || 'all';
+  });
+  const [isCustomizerOpen, setIsCustomizerOpen] = useState(false);
+
+  // Sync state if activeUser updates
+  useEffect(() => {
+    if (activeUser?.dashboardPreferences && activeUser.dashboardPreferences.visibleTabs?.length > 0) {
+      setPreferences(activeUser.dashboardPreferences);
+    }
+  }, [activeUser?.id, activeUser?.dashboardPreferences]);
+
+  const handleSavePreferences = (newPrefs: UserDashboardPreferences) => {
+    setPreferences(newPrefs);
+    const storageKey = `dashboard_tabs_prefs_${activeUser?.id || 'default'}`;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(newPrefs));
+    } catch (e) {
+      console.error('Error saving dashboard preferences to localStorage:', e);
+    }
+    if (onUpdateUserPreferences) {
+      onUpdateUserPreferences(newPrefs);
+    }
+    if (activeTab !== 'all' && !newPrefs.visibleTabs.includes(activeTab)) {
+      setActiveTab('all');
+    }
+  };
+
+  const visibleTabs = preferences.visibleTabs && preferences.visibleTabs.length > 0
+    ? preferences.visibleTabs
+    : DEFAULT_VISIBLE_TABS;
+  const viewMode = preferences.viewMode || 'tabbed';
+
+  const isTabVisible = (tabId: DashboardTabId) => {
+    if (!visibleTabs.includes(tabId)) return false;
+    if (viewMode === 'tabbed' && activeTab !== 'all') {
+      return activeTab === tabId;
+    }
+    return true;
+  };
 
   // Filters
   const [timeRange, setTimeRange] = useState<'today' | '7days' | '30days' | 'all' | 'custom'>('all');
@@ -397,162 +479,392 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
-      {/* CORE FINANCIAL KPIS GRID */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. Net Sales Revenue */}
-        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-slate-400">صافي المبيعات</span>
-            <DollarSign className="w-4 h-4 text-slate-500" />
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-white tracking-tight">
-              {(financialMetrics.netSales ?? 0).toLocaleString()} <span className="text-sm font-normal text-slate-500">{currency}</span>
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
-            <span>إجمالي: {(financialMetrics.grossSales ?? 0).toLocaleString()}</span>
-            <span className="text-slate-300">مرتجع: {(financialMetrics.returnsTotal ?? 0).toLocaleString()}</span>
-          </div>
-        </div>
+      {/* Dynamic Dashboard Tabs Navigation & Customization Toolbar */}
+      <div className="bg-slate-900/95 p-3.5 sm:p-4 rounded-xl border border-slate-800 shadow-sm">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+          {/* Tabs Navigation */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 lg:pb-0 scrollbar-thin flex-1">
+            {/* "All" Tab Button */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('all')}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
+                activeTab === 'all'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                  : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>عرض شامل (الكل)</span>
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-black/30 text-indigo-200">
+                {visibleTabs.length}
+              </span>
+            </button>
 
-        {/* 2. Cost of Goods Sold (COGS) */}
-        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-slate-400">تكلفة البضاعة</span>
-            <Package className="w-4 h-4 text-slate-500" />
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-white tracking-tight">
-              {(financialMetrics.netCOGS ?? 0).toLocaleString()} <span className="text-sm font-normal text-slate-500">{currency}</span>
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
-            <span>مجمل الربح:</span>
-            <span className="text-slate-300 font-medium">
-              {(financialMetrics.grossProfit ?? 0).toLocaleString()} {currency}
-            </span>
-          </div>
-        </div>
+            {/* Individual Enabled Tabs */}
+            {visibleTabs.map((tabId) => {
+              const tabInfo = ALL_DASHBOARD_TABS.find((t) => t.id === tabId);
+              if (!tabInfo) return null;
+              const IconComp = tabInfo.icon;
+              const isActive = activeTab === tabId;
 
-        {/* 3. Operating Expenses */}
-        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-slate-400">المصروفات التشغيلية</span>
-            <Receipt className="w-4 h-4 text-slate-500" />
+              return (
+                <button
+                  key={tabId}
+                  type="button"
+                  onClick={() => setActiveTab(tabId)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
+                    isActive
+                      ? 'bg-slate-100 text-slate-900 shadow-md'
+                      : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <IconComp className={`w-3.5 h-3.5 ${isActive ? 'text-indigo-600' : tabInfo.color}`} />
+                  <span>{tabInfo.label}</span>
+                </button>
+              );
+            })}
           </div>
-          <div>
-            <div className="text-2xl font-bold text-white tracking-tight">
-              {(financialMetrics.totalExpenses ?? 0).toLocaleString()} <span className="text-sm font-normal text-slate-500">{currency}</span>
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-slate-800/60 text-xs text-slate-400">
-            {financialMetrics.expensesCount} حركات صرف مسجلة
-          </div>
-        </div>
 
-        {/* 4. NET PROFIT */}
-        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-slate-400">صافي الربح</span>
-            <TrendingUp className="w-4 h-4 text-slate-500" />
-          </div>
-          <div>
-            <div className={`text-2xl font-bold tracking-tight ${financialMetrics.netProfit >= 0 ? 'text-white' : 'text-slate-300'}`}>
-              {(financialMetrics.netProfit ?? 0).toLocaleString()} <span className="text-sm font-normal text-slate-500">{currency}</span>
+          {/* Right Controls: View Mode & Customizer Trigger */}
+          <div className="flex items-center gap-2 shrink-0 border-t lg:border-t-0 pt-2 lg:pt-0 border-slate-800/80">
+            {/* View Mode Switcher */}
+            <div className="flex items-center bg-slate-800/80 p-1 rounded-lg border border-slate-700/60">
+              <button
+                type="button"
+                onClick={() => handleSavePreferences({ ...preferences, viewMode: 'tabbed' })}
+                title="عرض بالتبويبات المنفصلة (التركيز على تبويب محدد)"
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition cursor-pointer ${
+                  viewMode === 'tabbed'
+                    ? 'bg-slate-700 text-white font-bold shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span>تبويبات</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSavePreferences({ ...preferences, viewMode: 'grid' })}
+                title="عرض كافة الأقسام المحددة في صفحة واحدة"
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition cursor-pointer ${
+                  viewMode === 'grid'
+                    ? 'bg-slate-700 text-white font-bold shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span>صفحة واحدة</span>
+              </button>
             </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
-            <span>الهامش الصافي</span>
-            <span className="text-slate-300 font-medium">{financialMetrics.profitMargin}%</span>
+
+            {/* Open Customizer Modal Button */}
+            <button
+              type="button"
+              id="btn-open-dashboard-customizer"
+              onClick={() => setIsCustomizerOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-600/15 hover:bg-indigo-600/25 text-indigo-300 border border-indigo-500/30 text-xs font-bold transition cursor-pointer shrink-0 hover:border-indigo-500/50"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
+              <span>تخصيص التبويبات</span>
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-indigo-500/20 text-indigo-200">
+                {visibleTabs.length}/{ALL_DASHBOARD_TABS.length}
+              </span>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* CORE FINANCIAL KPIS GRID */}
+      {isTabVisible('financial_kpis') && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 1. Net Sales Revenue */}
+          <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-slate-400">صافي المبيعات</span>
+              <DollarSign className="w-4 h-4 text-slate-500" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white tracking-tight">
+                {(financialMetrics.netSales ?? 0).toLocaleString()} <span className="text-sm font-normal text-slate-500">{currency}</span>
+              </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
+              <span>إجمالي: {(financialMetrics.grossSales ?? 0).toLocaleString()}</span>
+              <span className="text-slate-300">مرتجع: {(financialMetrics.returnsTotal ?? 0).toLocaleString()}</span>
+            </div>
+          </div>
+
+          {/* 2. Cost of Goods Sold (COGS) */}
+          <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-slate-400">تكلفة البضاعة</span>
+              <Package className="w-4 h-4 text-slate-500" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white tracking-tight">
+                {(financialMetrics.netCOGS ?? 0).toLocaleString()} <span className="text-sm font-normal text-slate-500">{currency}</span>
+              </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
+              <span>مجمل الربح:</span>
+              <span className="text-slate-300 font-medium">
+                {(financialMetrics.grossProfit ?? 0).toLocaleString()} {currency}
+              </span>
+            </div>
+          </div>
+
+          {/* 3. Operating Expenses */}
+          <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-slate-400">المصروفات التشغيلية</span>
+              <Receipt className="w-4 h-4 text-slate-500" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white tracking-tight">
+                {(financialMetrics.totalExpenses ?? 0).toLocaleString()} <span className="text-sm font-normal text-slate-500">{currency}</span>
+              </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-800/60 text-xs text-slate-400">
+              {financialMetrics.expensesCount} حركات صرف مسجلة
+            </div>
+          </div>
+
+          {/* 4. NET PROFIT */}
+          <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-slate-400">صافي الربح</span>
+              <TrendingUp className="w-4 h-4 text-slate-500" />
+            </div>
+            <div>
+              <div className={`text-2xl font-bold tracking-tight ${financialMetrics.netProfit >= 0 ? 'text-white' : 'text-slate-300'}`}>
+                {(financialMetrics.netProfit ?? 0).toLocaleString()} <span className="text-sm font-normal text-slate-500">{currency}</span>
+              </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
+              <span>الهامش الصافي</span>
+              <span className="text-slate-300 font-medium">{financialMetrics.profitMargin}%</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Secondary Financial Indicators */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Cash Collected */}
-        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-slate-400">سندات القبض</span>
+      {isTabVisible('secondary_indicators') && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Cash Collected */}
+          <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-slate-400">سندات القبض</span>
+            </div>
+            <div className="text-xl font-bold text-white tracking-tight">
+              {(financialMetrics.totalCashCollected ?? 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">{currency}</span>
+            </div>
           </div>
-          <div className="text-xl font-bold text-white tracking-tight">
-            {(financialMetrics.totalCashCollected ?? 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">{currency}</span>
-          </div>
-        </div>
 
-        {/* POS Debt */}
-        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-slate-400">إجمالي المديونية</span>
+          {/* POS Debt */}
+          <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-slate-400">إجمالي المديونية</span>
+            </div>
+            <div className="text-xl font-bold text-white tracking-tight">
+              {(financialMetrics.totalPOSDebt ?? 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">{currency}</span>
+            </div>
           </div>
-          <div className="text-xl font-bold text-white tracking-tight">
-            {(financialMetrics.totalPOSDebt ?? 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">{currency}</span>
-          </div>
-        </div>
 
-        {/* Warehouse Cards */}
-        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-slate-400">مخزون المستودع</span>
-          </div>
-          <div className="text-xl font-bold text-white tracking-tight">
-            {(financialMetrics.totalWarehouseStock ?? 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">كارت</span>
+          {/* Warehouse Cards */}
+          <div className="bg-slate-900 p-5 rounded-xl border border-slate-800">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-slate-400">مخزون المستودع</span>
+            </div>
+            <div className="text-xl font-bold text-white tracking-tight">
+              {(financialMetrics.totalWarehouseStock ?? 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">كارت</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Critical Alerts Banner (If any) */}
-      {(highDebtPOS.length > 0 || lowStockCategories.length > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {highDebtPOS.length > 0 && (
-            <div className="bg-amber-950/40 border border-amber-800/80 p-4 rounded-xl text-amber-200">
-              <div className="flex items-center gap-2 font-bold text-sm text-amber-400 mb-1.5">
-                <AlertTriangle className="w-4 h-4" />
-                <span>تنبيه: نقاط بيع اقتربت أو تجاوزت سقف الدين!</span>
-              </div>
-              <div className="space-y-1.5 text-xs">
-                {highDebtPOS.map((pos) => (
-                  <div key={pos.id} className="flex items-center justify-between bg-amber-900/30 p-2 rounded-lg">
-                    <span>{pos.name} ({pos.managerName})</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-amber-300">
-                        {(pos.currentDebt ?? 0).toLocaleString()} / {(pos.maxDebtLimit ?? 0).toLocaleString()} {currency}
-                      </span>
-                      <button
-                        onClick={() => onSelectPOSForStatement(pos.id)}
-                        className="px-2 py-1 bg-amber-700/60 hover:bg-amber-700 text-white rounded text-[11px] font-semibold cursor-pointer"
-                      >
-                        كشف حساب
-                      </button>
+      {isTabVisible('critical_alerts') && (
+        (highDebtPOS.length > 0 || lowStockCategories.length > 0) ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {highDebtPOS.length > 0 && (
+              <div className="bg-amber-950/40 border border-amber-800/80 p-4 rounded-xl text-amber-200">
+                <div className="flex items-center gap-2 font-bold text-sm text-amber-400 mb-1.5">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>تنبيه: نقاط بيع اقتربت أو تجاوزت سقف الدين!</span>
+                </div>
+                <div className="space-y-1.5 text-xs">
+                  {highDebtPOS.map((pos) => (
+                    <div key={pos.id} className="flex items-center justify-between bg-amber-900/30 p-2 rounded-lg">
+                      <span>{pos.name} ({pos.managerName})</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-amber-300">
+                          {(pos.currentDebt ?? 0).toLocaleString()} / {(pos.maxDebtLimit ?? 0).toLocaleString()} {currency}
+                        </span>
+                        <button
+                          onClick={() => onSelectPOSForStatement(pos.id)}
+                          className="px-2 py-1 bg-amber-700/60 hover:bg-amber-700 text-white rounded text-[11px] font-semibold cursor-pointer"
+                        >
+                          كشف حساب
+                        </button>
+                      </div>
                     </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {lowStockCategories.length > 0 && (
+              <div className="bg-rose-950/40 border border-rose-800/80 p-4 rounded-xl text-rose-200">
+                <div className="flex items-center gap-2 font-bold text-sm text-rose-400 mb-1.5">
+                  <Package className="w-4 h-4" />
+                  <span>تنبيه: فئات كروت قريبة من النفاد في المستودع!</span>
+                </div>
+                <div className="space-y-1.5 text-xs">
+                  {lowStockCategories.map((cat) => (
+                    <div key={cat.id} className="flex items-center justify-between bg-rose-900/30 p-2 rounded-lg">
+                      <span>{cat.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-rose-300">
+                          المتبقي: {cat.warehouseStock} كارت
+                        </span>
+                        <button
+                          onClick={() => onNavigateToTab('categories')}
+                          className="px-2 py-1 bg-rose-700/60 hover:bg-rose-700 text-white rounded text-[11px] font-semibold cursor-pointer"
+                        >
+                          إدارة الفئات
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          activeTab === 'critical_alerts' && (
+            <div className="bg-slate-900 border border-slate-800 p-8 rounded-xl text-center">
+              <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-2" />
+              <h4 className="text-base font-bold text-white mb-1">الوضع مستقر ولا توجد تنبيهات حرجة</h4>
+              <p className="text-xs text-slate-400">جميع نقاط البيع ضمن سقف الدين المسموح ومخزون فئات الكروت في المستودع بمستويات آمنة.</p>
+            </div>
+          )
+        )
+      )}
+
+      {/* Interactive Charts Section: Financial Trends & Expenses Breakdown */}
+      {(isTabVisible('financial_trend_chart') || isTabVisible('expenses_breakdown')) && (
+        <div className={`grid grid-cols-1 ${
+          isTabVisible('financial_trend_chart') && isTabVisible('expenses_breakdown')
+            ? 'lg:grid-cols-3'
+            : 'lg:grid-cols-1'
+        } gap-6`}>
+          {/* Financial Trends */}
+          {isTabVisible('financial_trend_chart') && (
+            <div className={`${isTabVisible('expenses_breakdown') ? 'lg:col-span-2' : 'lg:col-span-1'} bg-slate-900 p-6 rounded-xl border border-slate-800`}>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-bold text-base text-white">
+                    حركة المبيعات والمصروفات وصافي الأرباح
+                  </h3>
+                  <p className="text-xs text-slate-400">تتبع الإيرادات اليومية مقارنة بالنفقات التشغيلية وصافي العائد من واقع البيانات الفعلية</p>
+                </div>
+              </div>
+
+              <div className="h-72 w-full">
+                {financialTrendData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={financialTrendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0} />
+                        </linearGradient>
+                        <linearGradient id="expenseGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.0} />
+                        </linearGradient>
+                        <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.5} />
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                      <XAxis dataKey="date" stroke="#64748b" tick={{ fontSize: 11 }} />
+                      <YAxis stroke="#64748b" tick={{ fontSize: 11 }} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
+                        formatter={(value: any) => [`${Number(value || 0).toLocaleString()} ${currency}`, '']}
+                      />
+                      <Legend />
+                      <Area type="monotone" dataKey="sales" name="المبيعات" stroke="#6366f1" strokeWidth={2} fillOpacity={1} fill="url(#salesGrad)" />
+                      <Area type="monotone" dataKey="expenses" name="المصروفات" stroke="#f59e0b" strokeWidth={2} fillOpacity={1} fill="url(#expenseGrad)" />
+                      <Area type="monotone" dataKey="netProfit" name="صافي الربح" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#profitGrad)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-slate-500 text-sm">
+                    <span>لا توجد حركات مالية مسجلة في هذه الفترة</span>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           )}
 
-          {lowStockCategories.length > 0 && (
-            <div className="bg-rose-950/40 border border-rose-800/80 p-4 rounded-xl text-rose-200">
-              <div className="flex items-center gap-2 font-bold text-sm text-rose-400 mb-1.5">
-                <Package className="w-4 h-4" />
-                <span>تنبيه: فئات كروت قريبة من النفاد في المستودع!</span>
+          {/* Expenses by Category Breakdown */}
+          {isTabVisible('expenses_breakdown') && (
+            <div className="lg:col-span-1 bg-slate-900 p-6 rounded-xl border border-slate-800 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="font-bold text-base text-white">
+                    توزيع المصروفات حسب البند
+                  </h3>
+                  <PieIcon className="w-4 h-4 text-rose-400" />
+                </div>
+                <p className="text-xs text-slate-400 mb-3">نسبة الإنفاق التشغيلي على بنود الشبكة</p>
               </div>
-              <div className="space-y-1.5 text-xs">
-                {lowStockCategories.map((cat) => (
-                  <div key={cat.id} className="flex items-center justify-between bg-rose-900/30 p-2 rounded-lg">
-                    <span>{cat.name}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-rose-300">
-                        المتبقي: {cat.warehouseStock} كارت
-                      </span>
-                      <button
-                        onClick={() => onNavigateToTab('categories')}
-                        className="px-2 py-1 bg-rose-700/60 hover:bg-rose-700 text-white rounded text-[11px] font-semibold cursor-pointer"
+
+              <div className="h-56 w-full relative">
+                {expensesByCategoryData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={expensesByCategoryData}
+                        dataKey="amount"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={80}
+                        innerRadius={45}
+                        paddingAngle={4}
                       >
-                        إدارة الفئات
-                      </button>
+                        {expensesByCategoryData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
+                        formatter={(value: any) => [`${Number(value || 0).toLocaleString()} ${currency}`, 'المبلغ']}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-slate-500 text-xs">
+                    لا توجد مصروفات مسجلة في هذه الفترة
+                  </div>
+                )}
+              </div>
+
+              {/* Expenses Legend List */}
+              <div className="space-y-1.5 mt-2 max-h-36 overflow-y-auto pr-1">
+                {expensesByCategoryData.map((cat, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }}></span>
+                      <span className="text-slate-300 truncate">{cat.name}</span>
                     </div>
+                    <span className="font-mono font-bold text-white whitespace-nowrap">
+                      {(cat.amount ?? 0).toLocaleString()} {currency}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -561,318 +873,245 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       )}
 
-      {/* Interactive Charts Section: Financial Trends & Expenses Breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Financial Trends (2 columns) */}
-        <div className="lg:col-span-2 bg-slate-900 p-6 rounded-xl border border-slate-800">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="font-bold text-base text-white">
-                حركة المبيعات والمصروفات وصافي الأرباح
-              </h3>
-              <p className="text-xs text-slate-400">تتبع الإيرادات اليومية مقارنة بالنفقات التشغيلية وصافي العائد من واقع البيانات الفعلية</p>
-            </div>
-          </div>
-
-          <div className="h-72 w-full">
-            {financialTrendData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={financialTrendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0} />
-                    </linearGradient>
-                    <linearGradient id="expenseGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.0} />
-                    </linearGradient>
-                    <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.5} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis dataKey="date" stroke="#64748b" tick={{ fontSize: 11 }} />
-                  <YAxis stroke="#64748b" tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
-                    formatter={(value: any) => [`${Number(value || 0).toLocaleString()} ${currency}`, '']}
-                  />
-                  <Legend />
-                  <Area type="monotone" dataKey="sales" name="المبيعات" stroke="#6366f1" strokeWidth={2} fillOpacity={1} fill="url(#salesGrad)" />
-                  <Area type="monotone" dataKey="expenses" name="المصروفات" stroke="#f59e0b" strokeWidth={2} fillOpacity={1} fill="url(#expenseGrad)" />
-                  <Area type="monotone" dataKey="netProfit" name="صافي الربح" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#profitGrad)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full text-slate-500 text-sm">
-                <span>لا توجد حركات مالية مسجلة في هذه الفترة</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Expenses by Category Breakdown (1 column) */}
-        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="font-bold text-base text-white">
-                توزيع المصروفات حسب البند
-              </h3>
-              <PieIcon className="w-4 h-4 text-rose-400" />
-            </div>
-            <p className="text-xs text-slate-400 mb-3">نسبة الإنفاق التشغيلي على بنود الشبكة</p>
-          </div>
-
-          <div className="h-56 w-full relative">
-            {expensesByCategoryData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={expensesByCategoryData}
-                    dataKey="amount"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    innerRadius={45}
-                    paddingAngle={4}
-                  >
-                    {expensesByCategoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
-                    formatter={(value: any) => [`${Number(value || 0).toLocaleString()} ${currency}`, 'المبلغ']}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-full text-slate-500 text-xs">
-                لا توجد مصروفات مسجلة في هذه الفترة
-              </div>
-            )}
-          </div>
-
-          {/* Expenses Legend List */}
-          <div className="space-y-1.5 mt-2 max-h-36 overflow-y-auto pr-1">
-            {expensesByCategoryData.map((cat, i) => (
-              <div key={i} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5 truncate">
-                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }}></span>
-                  <span className="text-slate-300 truncate">{cat.name}</span>
-                </div>
-                <span className="font-mono font-bold text-white whitespace-nowrap">
-                  {(cat.amount ?? 0).toLocaleString()} {currency}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
       {/* POS Real Ranking & Card Categories Distribution */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* POS Points Sales Leaderboard - Strictly only existing POS Points */}
-        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-base text-white">
-                  أداء ومبيعات نقاط البيع الفعلية
-                </h3>
-                <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[11px] font-bold">
-                  {posPoints.length} نقاط متوفرة
-                </span>
+      {(isTabVisible('pos_leaderboard') || isTabVisible('category_sales')) && (
+        <div className={`grid grid-cols-1 ${
+          isTabVisible('pos_leaderboard') && isTabVisible('category_sales')
+            ? 'lg:grid-cols-2'
+            : 'lg:grid-cols-1'
+        } gap-6`}>
+          {/* POS Points Sales Leaderboard - Strictly only existing POS Points */}
+          {isTabVisible('pos_leaderboard') && (
+            <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-base text-white">
+                      أداء ومبيعات نقاط البيع الفعلية
+                    </h3>
+                    <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[11px] font-bold">
+                      {posPoints.length} نقاط متوفرة
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">حجم المبيعات والمديونية الحالية لنقاط البيع المسجلة بالنظام</p>
+                </div>
+                <button
+                  onClick={() => onNavigateToTab('pos')}
+                  className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold cursor-pointer"
+                >
+                  <span>إدارة النقاط</span>
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <p className="text-xs text-slate-400">حجم المبيعات والمديونية الحالية لنقاط البيع المسجلة بالنظام</p>
+
+              <div className="h-64 w-full">
+                {posPerformanceData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={posPerformanceData} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                      <XAxis type="number" stroke="#64748b" tick={{ fontSize: 11 }} />
+                      <YAxis type="category" dataKey="name" stroke="#cbd5e1" width={120} tick={{ fontSize: 11 }} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
+                        formatter={(val: any, name: string) => [
+                          `${Number(val || 0).toLocaleString()} ${currency}`,
+                          name === 'netSales' ? 'صافي المبيعات' : name === 'debt' ? 'المديونية الحالية' : 'المبيعات'
+                        ]}
+                      />
+                      <Legend />
+                      <Bar dataKey="netSales" fill="#6366f1" radius={[0, 6, 6, 0]} name="صافي المبيعات" />
+                      <Bar dataKey="debt" fill="#f59e0b" radius={[0, 6, 6, 0]} name="المديونية الحالية" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-slate-500 text-xs">
+                    لا توجد نقاط بيع مسجلة في قاعدة البيانات
+                  </div>
+                )}
+              </div>
+
+              {/* POS Points Quick Summary Footnote */}
+              <div className="mt-3 pt-3 border-t border-slate-800 grid grid-cols-2 gap-2 text-xs">
+                <div className="text-slate-400">
+                  إجمالي نقاط البيع: <span className="font-bold text-white">{posPoints.length}</span>
+                </div>
+                <div className="text-left text-slate-400">
+                  إجمالي الديون: <span className="font-bold text-amber-400 font-mono">{(financialMetrics.totalPOSDebt ?? 0).toLocaleString()} {currency}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Card Categories Sales & Usage Breakdown */}
+          {isTabVisible('category_sales') && (
+            <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-base text-white">
+                        توزيع المبيعات حسب فئات الكروت
+                      </h3>
+                      <BarChart3 className="w-4 h-4 text-emerald-400" />
+                    </div>
+                    <p className="text-xs text-slate-400">الفئات الأكثر طلباً وتصريفاً لدى العملاء والموزعين</p>
+                  </div>
+                  <button
+                    onClick={() => onNavigateToTab('categories')}
+                    className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold cursor-pointer"
+                  >
+                    <span>فئات الكروت</span>
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="h-60 w-full">
+                  {categorySalesData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={categorySalesData} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                        <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 10 }} interval={0} angle={-15} textAnchor="end" />
+                        <YAxis stroke="#64748b" tick={{ fontSize: 11 }} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
+                          formatter={(val: any, name: string) => [
+                            name === 'quantity' ? `${Number(val || 0).toLocaleString()} كارت` : `${Number(val || 0).toLocaleString()} ${currency}`,
+                            name === 'quantity' ? 'عدد الكروت المباعة' : 'القيمة الإجمالية'
+                          ]}
+                        />
+                        <Legend />
+                        <Bar dataKey="quantity" fill="#10b981" radius={[6, 6, 0, 0]} name="عدد الكروت المباعة" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-slate-500 text-xs">
+                      لا توجد مبيعات مسجلة للفئات في هذه الفترة
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 mt-2 flex items-center justify-between text-xs text-slate-400">
+                <span>إجمالي الفئات المعرفة: {categories.length}</span>
+                <span>المخزون الكلي: {(financialMetrics.totalWarehouseStock ?? 0).toLocaleString()} كارت</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Recent Invoices Activity Table */}
+      {isTabVisible('recent_invoices') && (
+        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="font-bold text-base text-white">آخر الفواتير</h3>
             </div>
             <button
-              onClick={() => onNavigateToTab('pos')}
+              onClick={() => onNavigateToTab('invoices')}
               className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold cursor-pointer"
             >
-              <span>إدارة النقاط</span>
+              <span>سجل الفواتير الكامل ({invoices.length})</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="h-64 w-full">
-            {posPerformanceData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={posPerformanceData} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis type="number" stroke="#64748b" tick={{ fontSize: 11 }} />
-                  <YAxis type="category" dataKey="name" stroke="#cbd5e1" width={120} tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
-                    formatter={(val: any, name: string) => [
-                      `${Number(val || 0).toLocaleString()} ${currency}`,
-                      name === 'netSales' ? 'صافي المبيعات' : name === 'debt' ? 'المديونية الحالية' : 'المبيعات'
-                    ]}
-                  />
-                  <Legend />
-                  <Bar dataKey="netSales" fill="#6366f1" radius={[0, 6, 6, 0]} name="صافي المبيعات" />
-                  <Bar dataKey="debt" fill="#f59e0b" radius={[0, 6, 6, 0]} name="المديونية الحالية" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-full text-slate-500 text-xs">
-                لا توجد نقاط بيع مسجلة في قاعدة البيانات
-              </div>
-            )}
-          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-right">
+              <thead className="text-slate-400 bg-slate-800/60 uppercase">
+                <tr>
+                  <th className="py-2.5 px-3 rounded-r">رقم الفاتورة</th>
+                  <th className="py-2.5 px-3">التاريخ</th>
+                  <th className="py-2.5 px-3">نقطة البيع</th>
+                  <th className="py-2.5 px-3">نوع الحركة</th>
+                  <th className="py-2.5 px-3 text-center">عدد الكروت</th>
+                  <th className="py-2.5 px-3 text-center rounded-l">القيمة بالجملة</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {filteredInvoices.slice(0, 6).map((inv) => {
+                  const isReturn = inv.type === 'return';
+                  const pos = posPoints.find((p) => p.id === inv.posPointId);
+                  const displayName = pos ? pos.name : inv.posPointName || 'مبيعات مباشرة';
 
-          {/* POS Points Quick Summary Footnote */}
-          <div className="mt-3 pt-3 border-t border-slate-800 grid grid-cols-2 gap-2 text-xs">
-            <div className="text-slate-400">
-              إجمالي نقاط البيع: <span className="font-bold text-white">{posPoints.length}</span>
-            </div>
-            <div className="text-left text-slate-400">
-              إجمالي الديون: <span className="font-bold text-amber-400 font-mono">{(financialMetrics.totalPOSDebt ?? 0).toLocaleString()} {currency}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card Categories Sales & Usage Breakdown */}
-        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-base text-white">
-                    توزيع المبيعات حسب فئات الكروت
-                  </h3>
-                  <BarChart3 className="w-4 h-4 text-emerald-400" />
-                </div>
-                <p className="text-xs text-slate-400">الفئات الأكثر طلباً وتصريفاً لدى العملاء والموزعين</p>
-              </div>
-              <button
-                onClick={() => onNavigateToTab('categories')}
-                className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold cursor-pointer"
-              >
-                <span>فئات الكروت</span>
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="h-60 w-full">
-              {categorySalesData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={categorySalesData} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                    <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 10 }} interval={0} angle={-15} textAnchor="end" />
-                    <YAxis stroke="#64748b" tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
-                      formatter={(val: any, name: string) => [
-                        name === 'quantity' ? `${Number(val || 0).toLocaleString()} كارت` : `${Number(val || 0).toLocaleString()} ${currency}`,
-                        name === 'quantity' ? 'عدد الكروت المباعة' : 'القيمة الإجمالية'
-                      ]}
-                    />
-                    <Legend />
-                    <Bar dataKey="quantity" fill="#10b981" radius={[6, 6, 0, 0]} name="عدد الكروت المباعة" />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-full text-slate-500 text-xs">
-                  لا توجد مبيعات مسجلة للفئات في هذه الفترة
-                </div>
-              )}
-            </div>
+                  return (
+                    <tr key={inv.id} className="hover:bg-slate-800/40 transition">
+                      <td className="py-2.5 px-3 font-mono font-bold text-slate-300">
+                        {inv.invoiceNumber}
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-400 font-mono">
+                        {inv.date}
+                      </td>
+                      <td className="py-2.5 px-3 font-medium text-white truncate max-w-[160px]">
+                        {displayName}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                          isReturn ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'
+                        }`}>
+                          {isReturn ? 'مرتجع كروت' : 'فاتورة مبيعات'}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-indigo-300 text-center">
+                        {inv.totalQuantity}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-center">
+                        <span className={isReturn ? 'text-rose-400' : 'text-emerald-400'}>
+                          {isReturn ? '-' : ''}{(inv.totalWholesaleAmount ?? 0).toLocaleString()} {currency}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredInvoices.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-500 text-xs">
+                      لا توجد فواتير مسجلة لنقاط البيع المحددة في هذه الفترة
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
 
           <div className="pt-3 border-t border-slate-800 mt-2 flex items-center justify-between text-xs text-slate-400">
-            <span>إجمالي الفئات المعرفة: {categories.length}</span>
-            <span>المخزون الكلي: {(financialMetrics.totalWarehouseStock ?? 0).toLocaleString()} كارت</span>
+            <span>إجمالي الفواتير المعروضة: {filteredInvoices.length}</span>
+            <button
+              onClick={() => onNavigateToTab('invoices')}
+              className="text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer"
+            >
+              + إنشاء فاتورة جديدة
+            </button>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Recent Invoices Activity Table */}
-      <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="font-bold text-base text-white">آخر الفواتير</h3>
-          </div>
+      {/* Empty State when no tabs are selected */}
+      {visibleTabs.length === 0 && (
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-12 text-center my-6">
+          <SlidersHorizontal className="w-12 h-12 text-slate-500 mx-auto mb-3" />
+          <h3 className="text-lg font-bold text-white mb-1">لم يتم تفعيل أي تبويبات في لوحة التحكم</h3>
+          <p className="text-sm text-slate-400 max-w-md mx-auto mb-6">
+            لقد قمت بإلغاء تحديد كافة أقسام لوحة التحكم. يمكنك تخصيص التبويبات واختيار الأقسام التي تهمك الآن.
+          </p>
           <button
-            onClick={() => onNavigateToTab('invoices')}
-            className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold cursor-pointer"
+            type="button"
+            onClick={() => setIsCustomizerOpen(true)}
+            className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition cursor-pointer"
           >
-            <span>سجل الفواتير الكامل ({invoices.length})</span>
-            <ArrowUpRight className="w-3.5 h-3.5" />
+            تخصيص واختيار التبويبات
           </button>
         </div>
+      )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-right">
-            <thead className="text-slate-400 bg-slate-800/60 uppercase">
-              <tr>
-                <th className="py-2.5 px-3 rounded-r">رقم الفاتورة</th>
-                <th className="py-2.5 px-3">التاريخ</th>
-                <th className="py-2.5 px-3">نقطة البيع</th>
-                <th className="py-2.5 px-3">نوع الحركة</th>
-                <th className="py-2.5 px-3 text-center">عدد الكروت</th>
-                <th className="py-2.5 px-3 text-center rounded-l">القيمة بالجملة</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {filteredInvoices.slice(0, 6).map((inv) => {
-                const isReturn = inv.type === 'return';
-                const pos = posPoints.find((p) => p.id === inv.posPointId);
-                const displayName = pos ? pos.name : inv.posPointName || 'مبيعات مباشرة';
-
-                return (
-                  <tr key={inv.id} className="hover:bg-slate-800/40 transition">
-                    <td className="py-2.5 px-3 font-mono font-bold text-slate-300">
-                      {inv.invoiceNumber}
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-400 font-mono">
-                      {inv.date}
-                    </td>
-                    <td className="py-2.5 px-3 font-medium text-white truncate max-w-[160px]">
-                      {displayName}
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                        isReturn ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'
-                      }`}>
-                        {isReturn ? 'مرتجع كروت' : 'فاتورة مبيعات'}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 font-mono font-bold text-indigo-300 text-center">
-                      {inv.totalQuantity}
-                    </td>
-                    <td className="py-2.5 px-3 font-mono font-bold text-center">
-                      <span className={isReturn ? 'text-rose-400' : 'text-emerald-400'}>
-                        {isReturn ? '-' : ''}{(inv.totalWholesaleAmount ?? 0).toLocaleString()} {currency}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredInvoices.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500 text-xs">
-                    لا توجد فواتير مسجلة لنقاط البيع المحددة في هذه الفترة
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="pt-3 border-t border-slate-800 mt-2 flex items-center justify-between text-xs text-slate-400">
-          <span>إجمالي الفواتير المعروضة: {filteredInvoices.length}</span>
-          <button
-            onClick={() => onNavigateToTab('invoices')}
-            className="text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer"
-          >
-            + إنشاء فاتورة جديدة
-          </button>
-        </div>
-      </div>
+      {/* Dashboard Customizer Modal */}
+      <DashboardCustomizerModal
+        isOpen={isCustomizerOpen}
+        onClose={() => setIsCustomizerOpen(false)}
+        currentPreferences={preferences}
+        onSavePreferences={handleSavePreferences}
+        userName={activeUser?.name || activeUser?.username || 'المستخدم'}
+      />
     </div>
   );
 };

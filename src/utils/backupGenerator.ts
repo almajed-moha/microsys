@@ -2,6 +2,7 @@ import {
   NetworkTenant, AppUser, CardCategory, POSPoint, InvoiceRecord,
   ExpenseRecord, ExpenseCategory, CardBatchDispatch, SalesRecord,
   PaymentRecord, CardOrder, NetworkSettings, CardTemplate, UserActivityLog,
+  Customer,
   SystemDatabaseBackup
 } from '../types';
 
@@ -23,6 +24,7 @@ export function generateSystemBackup(params: {
   sales: SalesRecord[];
   payments: PaymentRecord[];
   orders: CardOrder[];
+  customers?: Customer[];
   settings: NetworkSettings;
   templates: CardTemplate[];
   activityLogs: UserActivityLog[];
@@ -30,7 +32,7 @@ export function generateSystemBackup(params: {
   const {
     activeUser, isMasterUser, exportScope, effectiveNetworkId, networkDisplayName, includeAuditLogs,
     tenants, users, categories, posPoints, invoices, expenses, expenseCategories, dispatches,
-    sales, payments, orders, settings, templates, activityLogs
+    sales, payments, orders, customers = [], settings, templates, activityLogs
   } = params;
 
   const currentTenant = tenants.find((t) => t.id === effectiveNetworkId);
@@ -70,6 +72,10 @@ export function generateSystemBackup(params: {
   const targetOrders = exportScope === 'full'
     ? orders
     : orders.filter((o) => !o.networkId || o.networkId === effectiveNetworkId || o.networkId === 'net-microsys');
+
+  const targetCustomers = exportScope === 'full'
+    ? customers
+    : customers.filter((c) => !c.networkId || c.networkId === effectiveNetworkId || c.networkId === 'net-microsys');
 
   const targetUsers = exportScope === 'full'
     ? users
@@ -115,6 +121,7 @@ export function generateSystemBackup(params: {
       sales: targetSales.length,
       payments: targetPayments.length,
       orders: targetOrders.length,
+      customers: targetCustomers.length,
       templates: templates?.length || 0,
       activityLogs: targetLogs.length,
     },
@@ -130,6 +137,7 @@ export function generateSystemBackup(params: {
       sales: targetSales,
       payments: targetPayments,
       orders: targetOrders,
+      customers: targetCustomers,
       settings: settings,
       templates: templates || [],
       activityLogs: targetLogs,

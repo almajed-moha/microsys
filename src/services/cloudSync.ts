@@ -106,6 +106,18 @@ function removeDeletedId(id: string) {
 }
 
 /**
+ * Clear the deleted IDs blacklist completely (e.g. during database restore)
+ */
+export function clearDeletedIds() {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(DELETED_IDS_KEY);
+  } catch (e) {
+    console.warn('Failed to clear deleted IDs:', e);
+  }
+}
+
+/**
  * Detect whether the app is currently running inside Google AI Studio / Development environment.
  */
 export function isStudioDevEnvironment(): boolean {
@@ -115,16 +127,53 @@ export function isStudioDevEnvironment(): boolean {
 // Global event emitter helper for sync status
 export const emitSyncStatus = (status: 'syncing' | 'synced' | 'error' | 'dev-locked' | 'online') => {
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('cloud-sync-status', { detail: status }));
+    // Schedule on next tick to strictly prevent React state updates during another component's render phase
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('cloud-sync-status', { detail: status }));
+    }, 0);
   }
 };
+
+/**
+ * Recursively removes all undefined fields from objects, nested objects, and arrays.
+ * Guarantees compliance with Firestore setDoc/batch rules (which throw on undefined values).
+ */
+export function deepSanitizeForFirestore<T = any>(val: T): T {
+  if (val === undefined) {
+    return null as any;
+  }
+  if (val === null) {
+    return null as any;
+  }
+  if (Array.isArray(val)) {
+    return val
+      .map((item) => deepSanitizeForFirestore(item))
+      .filter((item) => item !== undefined) as any;
+  }
+  if (typeof val === 'object') {
+    if (val instanceof Date) {
+      return val.toISOString() as any;
+    }
+    const cleanObj: Record<string, any> = {};
+    for (const [key, propVal] of Object.entries(val as Record<string, any>)) {
+      if (propVal !== undefined && typeof propVal !== 'function') {
+        const cleaned = deepSanitizeForFirestore(propVal);
+        if (cleaned !== undefined) {
+          cleanObj[key] = cleaned;
+        }
+      }
+    }
+    return cleanObj as any;
+  }
+  return val;
+}
 
 export function setIsReceivingRemote(status: boolean) {
   isReceivingRemoteUpdate = status;
 }
 
 /**
- * Immediately save or update a single document in Firestore with full sanitization.
+ * Immediately save or update a single document in Firestore with full recursive sanitization.
  * Guarantees real-time persistence across all devices without waiting for batch sync.
  */
 export async function saveDocumentToFirestore(storageKey: string, item: any): Promise<boolean> {
@@ -139,11 +188,8 @@ export async function saveDocumentToFirestore(storageKey: string, item: any): Pr
     await ensureAuthenticatedSession();
     const docRef = doc(db, collectionName, docId);
 
-    const dataToSave = { ...item };
-    // Sanitize undefined values for Firestore compatibility
-    Object.keys(dataToSave).forEach((key) => {
-      if (dataToSave[key] === undefined) delete dataToSave[key];
-    });
+    // Deep sanitize to prevent any nested undefined properties from failing Firestore validation
+    const dataToSave = deepSanitizeForFirestore({ ...item });
 
     await setDoc(docRef, dataToSave, { merge: true });
 
@@ -197,6 +243,55 @@ export async function deleteDocumentFromFirestore(storageKey: string, docId: str
 }
 
 /**
+ * Save multiple documents atomically to Firestore
+ */
+export async function saveDocumentsBatchToFirestore(storageKey: string, items: any[]): Promise<boolean> {
+  const collectionName = COLLECTION_MAP[storageKey];
+  if (!collectionName || !db || !Array.isArray(items) || items.length === 0) return false;
+
+  try {
+    emitSyncStatus('syncing');
+    await ensureAuthenticatedSession();
+    const batch = writeBatch(db);
+    let count = 0;
+
+    for (const item of items) {
+      if (!item || !item.id) continue;
+      const docId = String(item.id);
+      removeDeletedId(docId);
+      const docRef = doc(db, collectionName, docId);
+      const dataToSave = deepSanitizeForFirestore({ ...item });
+      batch.set(docRef, dataToSave, { merge: true });
+      count++;
+
+      if (!lastKnownState[storageKey]) lastKnownState[storageKey] = [];
+      const idx = lastKnownState[storageKey].findIndex((x) => String(x?.id) === docId);
+      if (idx >= 0) {
+        lastKnownState[storageKey][idx] = { ...dataToSave };
+      } else {
+        lastKnownState[storageKey].push({ ...dataToSave });
+      }
+
+      if (count === 490) {
+        await batch.commit();
+        count = 0;
+      }
+    }
+
+    if (count > 0) {
+      await batch.commit();
+    }
+
+    emitSyncStatus('synced');
+    return true;
+  } catch (err) {
+    console.error(`[CloudSync] Error saving batch to ${collectionName}:`, err);
+    emitSyncStatus('error');
+    return false;
+  }
+}
+
+/**
  * Completely clear all documents in a collection in Firestore
  */
 export async function clearCollectionInFirestore(storageKey: string): Promise<void> {
@@ -234,9 +329,14 @@ export async function clearCollectionInFirestore(storageKey: string): Promise<vo
  * Synchronize a state array to Firestore
  * Enforces session authentication and atomic batch updates with zero-data-loss protection
  */
-export async function syncArrayToFirestore(storageKey: string, currentArray: any[]) {
-  // Hydration Lock: Never write to cloud before remote data has finished loading initially
-  if (!isCloudHydrated) {
+export async function syncArrayToFirestore(
+  storageKey: string,
+  currentArray: any[],
+  forceBypassHydrationLock: boolean = false,
+  isOverwriteMode: boolean = false
+) {
+  // Hydration Lock: Never write to cloud before remote data has finished loading initially unless explicitly bypassed (e.g. initial seeding)
+  if (!isCloudHydrated && !forceBypassHydrationLock) {
     console.warn(`[CloudSync Safety] Skipping sync for ${storageKey} because cloud data has not finished loading.`);
     return;
   }
@@ -246,9 +346,9 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
   if (!Array.isArray(currentArray)) return;
 
   // SAFETY GUARD: If currentArray is unexpectedly empty while previously populated,
-  // do NOT wipe the entire collection in Firestore!
+  // do NOT wipe the entire collection in Firestore unless explicitly in overwrite mode!
   const previousArray = lastKnownState[storageKey] || [];
-  if (currentArray.length === 0 && previousArray.length > 0) {
+  if (currentArray.length === 0 && previousArray.length > 0 && !isOverwriteMode) {
     console.warn(`[CloudSync Safety] Blocked accidental empty wipe for collection ${collectionName}.`);
     return;
   }
@@ -274,16 +374,18 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
       removeDeletedId(id);
     }
     const previousItem = previousMap.get(id);
-    if (!previousItem || JSON.stringify(currentItem) !== JSON.stringify(previousItem)) {
+    if (isOverwriteMode || !previousItem || JSON.stringify(currentItem) !== JSON.stringify(previousItem)) {
       toAddOrUpdate.push(currentItem);
     }
   }
 
-  // Find deleted items (ONLY if explicitly tracked in deletedSet to prevent accidental wipe)
+  // Find deleted items
   for (const id of previousMap.keys()) {
     if (!id) continue;
-    if (!currentMap.has(id) && deletedSet.has(id)) {
-      toDelete.push(id);
+    if (!currentMap.has(id)) {
+      if (isOverwriteMode || deletedSet.has(id)) {
+        toDelete.push(id);
+      }
     }
   }
 
@@ -301,11 +403,7 @@ export async function syncArrayToFirestore(storageKey: string, currentArray: any
       if (!item.id) continue;
       const docRef = doc(db, collectionName, String(item.id));
 
-      const dataToSave = { ...item };
-      // Sanitize undefined values
-      Object.keys(dataToSave).forEach((key) => {
-        if (dataToSave[key] === undefined) delete dataToSave[key];
-      });
+      const dataToSave = deepSanitizeForFirestore({ ...item });
 
       batch.set(docRef, dataToSave, { merge: true });
       opCount++;
@@ -362,7 +460,8 @@ export function debouncedSyncArrayToFirestore(storageKey: string, currentArray: 
  */
 export function mergeCloudAndLocal<T extends { id?: string | number }>(
   storageKey: string,
-  remoteItems: T[] | undefined
+  remoteItems: T[] | undefined,
+  inMemoryFallback?: T[]
 ): T[] {
   const deletedSet = getDeletedIds();
 
@@ -382,6 +481,17 @@ export function mergeCloudAndLocal<T extends { id?: string | number }>(
     }
   }
 
+  // Combine localStorage and inMemoryFallback without duplicates (in-memory overrides older localStorage)
+  if (Array.isArray(inMemoryFallback) && inMemoryFallback.length > 0) {
+    const localMap = new Map(localItems.map((item) => [String(item?.id), item]));
+    for (const memItem of inMemoryFallback) {
+      if (memItem?.id && !deletedSet.has(String(memItem.id))) {
+        localMap.set(String(memItem.id), memItem);
+      }
+    }
+    localItems = Array.from(localMap.values());
+  }
+
   // Filter out any explicitly deleted records from local cache
   localItems = localItems.filter((item) => item?.id && !deletedSet.has(String(item.id)));
 
@@ -395,8 +505,13 @@ export function mergeCloudAndLocal<T extends { id?: string | number }>(
   if (cleanRemoteItems.length === 0) {
     if (localItems.length > 0) {
       console.log(`[CloudSync] Cloud collection for ${storageKey} is empty, preserving and seeding ${localItems.length} local items.`);
-      // Immediately push local data to Firestore to seed the cloud
-      syncArrayToFirestore(storageKey, localItems);
+      // Immediately push local data to Firestore to seed the cloud with forceBypassHydrationLock=true
+      syncArrayToFirestore(storageKey, localItems, true);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(localItems));
+      } catch (e) {
+        console.warn('Failed to cache to localStorage:', e);
+      }
       return localItems;
     }
     return [];
@@ -405,10 +520,23 @@ export function mergeCloudAndLocal<T extends { id?: string | number }>(
   // Case B: Cloud has items, local storage has 0 items (e.g. brand new device opening shared link)
   if (localItems.length === 0) {
     lastKnownState[storageKey] = [...cleanRemoteItems];
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(cleanRemoteItems));
+    } catch (e) {
+      console.warn('Failed to cache remote items to localStorage:', e);
+    }
     return cleanRemoteItems;
   }
 
-  // Case C: Both cloud and local have items -> Merge by ID
+  // Case C: Both cloud and local have items -> Merge by ID with zero data loss
+  const getItemTime = (item: any): number => {
+    if (!item) return 0;
+    const t = item.updatedAt || item.timestamp || item.createdAt || item.date;
+    if (!t) return 0;
+    const parsed = new Date(t).getTime();
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
   const remoteMap = new Map(cleanRemoteItems.map((item) => [String(item.id), item]));
   const merged: T[] = [...cleanRemoteItems];
   let localItemsToUpload: T[] = [];
@@ -421,18 +549,36 @@ export function mergeCloudAndLocal<T extends { id?: string | number }>(
       // This is a local item created on this device that has not yet reached the cloud!
       merged.push(localItem);
       localItemsToUpload.push(localItem);
+    } else {
+      // Item exists in both: preserve the more recently modified item if timestamps exist
+      const remoteObj = remoteMap.get(id) as any;
+      const localObj = localItem as any;
+      const localTime = getItemTime(localObj);
+      const remoteTime = getItemTime(remoteObj);
+      if (localTime > remoteTime && localTime > 0) {
+        const idx = merged.findIndex((m) => String(m.id) === id);
+        if (idx !== -1) {
+          merged[idx] = localItem;
+        }
+        localItemsToUpload.push(localItem);
+      }
     }
   }
 
   // If there were local items not in cloud, immediately upload them so they're permanently saved
   if (localItemsToUpload.length > 0) {
-    console.log(`[CloudSync] Uploading ${localItemsToUpload.length} locally created items for ${storageKey} to Firestore.`);
+    console.log(`[CloudSync] Uploading ${localItemsToUpload.length} locally created/updated items for ${storageKey} to Firestore.`);
     localItemsToUpload.forEach((item) => {
       saveDocumentToFirestore(storageKey, item);
     });
   }
 
   lastKnownState[storageKey] = [...merged];
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(merged));
+  } catch (e) {
+    console.warn('Failed to cache merged items to localStorage:', e);
+  }
   return merged;
 }
 
@@ -464,13 +610,14 @@ export async function syncSettingsToFirestore(settings: any, tenantId?: string):
     const effectiveId = tenantId && tenantId !== 'system' ? tenantId : 'net-612524';
     emitSyncStatus('syncing');
     const tenantDocRef = doc(db, 'tenants', effectiveId);
+    const sanitizedSettings = deepSanitizeForFirestore({
+      ...settings,
+      updatedAt: new Date().toISOString(),
+    });
     await setDoc(
       tenantDocRef,
       {
-        settings: {
-          ...settings,
-          updatedAt: new Date().toISOString(),
-        },
+        settings: sanitizedSettings,
       },
       { merge: true }
     );
@@ -581,13 +728,13 @@ export function subscribeToCloudUpdates(
 /**
  * Force synchronization of all collections to the cloud
  */
-export async function forceSyncAllToCloud(dataState: Record<string, any[]>) {
+export async function forceSyncAllToCloud(dataState: Record<string, any[]>, isOverwriteMode: boolean = false) {
   if (!db) return false;
   await ensureAuthenticatedSession();
 
   for (const [storageKey, items] of Object.entries(dataState)) {
-    if (Array.isArray(items) && COLLECTION_MAP[storageKey] && items.length > 0) {
-      await syncArrayToFirestore(storageKey, items);
+    if (Array.isArray(items) && COLLECTION_MAP[storageKey]) {
+      await syncArrayToFirestore(storageKey, items, true, isOverwriteMode);
     }
   }
   return true;

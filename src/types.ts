@@ -893,6 +893,22 @@ export interface UserPermissions {
   systemTenants?: SystemTenantsPermissions;
 }
 
+export type DashboardTabId =
+  | 'financial_kpis'
+  | 'secondary_indicators'
+  | 'critical_alerts'
+  | 'financial_trend_chart'
+  | 'expenses_breakdown'
+  | 'pos_leaderboard'
+  | 'category_sales'
+  | 'recent_invoices';
+
+export interface UserDashboardPreferences {
+  visibleTabs: DashboardTabId[];
+  viewMode?: 'tabbed' | 'grid';
+  defaultTab?: DashboardTabId | 'all';
+}
+
 export interface AppUser {
   id: string;
   networkId?: string;             // معرف الشبكة (للتمييز بين الشبكات في وضع SaaS)
@@ -912,6 +928,7 @@ export interface AppUser {
   assignedPOSPointIds?: string[]; // حصر المندوب بنقاط بيع معينة (اختياري)
   maxDiscountPercent?: number;    // الحد الأقصى للخصم المسموح به
   notes?: string;
+  dashboardPreferences?: UserDashboardPreferences; // تفضيلات تبويبات لوحة التحكم الرئيسية المخصصة
   createdAt: string;
   lastLogin?: string;
 }
@@ -959,6 +976,7 @@ export interface SystemDatabaseBackupCounts {
   sales?: number;
   payments?: number;
   orders?: number;
+  customers?: number;
   templates?: number;
   vouchers?: number;
   activityLogs?: number;
@@ -976,6 +994,7 @@ export interface SystemDatabaseBackupData {
   sales?: SalesRecord[];
   payments?: PaymentRecord[];
   orders?: CardOrder[];
+  customers?: Customer[];
   settings?: NetworkSettings;
   templates?: CardTemplate[];
   vouchers?: GeneratedVoucher[];

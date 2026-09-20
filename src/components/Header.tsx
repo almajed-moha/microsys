@@ -127,14 +127,20 @@ export const Header: React.FC<HeaderProps> = ({
       }
     };
 
-    const handleOnline = () => setSyncStatus(isStudioDevEnvironment() ? 'dev-locked' : 'online');
-    const handleOffline = () => setSyncStatus('offline');
+    const handleOnline = () => {
+      setTimeout(() => setSyncStatus(isStudioDevEnvironment() ? 'dev-locked' : 'online'), 0);
+    };
+    const handleOffline = () => {
+      setTimeout(() => setSyncStatus('offline'), 0);
+    };
     const handleSyncStatus = (e: Event) => {
       const customEvent = e as CustomEvent;
-      if (customEvent.detail === 'dev-locked') setSyncStatus('dev-locked');
-      else if (customEvent.detail === 'syncing') setSyncStatus('syncing');
-      else if (customEvent.detail === 'synced') setSyncStatus(isStudioDevEnvironment() ? 'dev-locked' : 'online');
-      else if (customEvent.detail === 'error') setSyncStatus('error');
+      setTimeout(() => {
+        if (customEvent.detail === 'dev-locked') setSyncStatus('dev-locked');
+        else if (customEvent.detail === 'syncing') setSyncStatus('syncing');
+        else if (customEvent.detail === 'synced') setSyncStatus(isStudioDevEnvironment() ? 'dev-locked' : 'online');
+        else if (customEvent.detail === 'error') setSyncStatus('error');
+      }, 0);
     };
 
     document.addEventListener('mousedown', handleClickOutside);

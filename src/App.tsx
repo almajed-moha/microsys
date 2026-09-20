@@ -55,6 +55,7 @@ import {
   Customer,
   NetworkTenant,
   CardTemplate,
+  UserDashboardPreferences,
 } from './types';
 import {
   loadData,
@@ -90,6 +91,7 @@ import {
   subscribeToCloudUpdates,
   syncSettingsToFirestore,
   forceSyncAllToCloud,
+  syncArrayToFirestore,
   deleteDocumentFromFirestore,
   clearCollectionInFirestore,
   saveDocumentToFirestore,
@@ -97,6 +99,7 @@ import {
   mergeCloudAndLocal,
   getIsCloudHydrated,
   setCloudHydrated,
+  clearDeletedIds,
 } from './services/cloudSync';
 import { initialActivityLogs, buildActivityLog } from './utils/auditLogger';
 import { applyCreationAudit, applyUpdateAudit } from './utils/auditTrigger';
@@ -115,13 +118,6 @@ import { generateSystemBackup } from './utils/backupGenerator';
 import { exportToJSON } from './utils/storage';
 import { DataSyncModal } from './components/DataSyncModal';
 import { useGlobalNetworkUsageSync } from './hooks/useGlobalNetworkUsageSync';
-
-// Wipe any previous stale demo data once to ensure pristine master-only state as requested
-const MASTER_ONLY_RESET_FLAG = 'mikrotik_v4_master_only_clean_reset';
-if (typeof window !== 'undefined' && !localStorage.getItem(MASTER_ONLY_RESET_FLAG)) {
-  resetToMockData();
-  localStorage.setItem(MASTER_ONLY_RESET_FLAG, 'true');
-}
 
 export default function App() {
   // Navigation View State
@@ -684,6 +680,32 @@ export default function App() {
     });
   }, [invoices, sales, payments, dispatches]);
 
+  // Master synchronization effect to ensure 100% data consistency for all Customer balances
+  useEffect(() => {
+    setCustomers((prev) => {
+      let hasChanges = false;
+      const synchronized = refreshCustomerBalances(prev, invoices, payments);
+      if (synchronized.length !== prev.length) {
+        hasChanges = true;
+      } else {
+        for (let i = 0; i < synchronized.length; i++) {
+          const p = prev[i];
+          const s = synchronized[i];
+          if (
+            !p ||
+            p.balance !== s.balance ||
+            p.totalPurchases !== s.totalPurchases ||
+            p.totalPayments !== s.totalPayments
+          ) {
+            hasChanges = true;
+            break;
+          }
+        }
+      }
+      return hasChanges ? synchronized : prev;
+    });
+  }, [invoices, payments, refreshCustomerBalances]);
+
   useEffect(() => {
     saveData(STORAGE_KEYS.EXPENSES, expenses);
     if (getIsCloudHydrated()) {
@@ -734,27 +756,70 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Initial Load from Online Database (Firestore)
+    // 1. Initial Load from Online Database (Firestore) with zero-data-loss merge
     loadAllDataFromFirestore()
       .then((cloudData) => {
         if (!isMounted) return;
         if (cloudData && Object.keys(cloudData).length > 0) {
-          if (cloudData[STORAGE_KEYS.USERS] !== undefined) setUsers(cloudData[STORAGE_KEYS.USERS]);
-          if (cloudData[STORAGE_KEYS.CUSTOMERS] !== undefined) setCustomers(cloudData[STORAGE_KEYS.CUSTOMERS]);
-          if (cloudData[STORAGE_KEYS.CATEGORIES] !== undefined) setCategories(cloudData[STORAGE_KEYS.CATEGORIES]);
-          if (cloudData[STORAGE_KEYS.POS_POINTS] !== undefined) setPosPoints(cloudData[STORAGE_KEYS.POS_POINTS]);
-          if (cloudData[STORAGE_KEYS.INVOICES] !== undefined) setInvoices(cloudData[STORAGE_KEYS.INVOICES]);
-          if (cloudData[STORAGE_KEYS.PAYMENTS] !== undefined) setPayments(cloudData[STORAGE_KEYS.PAYMENTS]);
-          if (cloudData[STORAGE_KEYS.EXPENSES] !== undefined) setExpenses(cloudData[STORAGE_KEYS.EXPENSES]);
-          if (cloudData[STORAGE_KEYS.EXPENSE_CATEGORIES] !== undefined) setExpenseCategories(cloudData[STORAGE_KEYS.EXPENSE_CATEGORIES]);
-          if (cloudData[STORAGE_KEYS.DISPATCHES] !== undefined) setDispatches(cloudData[STORAGE_KEYS.DISPATCHES]);
-          if (cloudData[STORAGE_KEYS.SALES] !== undefined) setSales(cloudData[STORAGE_KEYS.SALES]);
-          if (cloudData[STORAGE_KEYS.ORDERS] !== undefined) setOrders(cloudData[STORAGE_KEYS.ORDERS]);
+          const mergedInvoices = mergeCloudAndLocal<InvoiceRecord>(STORAGE_KEYS.INVOICES, cloudData[STORAGE_KEYS.INVOICES]);
+          setInvoices(mergedInvoices);
+          saveData(STORAGE_KEYS.INVOICES, mergedInvoices);
+
+          const mergedSales = mergeCloudAndLocal<SalesRecord>(STORAGE_KEYS.SALES, cloudData[STORAGE_KEYS.SALES]);
+          setSales(mergedSales);
+          saveData(STORAGE_KEYS.SALES, mergedSales);
+
+          const mergedPayments = mergeCloudAndLocal<PaymentRecord>(STORAGE_KEYS.PAYMENTS, cloudData[STORAGE_KEYS.PAYMENTS]);
+          setPayments(mergedPayments);
+          saveData(STORAGE_KEYS.PAYMENTS, mergedPayments);
+
+          const mergedDispatches = mergeCloudAndLocal<CardBatchDispatch>(STORAGE_KEYS.DISPATCHES, cloudData[STORAGE_KEYS.DISPATCHES]);
+          setDispatches(mergedDispatches);
+          saveData(STORAGE_KEYS.DISPATCHES, mergedDispatches);
+
+          const mergedCategories = mergeCloudAndLocal<CardCategory>(STORAGE_KEYS.CATEGORIES, cloudData[STORAGE_KEYS.CATEGORIES]);
+          setCategories(mergedCategories);
+          saveData(STORAGE_KEYS.CATEGORIES, mergedCategories);
+
+          const mergedExpenses = mergeCloudAndLocal<ExpenseRecord>(STORAGE_KEYS.EXPENSES, cloudData[STORAGE_KEYS.EXPENSES]);
+          setExpenses(mergedExpenses);
+          saveData(STORAGE_KEYS.EXPENSES, mergedExpenses);
+
+          const mergedExpenseCats = mergeCloudAndLocal<ExpenseCategory>(STORAGE_KEYS.EXPENSE_CATEGORIES, cloudData[STORAGE_KEYS.EXPENSE_CATEGORIES]);
+          setExpenseCategories(mergedExpenseCats);
+          saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, mergedExpenseCats);
+
+          const mergedOrders = mergeCloudAndLocal<CardOrder>(STORAGE_KEYS.ORDERS, cloudData[STORAGE_KEYS.ORDERS]);
+          setOrders(mergedOrders);
+          saveData(STORAGE_KEYS.ORDERS, mergedOrders);
+
+          const rawMergedCustomers = mergeCloudAndLocal<Customer>(STORAGE_KEYS.CUSTOMERS, cloudData[STORAGE_KEYS.CUSTOMERS]);
+          const synchronizedCustomers = refreshCustomerBalances(rawMergedCustomers, mergedInvoices, mergedPayments);
+          setCustomers(synchronizedCustomers);
+          saveData(STORAGE_KEYS.CUSTOMERS, synchronizedCustomers);
+
+          const mergedUsers = mergeCloudAndLocal<AppUser>(STORAGE_KEYS.USERS, cloudData[STORAGE_KEYS.USERS]);
+          setUsers(mergedUsers);
+          saveData(STORAGE_KEYS.USERS, mergedUsers);
+
+          const rawMergedPOS = mergeCloudAndLocal<POSPoint>(STORAGE_KEYS.POS_POINTS, cloudData[STORAGE_KEYS.POS_POINTS]);
+          // Recalculate and synchronize all POS debts accurately using all merged financial records
+          const synchronizedPOS = synchronizePOSBalances(
+            rawMergedPOS,
+            mergedInvoices,
+            mergedSales,
+            mergedPayments,
+            mergedDispatches
+          );
+          setPosPoints(synchronizedPOS);
+          saveData(STORAGE_KEYS.POS_POINTS, synchronizedPOS);
+
           if (cloudData[STORAGE_KEYS.TENANTS] !== undefined) {
-            const loadedTenants: NetworkTenant[] = cloudData[STORAGE_KEYS.TENANTS];
-            setTenants(loadedTenants);
+            const mergedTenants = mergeCloudAndLocal<NetworkTenant>(STORAGE_KEYS.TENANTS, cloudData[STORAGE_KEYS.TENANTS]);
+            setTenants(mergedTenants);
+            saveData(STORAGE_KEYS.TENANTS, mergedTenants);
             // Synchronize active tenant settings immediately
-            const activeTenant = loadedTenants.find((t) => t.id === effectiveTenantId);
+            const activeTenant = mergedTenants.find((t) => t.id === effectiveTenantId);
             if (activeTenant?.settings) {
               const tenantRouter = activeTenant.settings.mikrotikConfig || {
                 host: activeTenant.settings.mikrotikIp || '192.168.88.1',
@@ -777,8 +842,29 @@ export default function App() {
               localStorage.setItem(`mikrotik_pos_settings_${activeTenant.id}`, JSON.stringify(tenantSettings));
             }
           }
-          // Safely unlock outbound sync once cloud collections are loaded into memory
+          // Safely unlock outbound sync once cloud collections are loaded and merged into memory
           setCloudHydrated(true);
+
+          // Proactively seed any cloud collections that were empty but had local records
+          const collectionsToVerify: Record<string, any[]> = {
+            [STORAGE_KEYS.INVOICES]: mergedInvoices,
+            [STORAGE_KEYS.SALES]: mergedSales,
+            [STORAGE_KEYS.PAYMENTS]: mergedPayments,
+            [STORAGE_KEYS.POS_POINTS]: synchronizedPOS,
+            [STORAGE_KEYS.CUSTOMERS]: synchronizedCustomers,
+            [STORAGE_KEYS.CATEGORIES]: mergedCategories,
+            [STORAGE_KEYS.DISPATCHES]: mergedDispatches,
+            [STORAGE_KEYS.EXPENSES]: mergedExpenses,
+            [STORAGE_KEYS.EXPENSE_CATEGORIES]: mergedExpenseCats,
+            [STORAGE_KEYS.ORDERS]: mergedOrders,
+            [STORAGE_KEYS.USERS]: mergedUsers,
+          };
+          for (const [sKey, items] of Object.entries(collectionsToVerify)) {
+            const remoteDocs = cloudData[sKey];
+            if ((!remoteDocs || remoteDocs.length === 0) && items.length > 0) {
+              syncArrayToFirestore(sKey, items, true).catch(console.error);
+            }
+          }
         } else {
           setCloudHydrated(true);
         }
@@ -788,58 +874,61 @@ export default function App() {
         setCloudHydrated(true);
       });
 
-    // 2. Real-time Live Sync: Instantly updates whenever changes occur on other devices
+    // 2. Real-time Live Sync: Instantly updates with zero-data-loss merge
     const unsubscribe = subscribeToCloudUpdates((key, items) => {
       if (!isMounted) return;
       if (!Array.isArray(items)) return;
+
+      const merged = mergeCloudAndLocal(key, items);
+
       switch (key) {
         case STORAGE_KEYS.USERS:
-          setUsers(items);
-          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(items));
+          setUsers(merged);
+          saveData(STORAGE_KEYS.USERS, merged);
           break;
         case STORAGE_KEYS.CUSTOMERS:
-          setCustomers(items);
-          localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(items));
+          setCustomers(merged);
+          saveData(STORAGE_KEYS.CUSTOMERS, merged);
           break;
         case STORAGE_KEYS.CATEGORIES:
-          setCategories(items);
-          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(items));
+          setCategories(merged);
+          saveData(STORAGE_KEYS.CATEGORIES, merged);
           break;
         case STORAGE_KEYS.POS_POINTS:
-          setPosPoints(items);
-          localStorage.setItem(STORAGE_KEYS.POS_POINTS, JSON.stringify(items));
+          setPosPoints(merged);
+          saveData(STORAGE_KEYS.POS_POINTS, merged);
           break;
         case STORAGE_KEYS.INVOICES:
-          setInvoices(items);
-          localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(items));
+          setInvoices(merged);
+          saveData(STORAGE_KEYS.INVOICES, merged);
           break;
         case STORAGE_KEYS.PAYMENTS:
-          setPayments(items);
-          localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(items));
+          setPayments(merged);
+          saveData(STORAGE_KEYS.PAYMENTS, merged);
           break;
         case STORAGE_KEYS.EXPENSES:
-          setExpenses(items);
-          localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(items));
+          setExpenses(merged);
+          saveData(STORAGE_KEYS.EXPENSES, merged);
           break;
         case STORAGE_KEYS.EXPENSE_CATEGORIES:
-          setExpenseCategories(items);
-          localStorage.setItem(STORAGE_KEYS.EXPENSE_CATEGORIES, JSON.stringify(items));
+          setExpenseCategories(merged);
+          saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, merged);
           break;
         case STORAGE_KEYS.DISPATCHES:
-          setDispatches(items);
-          localStorage.setItem(STORAGE_KEYS.DISPATCHES, JSON.stringify(items));
+          setDispatches(merged);
+          saveData(STORAGE_KEYS.DISPATCHES, merged);
           break;
         case STORAGE_KEYS.SALES:
-          setSales(items);
-          localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(items));
+          setSales(merged);
+          saveData(STORAGE_KEYS.SALES, merged);
           break;
         case STORAGE_KEYS.ORDERS:
-          setOrders(items);
-          localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(items));
+          setOrders(merged);
+          saveData(STORAGE_KEYS.ORDERS, merged);
           break;
         case STORAGE_KEYS.TENANTS:
-          setTenants(items);
-          localStorage.setItem(STORAGE_KEYS.TENANTS, JSON.stringify(items));
+          setTenants(merged);
+          saveData(STORAGE_KEYS.TENANTS, merged);
           break;
       }
     });
@@ -1525,6 +1614,7 @@ export default function App() {
 
     const nextInvoices = [newInvoice, ...invoices];
     setInvoices(nextInvoices);
+    saveData(STORAGE_KEYS.INVOICES, nextInvoices);
     saveDocumentToFirestore(STORAGE_KEYS.INVOICES, newInvoice);
 
     // Adjust category warehouse stock for each item in the invoice
@@ -1611,6 +1701,7 @@ export default function App() {
 
     const nextInvoices = invoices.map((inv) => (inv.id === updatedInvoice.id ? updatedInvoice : inv));
     setInvoices(nextInvoices);
+    saveData(STORAGE_KEYS.INVOICES, nextInvoices);
     saveDocumentToFirestore(STORAGE_KEYS.INVOICES, updatedInvoice);
     setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
     setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, payments));
@@ -1969,7 +2060,10 @@ export default function App() {
       details: `سند صرف رقم ${finalVoucherNumber} بقيمة ${(rawExpense.amount ?? 0).toLocaleString()} ${settings.currencySymbol} لبند (${rawExpense.categoryName})`,
     });
 
-    setExpenses((prev) => [newExpense, ...prev]);
+    const nextExpenses = [newExpense, ...expenses];
+    setExpenses(nextExpenses);
+    saveData(STORAGE_KEYS.EXPENSES, nextExpenses);
+    saveDocumentToFirestore(STORAGE_KEYS.EXPENSES, newExpense);
 
     logUserActivity(
       'إضافة سند صرف جديد',
@@ -1991,7 +2085,10 @@ export default function App() {
       details: `تعديل سند الصرف رقم ${updatedExpenseData.voucherNumber} بواسطة ${activeUser?.name || 'المدير'}`,
     });
 
-    setExpenses((prev) => prev.map((e) => (e.id === updatedExpense.id ? updatedExpense : e)));
+    const nextExpenses = expenses.map((e) => (e.id === updatedExpense.id ? updatedExpense : e));
+    setExpenses(nextExpenses);
+    saveData(STORAGE_KEYS.EXPENSES, nextExpenses);
+    saveDocumentToFirestore(STORAGE_KEYS.EXPENSES, updatedExpense);
     logUserActivity(
       'تعديل سند صرف',
       'expenses',
@@ -2545,6 +2642,15 @@ export default function App() {
     }, 4000);
   };
 
+  const handleUpdateDashboardPreferences = (newPrefs: UserDashboardPreferences) => {
+    if (!activeUser) return;
+    const updatedUser: AppUser = {
+      ...activeUser,
+      dashboardPreferences: newPrefs,
+    };
+    handleUpdateUser(updatedUser);
+  };
+
   const handleDeleteUser = (userId: string) => {
     if (userId === 'user-system-owner') return; // protect master owner
     const targetUser = users.find((u) => u.id === userId);
@@ -2773,6 +2879,8 @@ export default function App() {
     setIsLoggedIn(false);
     setIsLoginModalOpen(false);
     setActiveUserId('');
+    setSelectedTenantFilter('all'); // Reset tenant filter so login is not scoped to any single network
+    setSettings(defaultNetworkSettings); // Revert to master system settings
     localStorage.removeItem('ACTIVE_USER_ID');
     localStorage.removeItem('IS_LOGGED_IN');
   };
@@ -2912,13 +3020,179 @@ export default function App() {
   };
 
   // Restore System Database Backup
-  const handleRestoreDatabase = (
+  const handleRestoreDatabase = async (
     backupData: any,
     mode: 'overwrite' | 'merge' = 'overwrite',
-    backupType?: 'full_system' | 'single_network'
+    backupType?: 'full_system' | 'single_network',
+    targetNetworkId?: string
   ) => {
-    if (!backupData || typeof backupData !== 'object') return;
+    if (!backupData || typeof backupData !== 'object') {
+      console.warn('[Restore] Invalid backupData passed to handleRestoreDatabase');
+      return;
+    }
 
+    // Always clear the deleted IDs tombstone so restored items are never filtered out
+    clearDeletedIds();
+
+    const data = (backupData && typeof backupData.data === 'object' && !Array.isArray(backupData.data))
+      ? backupData.data
+      : (backupData?.payload || backupData?.backup || backupData);
+
+    console.log('[Restore] Starting restore:', { mode, backupType, targetNetworkId });
+
+    // Helper to extract arrays safely with case/naming fallbacks
+    const getArr = (src: any, ...keys: string[]): any[] => {
+      if (!src || typeof src !== 'object') return [];
+      for (const k of keys) {
+        if (Array.isArray(src[k])) return src[k];
+      }
+      return [];
+    };
+
+    const incomingCategories = getArr(data, 'categories', 'card_categories', 'cards');
+    const incomingInvoices = getArr(data, 'invoices', 'pos_invoices');
+    const incomingExpenses = getArr(data, 'expenses', 'expense_records');
+    const incomingExpenseCats = getArr(data, 'expenseCategories', 'expense_categories');
+    const incomingDispatches = getArr(data, 'dispatches', 'card_dispatches');
+    const incomingSales = getArr(data, 'sales', 'sales_records');
+    const incomingPayments = getArr(data, 'payments', 'payment_records');
+    const incomingOrders = getArr(data, 'orders', 'card_orders');
+    const incomingCustomers = getArr(data, 'customers', 'clients');
+    const incomingPOS = getArr(data, 'posPoints', 'pos_points', 'pos');
+    const incomingTenants = getArr(data, 'tenants', 'networks');
+    const incomingUsers = getArr(data, 'users', 'accounts');
+    const incomingLogs = getArr(data, 'activityLogs', 'activity_logs', 'logs');
+    const incomingSettings = data.settings || data.config;
+
+    // Determine if this restore is scoped to a single network
+    const isFullBackup = backupType === 'full_system' || (incomingTenants.length > 1);
+    const isSingleNetwork =
+      !isFullBackup &&
+      (backupType === 'single_network' ||
+        (Boolean(targetNetworkId) && targetNetworkId !== 'all') ||
+        (activeUser?.role !== 'system_owner' && activeUser?.role !== 'admin'));
+
+    const effectiveTargetNetworkId =
+      (targetNetworkId && targetNetworkId !== 'all' ? targetNetworkId : undefined) ||
+      (activeUser?.networkId && activeUser.networkId !== 'system' ? activeUser.networkId : undefined) ||
+      data?.networkId ||
+      backupData?.networkId ||
+      (incomingTenants.length === 1 ? incomingTenants[0].id : undefined) ||
+      (selectedTenantFilter !== 'all' ? selectedTenantFilter : undefined) ||
+      (tenants.length > 0 ? tenants[0].id : 'net-microsys');
+
+    // ISOLATED SINGLE-NETWORK RESTORE: Protect other networks completely
+    if (isSingleNetwork && effectiveTargetNetworkId) {
+      console.log(`[Restore] Performing isolated restore for network: ${effectiveTargetNetworkId}`);
+
+      const restoreScopedList = <T extends { id: string; networkId?: string }>(
+        currentList: T[],
+        incomingList: T[]
+      ): T[] => {
+        // Strictly keep all records belonging to OTHER networks untouched
+        const otherNetworksItems = currentList.filter(
+          (item) => item.networkId && item.networkId !== effectiveTargetNetworkId
+        );
+        const currentNetworkItems = currentList.filter(
+          (item) => !item.networkId || item.networkId === effectiveTargetNetworkId
+        );
+        const incomingStamped = (incomingList || []).map((item) => ({
+          ...item,
+          networkId: item.networkId || effectiveTargetNetworkId,
+        }));
+
+        if (mode === 'overwrite') {
+          return [...otherNetworksItems, ...incomingStamped];
+        } else {
+          const map = new Map<string, T>();
+          currentNetworkItems.forEach((item) => map.set(item.id, item));
+          incomingStamped.forEach((item) => map.set(item.id, item));
+          return [...otherNetworksItems, ...Array.from(map.values())];
+        }
+      };
+
+      const newCategories = restoreScopedList<CardCategory>(categories, incomingCategories);
+      const newInvoices = restoreScopedList<InvoiceRecord>(invoices, incomingInvoices);
+      const newExpenses = restoreScopedList<ExpenseRecord>(expenses, incomingExpenses);
+      const newExpenseCategories = restoreScopedList<ExpenseCategory>(expenseCategories, incomingExpenseCats);
+      const newDispatches = restoreScopedList<CardBatchDispatch>(dispatches, incomingDispatches);
+      const newSales = restoreScopedList<SalesRecord>(sales, incomingSales);
+      const newPayments = restoreScopedList<PaymentRecord>(payments, incomingPayments);
+      const newOrders = restoreScopedList<CardOrder>(orders, incomingOrders);
+      const newCustomers = restoreScopedList<Customer>(customers, incomingCustomers);
+      const rawPOS = restoreScopedList<POSPoint>(posPoints, incomingPOS);
+
+      // Financial balance synchronizations
+      const synchronizedPOS = synchronizePOSBalances(rawPOS, newInvoices, newSales, newPayments, newDispatches);
+      const synchronizedCustomers = refreshCustomerBalances(newCustomers, newInvoices, newPayments);
+
+      // Update tenant specific settings without affecting other tenants
+      if (incomingSettings) {
+        const updatedTenants = tenants.map((t) =>
+          t.id === effectiveTargetNetworkId
+            ? {
+                ...t,
+                settings: {
+                  ...t.settings,
+                  ...incomingSettings,
+                  networkName: incomingSettings.networkName || t.name,
+                },
+              }
+            : t
+        );
+        setTenants(updatedTenants);
+        saveData(STORAGE_KEYS.TENANTS, updatedTenants);
+        syncArrayToFirestore(STORAGE_KEYS.TENANTS, updatedTenants, true).catch(console.error);
+        if (effectiveTenantId === effectiveTargetNetworkId) {
+          setSettings(incomingSettings);
+          saveData(STORAGE_KEYS.SETTINGS, incomingSettings);
+          syncSettingsToFirestore(incomingSettings).catch(console.error);
+        }
+      }
+
+      // Update States for this network
+      setCategories(newCategories);
+      setInvoices(newInvoices);
+      setExpenses(newExpenses);
+      setExpenseCategories(newExpenseCategories);
+      setDispatches(newDispatches);
+      setSales(newSales);
+      setPayments(newPayments);
+      setOrders(newOrders);
+      setCustomers(synchronizedCustomers);
+      setPosPoints(synchronizedPOS);
+
+      // Save directly to localStorage for immediate persistence
+      saveData(STORAGE_KEYS.CATEGORIES, newCategories);
+      saveData(STORAGE_KEYS.INVOICES, newInvoices);
+      saveData(STORAGE_KEYS.EXPENSES, newExpenses);
+      saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, newExpenseCategories);
+      saveData(STORAGE_KEYS.DISPATCHES, newDispatches);
+      saveData(STORAGE_KEYS.SALES, newSales);
+      saveData(STORAGE_KEYS.PAYMENTS, newPayments);
+      saveData(STORAGE_KEYS.ORDERS, newOrders);
+      saveData(STORAGE_KEYS.CUSTOMERS, synchronizedCustomers);
+      saveData(STORAGE_KEYS.POS_POINTS, synchronizedPOS);
+
+      // Instantly sync the restored network data to Firestore
+      await forceSyncAllToCloud({
+        [STORAGE_KEYS.CATEGORIES]: newCategories,
+        [STORAGE_KEYS.INVOICES]: newInvoices,
+        [STORAGE_KEYS.EXPENSES]: newExpenses,
+        [STORAGE_KEYS.EXPENSE_CATEGORIES]: newExpenseCategories,
+        [STORAGE_KEYS.DISPATCHES]: newDispatches,
+        [STORAGE_KEYS.SALES]: newSales,
+        [STORAGE_KEYS.PAYMENTS]: newPayments,
+        [STORAGE_KEYS.ORDERS]: newOrders,
+        [STORAGE_KEYS.CUSTOMERS]: synchronizedCustomers,
+        [STORAGE_KEYS.POS_POINTS]: synchronizedPOS,
+      }, mode === 'overwrite');
+
+      return;
+    }
+
+    // FULL SYSTEM RESTORE (System Owner Only)
+    console.log('[Restore] Performing full system restore');
     const mergeList = <T extends { id: string }>(current: T[], incoming?: T[]): T[] => {
       if (!incoming || incoming.length === 0) return current;
       if (mode === 'overwrite') return incoming;
@@ -2929,37 +3203,39 @@ export default function App() {
       return Array.from(map.values());
     };
 
-    const newCategories = mergeList<CardCategory>(categories, backupData.categories);
-    const newInvoices = mergeList<InvoiceRecord>(invoices, backupData.invoices);
-    const newExpenses = mergeList<ExpenseRecord>(expenses, backupData.expenses);
-    const newExpenseCategories = mergeList<ExpenseCategory>(expenseCategories, backupData.expenseCategories);
-    const newDispatches = mergeList<CardBatchDispatch>(dispatches, backupData.dispatches);
-    const newSales = mergeList<SalesRecord>(sales, backupData.sales);
-    const newPayments = mergeList<PaymentRecord>(payments, backupData.payments);
-    const newOrders = mergeList<CardOrder>(orders, backupData.orders);
-    const newCustomers = mergeList<Customer>(customers, backupData.customers);
-    const newTenants = mergeList<NetworkTenant>(tenants, backupData.tenants);
-    const newUsers = mergeList<AppUser>(users, backupData.users);
-    const newLogs = mergeList<UserActivityLog>(activityLogs, backupData.activityLogs);
+    const newCategories = mergeList<CardCategory>(categories, incomingCategories);
+    const newInvoices = mergeList<InvoiceRecord>(invoices, incomingInvoices);
+    const newExpenses = mergeList<ExpenseRecord>(expenses, incomingExpenses);
+    const newExpenseCategories = mergeList<ExpenseCategory>(expenseCategories, incomingExpenseCats);
+    const newDispatches = mergeList<CardBatchDispatch>(dispatches, incomingDispatches);
+    const newSales = mergeList<SalesRecord>(sales, incomingSales);
+    const newPayments = mergeList<PaymentRecord>(payments, incomingPayments);
+    const newOrders = mergeList<CardOrder>(orders, incomingOrders);
+    const newCustomers = mergeList<Customer>(customers, incomingCustomers);
+    const newTenants = mergeList<NetworkTenant>(tenants, incomingTenants);
+    const newUsers = mergeList<AppUser>(users, incomingUsers);
+    const newLogs = mergeList<UserActivityLog>(activityLogs, incomingLogs);
+    const rawPOS = mergeList<POSPoint>(posPoints, incomingPOS);
 
-    let newPOS = mergeList<POSPoint>(posPoints, backupData.posPoints);
-    newPOS = synchronizePOSBalances(newPOS, newInvoices, newSales, newPayments, newDispatches);
+    // Financial balance synchronizations
+    const synchronizedPOS = synchronizePOSBalances(rawPOS, newInvoices, newSales, newPayments, newDispatches);
+    const synchronizedCustomers = refreshCustomerBalances(newCustomers, newInvoices, newPayments);
 
     // Update States
-    if (backupData.categories || mode === 'overwrite') setCategories(newCategories);
-    if (backupData.invoices || mode === 'overwrite') setInvoices(newInvoices);
-    if (backupData.expenses || mode === 'overwrite') setExpenses(newExpenses);
-    if (backupData.expenseCategories || mode === 'overwrite') setExpenseCategories(newExpenseCategories);
-    if (backupData.dispatches || mode === 'overwrite') setDispatches(newDispatches);
-    if (backupData.sales || mode === 'overwrite') setSales(newSales);
-    if (backupData.payments || mode === 'overwrite') setPayments(newPayments);
-    if (backupData.orders || mode === 'overwrite') setOrders(newOrders);
-    if (backupData.customers || mode === 'overwrite') setCustomers(newCustomers);
-    if (backupData.posPoints || mode === 'overwrite') setPosPoints(newPOS);
-    if (backupData.tenants && backupData.tenants.length > 0) setTenants(newTenants);
-    if (backupData.users && backupData.users.length > 0) setUsers(newUsers);
-    if (backupData.activityLogs && backupData.activityLogs.length > 0) setActivityLogs(newLogs);
-    if (backupData.settings) setSettings(backupData.settings);
+    if (incomingCategories.length > 0 || mode === 'overwrite') setCategories(newCategories);
+    if (incomingInvoices.length > 0 || mode === 'overwrite') setInvoices(newInvoices);
+    if (incomingExpenses.length > 0 || mode === 'overwrite') setExpenses(newExpenses);
+    if (incomingExpenseCats.length > 0 || mode === 'overwrite') setExpenseCategories(newExpenseCategories);
+    if (incomingDispatches.length > 0 || mode === 'overwrite') setDispatches(newDispatches);
+    if (incomingSales.length > 0 || mode === 'overwrite') setSales(newSales);
+    if (incomingPayments.length > 0 || mode === 'overwrite') setPayments(newPayments);
+    if (incomingOrders.length > 0 || mode === 'overwrite') setOrders(newOrders);
+    if (incomingCustomers.length > 0 || mode === 'overwrite') setCustomers(synchronizedCustomers);
+    if (incomingPOS.length > 0 || mode === 'overwrite') setPosPoints(synchronizedPOS);
+    if (incomingTenants.length > 0) setTenants(newTenants);
+    if (incomingUsers.length > 0) setUsers(newUsers);
+    if (incomingLogs.length > 0) setActivityLogs(newLogs);
+    if (incomingSettings) setSettings(incomingSettings);
 
     // Save directly to localStorage for instant durability
     saveData(STORAGE_KEYS.CATEGORIES, newCategories);
@@ -2970,12 +3246,33 @@ export default function App() {
     saveData(STORAGE_KEYS.SALES, newSales);
     saveData(STORAGE_KEYS.PAYMENTS, newPayments);
     saveData(STORAGE_KEYS.ORDERS, newOrders);
-    saveData(STORAGE_KEYS.CUSTOMERS, newCustomers);
-    saveData(STORAGE_KEYS.POS_POINTS, newPOS);
-    if (backupData.tenants && backupData.tenants.length > 0) saveData(STORAGE_KEYS.TENANTS, newTenants);
-    if (backupData.users && backupData.users.length > 0) saveData(STORAGE_KEYS.USERS, newUsers);
-    if (backupData.activityLogs && backupData.activityLogs.length > 0) saveData(STORAGE_KEYS.ACTIVITY_LOGS, newLogs);
-    if (backupData.settings) saveData(STORAGE_KEYS.SETTINGS, backupData.settings);
+    saveData(STORAGE_KEYS.CUSTOMERS, synchronizedCustomers);
+    saveData(STORAGE_KEYS.POS_POINTS, synchronizedPOS);
+    if (incomingTenants.length > 0) saveData(STORAGE_KEYS.TENANTS, newTenants);
+    if (incomingUsers.length > 0) saveData(STORAGE_KEYS.USERS, newUsers);
+    if (incomingLogs.length > 0) saveData(STORAGE_KEYS.ACTIVITY_LOGS, newLogs);
+    if (incomingSettings) saveData(STORAGE_KEYS.SETTINGS, incomingSettings);
+
+    // Persist full restore to Firestore
+    await forceSyncAllToCloud({
+      [STORAGE_KEYS.CATEGORIES]: newCategories,
+      [STORAGE_KEYS.INVOICES]: newInvoices,
+      [STORAGE_KEYS.EXPENSES]: newExpenses,
+      [STORAGE_KEYS.EXPENSE_CATEGORIES]: newExpenseCategories,
+      [STORAGE_KEYS.DISPATCHES]: newDispatches,
+      [STORAGE_KEYS.SALES]: newSales,
+      [STORAGE_KEYS.PAYMENTS]: newPayments,
+      [STORAGE_KEYS.ORDERS]: newOrders,
+      [STORAGE_KEYS.CUSTOMERS]: synchronizedCustomers,
+      [STORAGE_KEYS.POS_POINTS]: synchronizedPOS,
+      [STORAGE_KEYS.TENANTS]: newTenants,
+      [STORAGE_KEYS.USERS]: newUsers,
+      [STORAGE_KEYS.ACTIVITY_LOGS]: newLogs,
+    }, mode === 'overwrite');
+
+    if (incomingSettings) {
+      await syncSettingsToFirestore(incomingSettings);
+    }
   };
 
   // Restore Backup (Legacy Compatibility)
@@ -3185,6 +3482,8 @@ export default function App() {
                   invoices={scopedInvoices}
                   expenses={scopedExpenses}
                   settings={settings}
+                  activeUser={activeUser}
+                  onUpdateUserPreferences={handleUpdateDashboardPreferences}
                   onNavigateToTab={(tab) => setActiveView(tab as any)}
                   onSelectPOSForStatement={(id) => setStatementPOSId(id)}
                   onOpenQuickSale={() => setActiveView('invoices')}
@@ -3380,17 +3679,20 @@ export default function App() {
               const withBalances = refreshCustomerBalances(updated, invoices, payments);
               setCustomers(withBalances);
               saveData(STORAGE_KEYS.CUSTOMERS, withBalances);
+              saveDocumentToFirestore(STORAGE_KEYS.CUSTOMERS, customerWithNetwork);
             }}
             onUpdateCustomer={(customer) => {
               const updated = customers.map(c => c.id === customer.id ? customer : c);
               const withBalances = refreshCustomerBalances(updated, invoices, payments);
               setCustomers(withBalances);
               saveData(STORAGE_KEYS.CUSTOMERS, withBalances);
+              saveDocumentToFirestore(STORAGE_KEYS.CUSTOMERS, customer);
             }}
             onDeleteCustomer={(id) => {
               const updated = customers.filter(c => c.id !== id);
               setCustomers(updated);
               saveData(STORAGE_KEYS.CUSTOMERS, updated);
+              deleteDocumentFromFirestore(STORAGE_KEYS.CUSTOMERS, id);
             }}
           />
         )}
@@ -3620,6 +3922,7 @@ export default function App() {
           sales={sales}
           payments={payments}
           orders={orders}
+          customers={customers}
           settings={settings}
           activityLogs={activityLogs}
           selectedTenantFilter={selectedTenantFilter}
@@ -3784,8 +4087,8 @@ export default function App() {
       {!isLoggedIn && !isLoginModalOpen && (
         <LoginView
           users={users}
-          activeUser={activeUser}
-          settings={settings}
+          activeUser={undefined}
+          settings={defaultNetworkSettings}
           isModal={false}
           onLoginSuccess={handleLoginSuccess}
         />

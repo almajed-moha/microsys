@@ -142,12 +142,22 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
 
-  const handleTestConnection = async () => {
+  const handleTestConnection = async (target?: 'active' | 'local' | 'remote') => {
     if (!formData.mikrotikConfig) return;
     setTestingConnection(true);
     setTestResult(null);
     try {
-      const res = await testMikroTikConnection(formData.mikrotikConfig);
+      let hostToTest = formData.mikrotikConfig.host;
+      if (target === 'local' && formData.mikrotikConfig.localHost) {
+        hostToTest = formData.mikrotikConfig.localHost;
+      } else if (target === 'remote' && formData.mikrotikConfig.remoteHost) {
+        hostToTest = formData.mikrotikConfig.remoteHost;
+      }
+
+      const res = await testMikroTikConnection({
+        ...formData.mikrotikConfig,
+        host: hostToTest,
+      });
       setTestResult(res);
     } catch (err: any) {
       setTestResult({
@@ -228,15 +238,22 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
     reader.onload = (event) => {
       try {
         const parsed = JSON.parse(event.target?.result as string);
-        if (confirm(`هل أنت متأكد من استعادة هذه النسخة الاحتياطية لشبكة (${selectedTenant?.name || formData.networkName})؟`)) {
+        let confirmed = true;
+        try {
+          confirmed = window.confirm(`هل أنت متأكد من استعادة هذه النسخة الاحتياطية لشبكة (${selectedTenant?.name || formData.networkName})؟`);
+        } catch {
+          confirmed = true;
+        }
+        if (confirmed) {
           onRestoreData(parsed);
           onClose();
         }
       } catch (err) {
-        alert('ملف النسخة الاحتياطية غير صالح.');
+        console.error('Backup parse error:', err);
       }
     };
     reader.readAsText(file);
+    e.target.value = '';
   };
 
   const activeTheme = formData.themeMode || 'dark';
@@ -667,89 +684,232 @@ export const NetworkSettingsModal: React.FC<NetworkSettingsModalProps> = ({
             )}
 
             <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 space-y-3.5">
-              {/* Host and Quick Selection */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-slate-300 font-semibold text-[11px] flex items-center gap-1.5">
-                    <span>عنوان الراوتر (IP أو DNS السحابي DDNS):</span>
-                    {isPrivateIp(formData.mikrotikConfig?.host) ? (
-                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 font-normal">
-                        شبكة محلية LAN
+              {/* Dual Host Configuration: Local IP vs Remote Access URL */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between pb-1 border-b border-slate-800">
+                  <span className="text-slate-200 font-bold text-xs flex items-center gap-1.5">
+                    <Activity className="w-4 h-4 text-indigo-400" />
+                    <span>إعدادات عناوين الراوتر (محلي + وصول عن بعد):</span>
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-slate-400">العنوان النشط حالياً:</span>
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold ${
+                        isPrivateIp(formData.mikrotikConfig?.host)
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      }`}
+                    >
+                      {formData.mikrotikConfig?.host || 'لم يحدد'} ({isPrivateIp(formData.mikrotikConfig?.host) ? 'محلي LAN' : 'عن بعد WAN'})
+                    </span>
+                  </div>
+                </div>
+
+                {/* 1. Local LAN IP Field */}
+                <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-slate-300 font-semibold text-[11px] flex items-center gap-1.5">
+                      <span>1. عنوان IP المحلي للاتصال السريع (LAN IP):</span>
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        فائق السرعة وبدون استهلاك إنترنت
                       </span>
-                    ) : (
-                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-normal">
-                        وصول عن بعد WAN / Cloud
-                      </span>
+                    </label>
+                    {formData.mikrotikConfig?.localHost && formData.mikrotikConfig?.host !== formData.mikrotikConfig?.localHost && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = formData.mikrotikConfig?.localHost!;
+                          setFormData({
+                            ...formData,
+                            mikrotikIp: val,
+                            mikrotikConfig: {
+                              ...formData.mikrotikConfig!,
+                              host: val,
+                              connectionMode: 'local',
+                            },
+                          });
+                        }}
+                        className="text-[10px] text-amber-400 hover:text-amber-300 font-bold underline"
+                      >
+                        ⚡ تفعيل للاتصال الآن
+                      </button>
                     )}
-                  </label>
-                  {formData.mikrotikConfig?.remoteHost && formData.mikrotikConfig?.host !== formData.mikrotikConfig?.remoteHost && (
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={formData.mikrotikConfig?.localHost || (isPrivateIp(formData.mikrotikConfig?.host) ? formData.mikrotikConfig?.host : '')}
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        const isCurrentActive = isPrivateIp(formData.mikrotikConfig?.host);
+                        setFormData({
+                          ...formData,
+                          mikrotikIp: isCurrentActive ? val : formData.mikrotikIp,
+                          mikrotikConfig: {
+                            ...formData.mikrotikConfig!,
+                            localHost: val,
+                            host: isCurrentActive ? val : (formData.mikrotikConfig?.host || val),
+                          },
+                        });
+                      }}
+                      className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-amber-500 text-left"
+                      dir="ltr"
+                      placeholder="مثال: 192.168.88.1 أو 10.0.0.1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleTestConnection('local')}
+                      disabled={testingConnection || !(formData.mikrotikConfig?.localHost || isPrivateIp(formData.mikrotikConfig?.host))}
+                      className="px-2.5 py-1.5 rounded-lg bg-amber-600/80 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1 transition shrink-0"
+                      title="اختبار الآيبي المحلي"
+                    >
+                      <Activity className="w-3.5 h-3.5" />
+                      <span>فحص محلي</span>
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-normal">
+                    يستخدم عندما تكون متصلاً بنفس شبكة الواي فاي أو الكابل داخل مقر الشبكة لتفادي أي بطء في الاستجابة.
+                  </p>
+                </div>
+
+                {/* 2. Remote Cloud DDNS / Public URL Field */}
+                <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-slate-300 font-semibold text-[11px] flex items-center gap-1.5">
+                      <span>2. رابط / نطاق الوصول عن بعد (Cloud DDNS / Remote URL):</span>
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        للوصول من أي مكان خارج الشبكة
+                      </span>
+                    </label>
+                    {formData.mikrotikConfig?.remoteHost && formData.mikrotikConfig?.host !== formData.mikrotikConfig?.remoteHost && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = formData.mikrotikConfig?.remoteHost!;
+                          setFormData({
+                            ...formData,
+                            mikrotikIp: val,
+                            mikrotikConfig: {
+                              ...formData.mikrotikConfig!,
+                              host: val,
+                              connectionMode: 'remote_always',
+                            },
+                          });
+                        }}
+                        className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold underline"
+                      >
+                        🌐 تفعيل للاتصال الآن
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={formData.mikrotikConfig?.remoteHost || (!isPrivateIp(formData.mikrotikConfig?.host) ? formData.mikrotikConfig?.host : '')}
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        const isCurrentActive = !isPrivateIp(formData.mikrotikConfig?.host);
+                        setFormData({
+                          ...formData,
+                          mikrotikIp: isCurrentActive ? val : formData.mikrotikIp,
+                          mikrotikConfig: {
+                            ...formData.mikrotikConfig!,
+                            remoteHost: val,
+                            host: isCurrentActive ? val : (formData.mikrotikConfig?.host || val),
+                          },
+                        });
+                      }}
+                      className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-emerald-500 text-left"
+                      dir="ltr"
+                      placeholder="مثال: myrouter.sn.mynetname.net أو 82.114.xxx.xxx"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleTestConnection('remote')}
+                      disabled={testingConnection || !(formData.mikrotikConfig?.remoteHost || !isPrivateIp(formData.mikrotikConfig?.host))}
+                      className="px-2.5 py-1.5 rounded-lg bg-emerald-600/80 hover:bg-emerald-600 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1 transition shrink-0"
+                      title="اختبار رابط الوصول عن بعد"
+                    >
+                      <Activity className="w-3.5 h-3.5" />
+                      <span>فحص عن بعد</span>
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-normal">
+                    يستخدم للتحكم بالراوتر ومتابعة المبيعات وسحب الكروت عند تواجدك خارج الشبكة أو عند الاتصال عبر بيانات الهاتف 4G.
+                  </p>
+                </div>
+
+                {/* 3. Connection Mode Switcher */}
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="text-slate-300 font-semibold text-[11px] shrink-0">وضع الاتصال المعتمد:</span>
+                  <div className="grid grid-cols-3 gap-1.5 flex-1">
                     <button
                       type="button"
                       onClick={() => {
-                        const target = formData.mikrotikConfig?.remoteHost!;
+                        const target = formData.mikrotikConfig?.localHost || formData.mikrotikConfig?.host;
                         setFormData({
                           ...formData,
-                          mikrotikIp: target,
-                          mikrotikConfig: { ...formData.mikrotikConfig!, host: target },
+                          mikrotikIp: target || formData.mikrotikIp,
+                          mikrotikConfig: {
+                            ...formData.mikrotikConfig!,
+                            host: target || formData.mikrotikConfig?.host || '192.168.88.1',
+                            connectionMode: 'local',
+                          },
                         });
                       }}
-                      className="text-[10px] text-sky-400 hover:text-sky-300 font-bold underline"
+                      className={`px-2 py-1 rounded text-[10px] font-bold border transition ${
+                        formData.mikrotikConfig?.connectionMode === 'local' || (isPrivateIp(formData.mikrotikConfig?.host) && formData.mikrotikConfig?.connectionMode !== 'auto_switch')
+                          ? 'bg-amber-600 text-white border-amber-500'
+                          : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                      }`}
                     >
-                      استخدام عنوان DDNS المحفوظ
+                      ⚡ محلي فقط (LAN)
                     </button>
-                  )}
-                </div>
 
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={formData.mikrotikConfig?.host || ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setFormData({
-                        ...formData,
-                        mikrotikIp: val,
-                        mikrotikConfig: {
-                          ...formData.mikrotikConfig!,
-                          host: val,
-                          remoteHost: !isPrivateIp(val) ? val : formData.mikrotikConfig?.remoteHost,
-                          localHost: isPrivateIp(val) ? val : formData.mikrotikConfig?.localHost,
-                        },
-                      });
-                    }}
-                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-indigo-500 text-left"
-                    dir="ltr"
-                    placeholder="مثال: myrouter.sn.mynetname.net أو 192.168.88.1"
-                  />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = formData.mikrotikConfig?.remoteHost || formData.mikrotikConfig?.host;
+                        setFormData({
+                          ...formData,
+                          mikrotikIp: target || formData.mikrotikIp,
+                          mikrotikConfig: {
+                            ...formData.mikrotikConfig!,
+                            host: target || formData.mikrotikConfig?.host || '',
+                            connectionMode: 'remote_always',
+                          },
+                        });
+                      }}
+                      className={`px-2 py-1 rounded text-[10px] font-bold border transition ${
+                        formData.mikrotikConfig?.connectionMode === 'remote_always' || (!isPrivateIp(formData.mikrotikConfig?.host) && formData.mikrotikConfig?.connectionMode !== 'auto_switch')
+                          ? 'bg-emerald-600 text-white border-emerald-500'
+                          : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                      }`}
+                    >
+                      🌐 عن بعد (WAN/Cloud)
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={handleTestConnection}
-                    disabled={testingConnection || !formData.mikrotikConfig?.host}
-                    className="px-3 py-2 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 transition shrink-0"
-                  >
-                    {testingConnection ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>جاري الفحص...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Activity className="w-3.5 h-3.5" />
-                        <span>فحص الاتصال</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {isPrivateIp(formData.mikrotikConfig?.host) && (
-                  <div className="mt-1.5 p-2 rounded-lg bg-amber-950/40 border border-amber-500/20 text-amber-300 text-[11px] flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                    <div className="leading-relaxed">
-                      <strong>ملاحظة هامة:</strong> العنوان الحالي ({formData.mikrotikConfig?.host}) هو عنوان داخلي (LAN). لن يعمل في حال اتصلت من شبكة إنترنت أخرى أو عبر 4G. للحصول على وصول دائم من أي مكان، استخدم <strong>سحابة مايكروتك المجانية (Cloud DDNS)</strong> عبر معالج الربط عن بعد.
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          mikrotikConfig: {
+                            ...formData.mikrotikConfig!,
+                            connectionMode: 'auto_switch',
+                          },
+                        });
+                      }}
+                      className={`px-2 py-1 rounded text-[10px] font-bold border transition ${
+                        formData.mikrotikConfig?.connectionMode === 'auto_switch'
+                          ? 'bg-indigo-600 text-white border-indigo-500'
+                          : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                      }`}
+                    >
+                      🔄 تبديل ذكي تلقائي
+                    </button>
                   </div>
-                )}
+                </div>
               </div>
 
               {/* Test Result Message */}

@@ -72,7 +72,15 @@ export const signInWithGoogle = async (): Promise<{ user: User; accessToken: str
     cachedAccessToken = credential.accessToken;
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
-    console.error('[Google Drive] Sign in error:', error);
+    if (
+      error?.code === 'auth/popup-closed-by-user' ||
+      error?.message?.includes('popup-closed-by-user') ||
+      error?.code === 'auth/cancelled-popup-request'
+    ) {
+      console.log('[Google Drive] Sign in cancelled: popup was closed by user.');
+    } else {
+      console.error('[Google Drive] Sign in error:', error);
+    }
     throw error;
   } finally {
     isSigningIn = false;

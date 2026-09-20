@@ -48,6 +48,7 @@ import {
   SalesRecord,
   PaymentRecord,
   CardOrder,
+  Customer,
   NetworkSettings,
   CardTemplate,
   UserActivityLog,
@@ -83,6 +84,7 @@ interface DatabaseBackupModalProps {
   sales: SalesRecord[];
   payments: PaymentRecord[];
   orders: CardOrder[];
+  customers?: Customer[];
   settings: NetworkSettings;
   templates?: CardTemplate[];
   activityLogs?: UserActivityLog[];
@@ -91,7 +93,8 @@ interface DatabaseBackupModalProps {
   onRestoreDatabase: (
     backupData: SystemDatabaseBackupData,
     mode: 'overwrite' | 'merge',
-    backupType?: 'full_system' | 'single_network'
+    backupType?: 'full_system' | 'single_network',
+    targetNetworkId?: string
   ) => void;
   onClose: () => void;
   onLogActivity?: (action: string, title: string, details: string, status?: 'success' | 'warning' | 'danger' | 'info') => void;
@@ -111,6 +114,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
   sales,
   payments,
   orders,
+  customers = [],
   settings,
   templates = [],
   activityLogs = [],
@@ -131,6 +135,9 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
   const [importedJsonString, setImportedJsonString] = useState<string>('');
   const [parsedBackup, setParsedBackup] = useState<SystemDatabaseBackup | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [confirmingRestore, setConfirmingRestore] = useState(false);
+  const [selectedImportTargetNetworkId, setSelectedImportTargetNetworkId] = useState<string>('');
   const [restoreMode, setRestoreMode] = useState<'overwrite' | 'merge'>('overwrite');
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreSuccess, setRestoreSuccess] = useState(false);
@@ -179,19 +186,42 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
         if (onUpdateUser && activeUser) {
           onUpdateUser({ ...activeUser, email: user.email || '' });
         }
+        if (onSaveSettings && currentTenant) {
+          onSaveSettings({
+            ...currentTenant.settings,
+            googleDriveEmail: user.email || '',
+          });
+        }
         setGDriveUser(user);
         setIsGDriveSignedIn(true);
-        setGDriveFeedback({ type: 'success', message: `تم الاتصال بحساب Google بنجاح وتم تسجيل البريد (${user.email}) في بياناتك` });
+        setGDriveFeedback({
+          type: 'success',
+          message: `تم الاتصال بحساب Google بنجاح وتم تسجيل البريد (${user.email}) تلقائياً في بيانات شبكة ${networkDisplayName}`,
+        });
         await loadGDriveFiles();
       } else if ((activeUser.email || '').toLowerCase() !== (user.email || '').toLowerCase()) {
         setPendingGoogleUser(user);
       } else {
+        if (onSaveSettings && currentTenant) {
+          onSaveSettings({
+            ...currentTenant.settings,
+            googleDriveEmail: user.email || '',
+          });
+        }
         setGDriveUser(user);
         setIsGDriveSignedIn(true);
-        setGDriveFeedback({ type: 'success', message: `تم الاتصال بحساب Google بنجاح (${user.email})` });
+        setGDriveFeedback({ type: 'success', message: `تم الاتصال بحساب Google بنجاح (${user.email}) لشبكة ${networkDisplayName}` });
         await loadGDriveFiles();
       }
     } catch (err: any) {
+      if (
+        err?.code === 'auth/popup-closed-by-user' ||
+        err?.message?.includes('popup-closed-by-user') ||
+        err?.code === 'auth/cancelled-popup-request'
+      ) {
+        // User closed or cancelled popup window intentionally - no error alert needed
+        return;
+      }
       console.error('Google sign in error:', err);
       setGDriveFeedback({
         type: 'error',
@@ -231,6 +261,13 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
         setGDriveUser(user);
         setIsGDriveSignedIn(true);
       } catch (err: any) {
+        if (
+          err?.code === 'auth/popup-closed-by-user' ||
+          err?.message?.includes('popup-closed-by-user') ||
+          err?.code === 'auth/cancelled-popup-request'
+        ) {
+          return;
+        }
         setGDriveFeedback({ type: 'error', message: 'يرجى تسجيل الدخول إلى Google Drive للمتابعة.' });
         return;
       } finally {
@@ -377,6 +414,10 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
     ? orders
     : orders.filter((o) => !o.networkId || o.networkId === effectiveNetworkId || o.networkId === 'net-microsys');
 
+  const targetCustomers = selectedExportNetworkId === 'all'
+    ? (customers || [])
+    : (customers || []).filter((c) => !c.networkId || c.networkId === effectiveNetworkId || c.networkId === 'net-microsys');
+
   const targetUsers = selectedExportNetworkId === 'all'
     ? users
     : users.filter((u) => u.networkId === effectiveNetworkId || (u.role === 'system_owner' && isMasterUser));
@@ -423,6 +464,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
         sales: targetSales.length,
         payments: targetPayments.length,
         orders: targetOrders.length,
+        customers: targetCustomers.length,
         templates: templates.length,
         activityLogs: targetLogs.length,
       },
@@ -438,6 +480,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
         sales: targetSales,
         payments: targetPayments,
         orders: targetOrders,
+        customers: targetCustomers,
         settings: settings,
         templates: templates,
         activityLogs: targetLogs,
@@ -483,93 +526,116 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
   // Parse and validate imported JSON file content
   const validateAndParseJson = (rawContent: string) => {
     setParseError(null);
+    setRestoreError(null);
     setParsedBackup(null);
+    setConfirmingRestore(false);
     setRestoreSuccess(false);
 
-    if (!rawContent.trim()) {
+    if (!rawContent || !rawContent.trim()) {
       return;
     }
 
     try {
-      const parsed = JSON.parse(rawContent);
+      const cleanContent = rawContent.replace(/^\uFEFF/, '').trim();
+      const parsed = JSON.parse(cleanContent);
 
-      // Support structured SystemDatabaseBackup or legacy raw object
-      let normalizedBackup: SystemDatabaseBackup;
+      const getArr = (src: any, ...keys: string[]): any[] => {
+        if (!src || typeof src !== 'object') return [];
+        for (const k of keys) {
+          if (Array.isArray(src[k])) return src[k];
+        }
+        return [];
+      };
 
-      if (parsed.data && typeof parsed.data === 'object') {
-        // Structured backup
-        normalizedBackup = {
-          version: parsed.version || '4.0.0',
-          app: parsed.app || 'MicroSys',
-          backupType: parsed.backupType || (parsed.data?.tenants?.length > 1 ? 'full_system' : 'single_network'),
-          exportDate: parsed.exportDate || new Date().toISOString().split('T')[0],
-          timestamp: parsed.timestamp || new Date().toISOString(),
-          exportedBy: parsed.exportedBy,
-          networkId: parsed.networkId,
-          networkName: parsed.networkName,
-          counts: parsed.counts || {
-            tenants: parsed.data?.tenants?.length || 0,
-            users: parsed.data?.users?.length || 0,
-            categories: parsed.data?.categories?.length || 0,
-            posPoints: parsed.data?.posPoints?.length || 0,
-            invoices: parsed.data?.invoices?.length || 0,
-            expenses: parsed.data?.expenses?.length || 0,
-            expenseCategories: parsed.data?.expenseCategories?.length || 0,
-            dispatches: parsed.data?.dispatches?.length || 0,
-            sales: parsed.data?.sales?.length || 0,
-            payments: parsed.data?.payments?.length || 0,
-            orders: parsed.data?.orders?.length || 0,
-          },
-          data: parsed.data,
-        };
-      } else {
-        // Legacy / Flat format
-        normalizedBackup = {
-          version: '3.x (Legacy)',
-          app: 'MicroSys Database',
-          backupType: (parsed.tenants && parsed.tenants.length > 1) ? 'full_system' : 'single_network',
-          exportDate: new Date().toISOString().split('T')[0],
-          timestamp: new Date().toISOString(),
-          counts: {
-            tenants: parsed.tenants?.length || 0,
-            users: parsed.users?.length || 0,
-            categories: parsed.categories?.length || 0,
-            posPoints: parsed.posPoints?.length || 0,
-            invoices: parsed.invoices?.length || 0,
-            expenses: parsed.expenses?.length || 0,
-            expenseCategories: parsed.expenseCategories?.length || 0,
-            dispatches: parsed.dispatches?.length || 0,
-            sales: parsed.sales?.length || 0,
-            payments: parsed.payments?.length || 0,
-            orders: parsed.orders?.length || 0,
-          },
-          data: {
-            tenants: parsed.tenants || [],
-            users: parsed.users || [],
-            categories: parsed.categories || [],
-            posPoints: parsed.posPoints || [],
-            invoices: parsed.invoices || [],
-            expenses: parsed.expenses || [],
-            expenseCategories: parsed.expenseCategories || [],
-            dispatches: parsed.dispatches || [],
-            sales: parsed.sales || [],
-            payments: parsed.payments || [],
-            orders: parsed.orders || [],
-            settings: parsed.settings,
-            templates: parsed.templates || [],
-            activityLogs: parsed.activityLogs || [],
-          },
-        };
-      }
+      const getObj = (src: any, ...keys: string[]): any => {
+        if (!src || typeof src !== 'object') return undefined;
+        for (const k of keys) {
+          if (src[k] && typeof src[k] === 'object' && !Array.isArray(src[k])) return src[k];
+        }
+        return undefined;
+      };
+
+      // Support structured SystemDatabaseBackup or legacy/raw object or array
+      const rootSource = (parsed.data && typeof parsed.data === 'object' && !Array.isArray(parsed.data))
+        ? { ...parsed, ...parsed.data }
+        : (parsed.payload || parsed.backup || (Array.isArray(parsed) ? { invoices: parsed } : parsed));
+
+      const invoices = getArr(rootSource, 'invoices', 'pos_invoices', 'posInvoices', 'mikrotik_pos_invoices', 'Invoices');
+      const posPoints = getArr(rootSource, 'posPoints', 'pos_points', 'pos', 'mikrotik_pos_points', 'points', 'POSPoints');
+      const customers = getArr(rootSource, 'customers', 'clients', 'mikrotik_pos_customers', 'Customers');
+      const categories = getArr(rootSource, 'categories', 'card_categories', 'cardCategories', 'cards', 'mikrotik_pos_categories', 'Categories');
+      const sales = getArr(rootSource, 'sales', 'sales_records', 'salesRecords', 'mikrotik_pos_sales', 'Sales');
+      const payments = getArr(rootSource, 'payments', 'payment_records', 'paymentRecords', 'mikrotik_pos_payments', 'Payments');
+      const expenses = getArr(rootSource, 'expenses', 'expense_records', 'expenseRecords', 'mikrotik_pos_expenses', 'Expenses');
+      const expenseCategories = getArr(rootSource, 'expenseCategories', 'expense_categories', 'mikrotik_pos_expense_categories', 'ExpenseCategories');
+      const dispatches = getArr(rootSource, 'dispatches', 'card_dispatches', 'cardDispatches', 'mikrotik_pos_dispatches', 'Dispatches');
+      const orders = getArr(rootSource, 'orders', 'card_orders', 'cardOrders', 'mikrotik_pos_orders', 'Orders');
+      const tenants = getArr(rootSource, 'tenants', 'networks', 'networkTenants', 'mikrotik_pos_tenants', 'Tenants');
+      const users = getArr(rootSource, 'users', 'accounts', 'appUsers', 'mikrotik_pos_users', 'Users');
+      const templates = getArr(rootSource, 'templates', 'card_templates', 'cardTemplates', 'mikrotik_pos_card_templates', 'Templates');
+      const activityLogs = getArr(rootSource, 'activityLogs', 'activity_logs', 'logs', 'mikrotik_pos_activity_logs');
+      const settings = getObj(rootSource, 'settings', 'config', 'networkSettings', 'mikrotik_pos_settings');
+
+      const isFull = parsed.backupType === 'full_system' || tenants.length > 1;
+
+      const normalizedBackup: SystemDatabaseBackup = {
+        version: parsed.version || '4.0.0',
+        app: parsed.app || 'MicroSys',
+        backupType: isFull ? 'full_system' : 'single_network',
+        exportDate: parsed.exportDate || new Date().toISOString().split('T')[0],
+        timestamp: parsed.timestamp || new Date().toISOString(),
+        exportedBy: parsed.exportedBy,
+        networkId: parsed.networkId || rootSource.networkId,
+        networkName: parsed.networkName || rootSource.networkName,
+        counts: {
+          tenants: tenants.length,
+          users: users.length,
+          categories: categories.length,
+          posPoints: posPoints.length,
+          invoices: invoices.length,
+          expenses: expenses.length,
+          expenseCategories: expenseCategories.length,
+          dispatches: dispatches.length,
+          sales: sales.length,
+          payments: payments.length,
+          orders: orders.length,
+          customers: customers.length,
+        },
+        data: {
+          tenants,
+          users,
+          categories,
+          posPoints,
+          invoices,
+          expenses,
+          expenseCategories,
+          dispatches,
+          sales,
+          payments,
+          orders,
+          customers,
+          settings,
+          templates,
+          activityLogs,
+        },
+      };
 
       // Check if at least one data collection exists
-      const totalRecords = Object.values(normalizedBackup.counts).reduce((a, b) => (a || 0) + (b || 0), 0);
+      const totalRecords = Object.values(normalizedBackup.counts).reduce(
+        (a: any, b: any) => (Number(a) || 0) + (Number(b) || 0),
+        0
+      );
       if (totalRecords === 0 && !normalizedBackup.data.settings) {
-        setParseError('الملف لا يحتوي على أي بيانات صالحة للاستعادة.');
+        setParseError('الملف لا يحتوي على أي سجلات بيانات أو إعدادات صالحة للاستعادة.');
         return;
       }
 
       setParsedBackup(normalizedBackup);
+      if (normalizedBackup.networkId) {
+        setSelectedImportTargetNetworkId(normalizedBackup.networkId);
+      } else if (effectiveNetworkId) {
+        setSelectedImportTargetNetworkId(effectiveNetworkId);
+      }
     } catch (err: any) {
       setParseError('الملف الذي اخترته ليس ملف JSON صالحاً أو يحتوي على أخطاء برمجية.');
       setParsedBackup(null);
@@ -581,6 +647,9 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setConfirmingRestore(false);
+    setRestoreError(null);
+
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
@@ -588,12 +657,16 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
       validateAndParseJson(content);
     };
     reader.readAsText(file);
+    e.target.value = '';
   };
 
   // Handle Drag & Drop
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
+    setConfirmingRestore(false);
+    setRestoreError(null);
+
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
 
@@ -612,21 +685,20 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
   };
 
   // Execute Restore
-  const handleExecuteRestore = () => {
+  const handleExecuteRestore = async () => {
     if (!parsedBackup) return;
 
-    const confirmMessage = restoreMode === 'overwrite'
-      ? '⚠️ تنبيه هام: سيتم استبدال وحذف البيانات الحالية واستعادة النسخة الاحتياطية بالكامل. هل تريد المتابعة؟'
-      : 'هل أنت متأكد من دمج السجلات المستوردة مع البيانات الحالية؟';
-
-    if (!confirm(confirmMessage)) {
-      return;
-    }
-
     setIsRestoring(true);
+    setRestoreError(null);
 
     try {
-      onRestoreDatabase(parsedBackup.data, restoreMode, parsedBackup.backupType);
+      const isFullBackup = parsedBackup.backupType === 'full_system';
+      const targetId = isFullBackup
+        ? undefined
+        : (selectedImportTargetNetworkId || parsedBackup.networkId || effectiveNetworkId);
+      const targetType = isFullBackup ? 'full_system' : 'single_network';
+
+      await onRestoreDatabase(parsedBackup.data, restoreMode, targetType, targetId);
 
       if (onLogActivity) {
         onLogActivity(
@@ -638,13 +710,14 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
       }
 
       setRestoreSuccess(true);
+      setConfirmingRestore(false);
       setTimeout(() => {
         setIsRestoring(false);
         onClose();
-      }, 1200);
-    } catch (err) {
+      }, 1500);
+    } catch (err: any) {
       console.error('Error during database restoration:', err);
-      alert('حدث خطأ أثناء استعادة البيانات. يرجى المحاولة مرة أخرى.');
+      setRestoreError(err?.message || 'حدث خطأ أثناء استعادة البيانات. يرجى مراجعة محتوى الملف والمحاولة مرة أخرى.');
       setIsRestoring(false);
     }
   };
@@ -1096,7 +1169,33 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
                       <span className="text-slate-400 text-[10px] block">الطلبات:</span>
                       <span className="font-mono font-bold text-white">{parsedBackup.counts.orders || 0}</span>
                     </div>
+                    {parsedBackup.counts.customers !== undefined && (
+                      <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                        <span className="text-slate-400 text-[10px] block">العملاء:</span>
+                        <span className="font-mono font-bold text-white">{parsedBackup.counts.customers || 0}</span>
+                      </div>
+                    )}
                   </div>
+
+                  {/* Target Network Selection for Single Network Backup */}
+                  {parsedBackup.backupType === 'single_network' && isMasterUser && tenants.length > 1 && (
+                    <div className="pt-3 border-t border-slate-800 space-y-1.5">
+                      <label className="text-xs font-bold text-slate-300 block">
+                        الشبكة المستهدفة لتطبيق هذه النسخة:
+                      </label>
+                      <select
+                        value={selectedImportTargetNetworkId}
+                        onChange={(e) => setSelectedImportTargetNetworkId(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 text-white rounded-xl p-2.5 text-xs font-medium focus:border-indigo-500 focus:outline-hidden"
+                      >
+                        {tenants.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} ({t.id})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   {/* Restore Mode Options */}
                   <div className="pt-3 border-t border-slate-800 space-y-2">
@@ -1107,7 +1206,10 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <button
                         type="button"
-                        onClick={() => setRestoreMode('overwrite')}
+                        onClick={() => {
+                          setRestoreMode('overwrite');
+                          setConfirmingRestore(false);
+                        }}
                         className={`p-3 rounded-xl border text-right transition flex items-start gap-2.5 ${
                           restoreMode === 'overwrite'
                             ? 'bg-rose-950/40 border-rose-500/80 text-white'
@@ -1125,7 +1227,10 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => setRestoreMode('merge')}
+                        onClick={() => {
+                          setRestoreMode('merge');
+                          setConfirmingRestore(false);
+                        }}
                         className={`p-3 rounded-xl border text-right transition flex items-start gap-2.5 ${
                           restoreMode === 'merge'
                             ? 'bg-emerald-950/40 border-emerald-500/80 text-white'
@@ -1143,24 +1248,40 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Restore Trigger Button */}
-                  <div className="pt-2">
+                  {/* Restore Error Alert */}
+                  {restoreError && (
+                    <div className="p-3.5 bg-rose-950/60 border border-rose-800 rounded-xl flex items-center gap-2.5 text-xs text-rose-200 animate-in fade-in">
+                      <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                      <span>{restoreError}</span>
+                    </div>
+                  )}
+
+                  {/* Restore Confirmation Prompt & Trigger Button */}
+                  <div className="pt-2 space-y-2">
+                    {restoreMode === 'overwrite' && (
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-300">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>سيتم تطبيق البيانات المستوردة ومزامنتها فوراً مع السحابة دون فقدان أي سجلات.</span>
+                      </div>
+                    )}
+
                     <button
                       type="button"
-                      disabled={isRestoring}
+                      id="btn-execute-restore-database"
+                      disabled={isRestoring || !parsedBackup}
                       onClick={handleExecuteRestore}
-                      className={`w-full py-3 px-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition shadow-lg ${
+                      className={`w-full py-3.5 px-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition shadow-lg ${
                         restoreSuccess
                           ? 'bg-emerald-600 text-white'
                           : isRestoring
                           ? 'bg-slate-700 text-slate-300 cursor-wait'
-                          : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30 active:scale-98'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30 active:scale-98 cursor-pointer'
                       }`}
                     >
                       {isRestoring ? (
                         <>
                           <RefreshCw className="w-4 h-4 animate-spin" />
-                          <span>جارٍ استعادة ومزامنة قاعدة البيانات...</span>
+                          <span>جارٍ استعادة ومزامنة قاعدة البيانات إلى السحابة...</span>
                         </>
                       ) : restoreSuccess ? (
                         <>
@@ -1191,7 +1312,11 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-white text-sm sm:text-base">الربط السحابي مع Google Drive</h4>
+                      <h4 className="font-bold text-white text-sm sm:text-base">
+                        {isMasterUser
+                          ? 'الربط السحابي مع Google Drive (المالك الأساسي للنظام)'
+                          : `ربط Google Drive الخاص بشبكة (${networkDisplayName})`}
+                      </h4>
                       {isGDriveSignedIn ? (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3" />
@@ -1205,8 +1330,12 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
                     </div>
                     <p className="text-xs text-slate-400 mt-0.5">
                       {isGDriveSignedIn && gDriveUser
-                        ? `حساب Google المرتبط: ${gDriveUser.email}`
-                        : 'احفظ واسترجع نسخ قاعدة بيانات المايكروتك ونقاط البيع تلقائياً على حساب Google الخاص بك.'}
+                        ? `حساب Google المرتبط حالياً: ${gDriveUser.email} ${!isMasterUser ? `(مسجل لشبكة ${networkDisplayName})` : ''}`
+                        : currentTenant?.settings?.googleDriveEmail
+                        ? `الحساب المسجل لهذه الشبكة: ${currentTenant.settings.googleDriveEmail} (انقر تسجيل الدخول لتنشيط الرفع)`
+                        : isMasterUser
+                        ? 'نسخ ومزامنة قاعدة البيانات العامة للنظام بكافة الشبكات على حساب Google Drive للمالك.'
+                        : `ربط حساب Google Drive مستقل خاص بمدير شبكة (${networkDisplayName}) لرفع واستعادة النسخ الاحتياطية الخاصة بها فقط وبشكل معزول تماماً.`}
                     </p>
                   </div>
                 </div>
@@ -1518,9 +1647,18 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
                   if (onUpdateUser && activeUser) {
                     onUpdateUser({ ...activeUser, email: pendingGoogleUser.email || '' });
                   }
+                  if (onSaveSettings && currentTenant) {
+                    onSaveSettings({
+                      ...currentTenant.settings,
+                      googleDriveEmail: pendingGoogleUser.email || '',
+                    });
+                  }
                   setGDriveUser(pendingGoogleUser);
                   setIsGDriveSignedIn(true);
-                  setGDriveFeedback({ type: 'success', message: `تم الاتصال بحساب Google وتحديث بريدك بنجاح (${pendingGoogleUser.email})` });
+                  setGDriveFeedback({
+                    type: 'success',
+                    message: `تم الاتصال بحساب Google وتحديث البريد بنجاح (${pendingGoogleUser.email}) لشبكة ${networkDisplayName}`,
+                  });
                   setPendingGoogleUser(null);
                   await loadGDriveFiles();
                 }}
