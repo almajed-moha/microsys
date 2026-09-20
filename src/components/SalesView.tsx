@@ -25,7 +25,9 @@ import {
   POSPoint,
   CardCategory,
   CardBatchDispatch,
-  NetworkSettings
+  NetworkSettings,
+  PaymentRecord,
+  InvoiceRecord,
 } from '../types';
 import { calculatePOSInventory, exportToCSV, downloadFile } from '../utils/storage';
 import { exportElementToPdf } from '../utils/pdfExport';
@@ -33,6 +35,7 @@ import { SalesReportModal } from './SalesReportModal';
 import { AdvancedSearchBar, AdvancedFilterState } from './AdvancedSearchBar';
 import { exportSalesToExcel } from '../utils/exportAccounting';
 import { RecordAuditInfo } from './RecordAuditInfo';
+import { SaleDeleteConfirmModal } from './SaleDeleteConfirmModal';
 
 interface SalesViewProps {
   sales: SalesRecord[];
@@ -40,6 +43,8 @@ interface SalesViewProps {
   categories: CardCategory[];
   dispatches: CardBatchDispatch[];
   settings: NetworkSettings;
+  payments?: PaymentRecord[];
+  invoices?: InvoiceRecord[];
   onAddSale: (sale: Omit<SalesRecord, 'id'>) => void;
   onUpdateSale?: (sale: SalesRecord) => void;
   onDeleteSale: (saleId: string) => void;
@@ -54,6 +59,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
   categories,
   dispatches,
   settings,
+  payments = [],
+  invoices = [],
   onAddSale,
   onUpdateSale,
   onDeleteSale,
@@ -793,89 +800,23 @@ export const SalesView: React.FC<SalesViewProps> = ({
         </div>
       )}
 
-      {/* Delete Sale Confirmation Modal */}
-      {deletingSale && (() => {
-        const pos = posPoints.find((p) => p.id === deletingSale.posPointId);
-        const cat = categories.find((c) => c.id === deletingSale.categoryId);
-
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4">
-            <div className="bg-slate-900 border border-rose-500/40 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-              <div className="p-5 border-b border-slate-800 bg-rose-500/10 flex items-center justify-between">
-                <div className="flex items-center gap-2.5 text-rose-400">
-                  <div className="w-9 h-9 rounded-xl bg-rose-500/20 flex items-center justify-center">
-                    <Trash2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black text-white">تأكيد حذف حركة المبيعات</h3>
-                    <p className="text-xs text-rose-300/80">الفاتورة رقم: {deletingSale.invoiceNumber}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setDeletingSale(null)}
-                  className="text-slate-400 hover:text-white text-lg font-bold"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="p-5 space-y-4 text-xs">
-                <div className="p-3.5 bg-slate-800/80 rounded-xl border border-slate-700/60 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">نقطة البيع:</span>
-                    <span className="font-bold text-white text-sm">{pos ? pos.name : 'مبيعات مباشرة'}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">فئة الكارت:</span>
-                    <span className="text-indigo-300 font-semibold">{cat ? cat.name : 'فئة محذوفة'}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">الكمية:</span>
-                    <span className="font-mono font-bold text-white">{deletingSale.quantity} كارت</span>
-                  </div>
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-700">
-                    <span className="text-slate-400">مبلغ الفاتورة (الجملة):</span>
-                    <span className="font-mono font-bold text-emerald-400 text-sm">
-                      {(deletingSale.totalWholesaleAmount ?? 0).toLocaleString()} {settings.currencySymbol}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-2.5 text-amber-300">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-400" />
-                  <div>
-                    <strong className="block text-amber-200">الأثر المحاسبي للحذف:</strong>
-                    <span>
-                      عند حذف هذه الفاتورة، سيتم إعادة الكمية ({deletingSale.quantity} كارت) لرصيد نقطة البيع وخصم مبلغ الجملة من مديونية الموزع تلقائياً.
-                    </span>
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setDeletingSale(null)}
-                    className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition"
-                  >
-                    إلغاء
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onDeleteSale(deletingSale.id);
-                      setDeletingSale(null);
-                    }}
-                    className="px-5 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold shadow-lg shadow-rose-600/30 transition flex items-center gap-1.5"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>تأكيد الحذف وتحديث الحساب</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* Delete Sale Confirmation Modal (Smart Forensics Dialog) */}
+      <SaleDeleteConfirmModal
+        isOpen={Boolean(deletingSale)}
+        onClose={() => setDeletingSale(null)}
+        onConfirmDelete={(sale) => {
+          onDeleteSale(sale.id);
+          setDeletingSale(null);
+        }}
+        sale={deletingSale}
+        posPoints={posPoints}
+        categories={categories}
+        sales={sales}
+        payments={payments}
+        dispatches={dispatches}
+        invoices={invoices}
+        settings={settings}
+      />
 
       {/* Official Sales Report Preview & PDF Print Modal */}
       {isReportModalOpen && (

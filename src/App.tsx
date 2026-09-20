@@ -3535,6 +3535,9 @@ export default function App() {
                   posPoints={scopedPOSPoints}
                   categories={scopedCategories}
                   settings={settings}
+                  sales={sales}
+                  payments={scopedPayments}
+                  dispatches={scopedDispatches}
                   onAddInvoice={handleAddInvoice}
                   onUpdateInvoice={handleUpdateInvoice}
                   onDeleteInvoice={handleDeleteInvoice}
@@ -3737,6 +3740,8 @@ export default function App() {
                   categories={scopedCategories}
                   dispatches={scopedDispatches}
                   settings={settings}
+                  payments={scopedPayments}
+                  invoices={scopedInvoices}
                   onAddSale={handleAddSale}
                   onUpdateSale={handleUpdateSale}
                   onDeleteSale={handleDeleteSale}

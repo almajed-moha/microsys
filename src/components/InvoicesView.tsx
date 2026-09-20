@@ -36,6 +36,7 @@ import { InvoiceReceiptModal } from './InvoiceReceiptModal';
 import { AdvancedSearchBar, AdvancedFilterState } from './AdvancedSearchBar';
 import { exportInvoicesToExcel, exportInvoicesToCSV } from '../utils/exportAccounting';
 import { RecordAuditInfo } from './RecordAuditInfo';
+import { InvoiceDeleteConfirmModal } from './InvoiceDeleteConfirmModal';
 import {
   printElementDocument,
   exportElementToPdf
@@ -50,6 +51,7 @@ interface InvoicesViewProps {
   expenses?: ExpenseRecord[];
   sales?: SalesRecord[];
   payments?: PaymentRecord[];
+  dispatches?: any[];
   onAddInvoice: (invoice: Omit<InvoiceRecord, 'id' | 'timestamp'>) => void;
   onUpdateInvoice: (invoice: InvoiceRecord) => void;
   onDeleteInvoice: (invoiceId: string) => void;
@@ -65,6 +67,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
   expenses = [],
   sales = [],
   payments = [],
+  dispatches = [],
   onAddInvoice,
   onUpdateInvoice,
   onDeleteInvoice,
@@ -1017,45 +1020,22 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
       </div>
 
       {/* ========================================================
-          DELETE INVOICE CONFIRMATION MODAL (In-App Dialog)
+          DELETE INVOICE CONFIRMATION MODAL (Smart Forensics Dialog)
           ======================================================== */}
-      {deletingInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
-          <div className="bg-slate-900 border border-rose-500/40 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3 text-rose-400">
-              <div className="w-10 h-10 rounded-xl bg-rose-500/20 flex items-center justify-center">
-                <Trash2 className="w-5 h-5" />
-              </div>
-              <h3 className="text-base font-bold text-white">تأكيد حذف الفاتورة</h3>
-            </div>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              هل أنت متأكد من رغبتك في حذف الفاتورة رقم{' '}
-              <strong className="text-indigo-400 font-mono font-bold">{deletingInvoice.invoiceNumber}</strong> الخاصة بنقطة البيع{' '}
-              <strong className="text-white font-bold">{deletingInvoice.posPointName}</strong>؟
-              <br />
-              <span className="text-amber-400 block mt-1">
-                ⚠️ سيتم التراجع عن أثرها المالي والمخزني وإعادة ضبط الأرصدة تلقائياً.
-              </span>
-            </p>
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setDeletingInvoice(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer"
-              >
-                إلغاء
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDeleteInvoice}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-600/30 transition cursor-pointer"
-              >
-                تأكيد الحذف
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <InvoiceDeleteConfirmModal
+        isOpen={Boolean(deletingInvoice)}
+        onClose={() => setDeletingInvoice(null)}
+        onConfirmDelete={handleConfirmDeleteInvoice}
+        invoice={deletingInvoice}
+        posPoints={posPoints}
+        customers={customers}
+        categories={categories}
+        sales={sales}
+        payments={payments}
+        dispatches={dispatches}
+        allInvoices={invoices}
+        settings={settings}
+      />
 
       {/* ========================================================
           MULTI-CATEGORY INVOICE CREATION / EDIT MODAL
