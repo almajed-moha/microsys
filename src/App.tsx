@@ -1764,7 +1764,7 @@ export default function App() {
 
     // Adjust category warehouse stock for each item in the invoice
     setCategories((prevCategories) => {
-      return prevCategories.map((cat) => {
+      const nextCats = prevCategories.map((cat) => {
         const items = newInvoice.items.filter((i) => i.categoryId === cat.id);
         if (items.length === 0) return cat;
 
@@ -1772,10 +1772,10 @@ export default function App() {
         items.forEach(item => {
           if (newInvoice.type === 'sale') {
             // Deduct from warehouse stock when cards are sold/dispatched
-            stockChange -= item.quantity;
+            stockChange -= (Number(item.quantity) || 0);
           } else if (newInvoice.type === 'return') {
             // Return cards back to warehouse stock
-            stockChange += item.quantity;
+            stockChange += (Number(item.quantity) || 0);
           }
         });
 
@@ -1784,11 +1784,24 @@ export default function App() {
           warehouseStock: Math.max(0, cat.warehouseStock + stockChange),
         };
       });
+      saveData(STORAGE_KEYS.CATEGORIES, nextCats);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CATEGORIES, nextCats);
+      return nextCats;
     });
 
-    // Update POS balances
-    setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
-    setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, payments));
+    // Update POS & Customer balances and persist
+    setPosPoints((prev) => {
+      const next = refreshPOSBalances(prev, nextInvoices, sales, payments);
+      saveData(STORAGE_KEYS.POS_POINTS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.POS_POINTS, next);
+      return next;
+    });
+    setCustomers((prev) => {
+      const next = refreshCustomerBalances(prev, nextInvoices, payments);
+      saveData(STORAGE_KEYS.CUSTOMERS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CUSTOMERS, next);
+      return next;
+    });
 
     // Audit Log Entry
     const targetPos = posPoints.find((p) => p.id === newInvoice.posPointId);
@@ -1811,8 +1824,8 @@ export default function App() {
 
     // Adjust warehouse stock: reverse old, apply new
     if (existing.status !== 'cancelled' && updatedInvoiceData.status !== 'cancelled') {
-      setCategories((prev) => 
-        prev.map((cat) => {
+      setCategories((prev) => {
+        const nextCats = prev.map((cat) => {
           const oldItems = existing.items.filter((i) => i.categoryId === cat.id);
           const newItems = updatedInvoiceData.items.filter((i) => i.categoryId === cat.id);
           
@@ -1821,12 +1834,12 @@ export default function App() {
           let stockChange = 0;
           
           oldItems.forEach(oldItem => {
-             const reverseStock = existing.type === 'sale' ? oldItem.quantity : -oldItem.quantity;
+             const reverseStock = existing.type === 'sale' ? (Number(oldItem.quantity) || 0) : -(Number(oldItem.quantity) || 0);
              stockChange += reverseStock;
           });
 
           newItems.forEach(newItem => {
-             const applyStock = updatedInvoiceData.type === 'sale' ? -newItem.quantity : newItem.quantity;
+             const applyStock = updatedInvoiceData.type === 'sale' ? -(Number(newItem.quantity) || 0) : (Number(newItem.quantity) || 0);
              stockChange += applyStock;
           });
 
@@ -1834,8 +1847,11 @@ export default function App() {
             ...cat,
             warehouseStock: Math.max(0, cat.warehouseStock + stockChange)
           };
-        })
-      );
+        });
+        saveData(STORAGE_KEYS.CATEGORIES, nextCats);
+        debouncedSyncArrayToFirestore(STORAGE_KEYS.CATEGORIES, nextCats);
+        return nextCats;
+      });
     }
 
     const updatedInvoice = applyUpdateAudit(existing, updatedInvoiceData, activeUser, {
@@ -1848,8 +1864,18 @@ export default function App() {
     setInvoices(nextInvoices);
     saveData(STORAGE_KEYS.INVOICES, nextInvoices);
     saveDocumentToFirestore(STORAGE_KEYS.INVOICES, updatedInvoice);
-    setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
-    setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, payments));
+    setPosPoints((prev) => {
+      const next = refreshPOSBalances(prev, nextInvoices, sales, payments);
+      saveData(STORAGE_KEYS.POS_POINTS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.POS_POINTS, next);
+      return next;
+    });
+    setCustomers((prev) => {
+      const next = refreshCustomerBalances(prev, nextInvoices, payments);
+      saveData(STORAGE_KEYS.CUSTOMERS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CUSTOMERS, next);
+      return next;
+    });
     
     logUserActivity(
       'تعديل فاتورة',
@@ -1867,17 +1893,21 @@ export default function App() {
 
     // Restore warehouse stock
     if (toDelete.status !== 'cancelled') {
-      setCategories((prev) =>
-        prev.map((cat) => {
-          const item = toDelete.items.find((i) => i.categoryId === cat.id);
-          if (!item) return cat;
-          const reverseStock = toDelete.type === 'sale' ? item.quantity : -item.quantity;
+      setCategories((prev) => {
+        const nextCats = prev.map((cat) => {
+          const matchingItems = toDelete.items.filter((i) => i.categoryId === cat.id);
+          if (matchingItems.length === 0) return cat;
+          const totalQty = matchingItems.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
+          const reverseStock = toDelete.type === 'sale' ? totalQty : -totalQty;
           return {
             ...cat,
             warehouseStock: Math.max(0, cat.warehouseStock + reverseStock),
           };
-        })
-      );
+        });
+        saveData(STORAGE_KEYS.CATEGORIES, nextCats);
+        debouncedSyncArrayToFirestore(STORAGE_KEYS.CATEGORIES, nextCats);
+        return nextCats;
+      });
     }
 
     deleteDocumentFromFirestore(STORAGE_KEYS.INVOICES, invoiceId);
@@ -1885,8 +1915,18 @@ export default function App() {
     const nextInvoices = invoices.filter((inv) => inv.id !== invoiceId);
     setInvoices(nextInvoices);
     saveData(STORAGE_KEYS.INVOICES, nextInvoices);
-    setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
-    setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, payments));
+    setPosPoints((prev) => {
+      const next = refreshPOSBalances(prev, nextInvoices, sales, payments);
+      saveData(STORAGE_KEYS.POS_POINTS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.POS_POINTS, next);
+      return next;
+    });
+    setCustomers((prev) => {
+      const next = refreshCustomerBalances(prev, nextInvoices, payments);
+      saveData(STORAGE_KEYS.CUSTOMERS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CUSTOMERS, next);
+      return next;
+    });
 
     const invoiceTypeLabel = toDelete.type === 'return' ? 'فاتورة مردودات مبيعات' : 'فاتورة مبيعات كروت';
     const targetPosName = posPoints.find((p) => p.id === toDelete.posPointId)?.name || toDelete.posPointId || 'مباشر';
@@ -1918,24 +1958,41 @@ export default function App() {
     if (!target || target.status === 'cancelled') return;
 
     // Restore warehouse stock
-    setCategories((prev) =>
-      prev.map((cat) => {
-        const item = target.items.find((i) => i.categoryId === cat.id);
-        if (!item) return cat;
-        const reverseStock = target.type === 'sale' ? item.quantity : -item.quantity;
+    setCategories((prev) => {
+      const nextCats = prev.map((cat) => {
+        const matchingItems = target.items.filter((i) => i.categoryId === cat.id);
+        if (matchingItems.length === 0) return cat;
+        const totalQty = matchingItems.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
+        const reverseStock = target.type === 'sale' ? totalQty : -totalQty;
         return {
           ...cat,
           warehouseStock: Math.max(0, cat.warehouseStock + reverseStock),
         };
-      })
-    );
+      });
+      saveData(STORAGE_KEYS.CATEGORIES, nextCats);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CATEGORIES, nextCats);
+      return nextCats;
+    });
 
+    const cancelledInvoice = { ...target, status: 'cancelled' as const };
     const nextInvoices = invoices.map((inv) =>
-      inv.id === invoiceId ? { ...inv, status: 'cancelled' as const } : inv
+      inv.id === invoiceId ? cancelledInvoice : inv
     );
     setInvoices(nextInvoices);
-    setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
-    setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, payments));
+    saveData(STORAGE_KEYS.INVOICES, nextInvoices);
+    saveDocumentToFirestore(STORAGE_KEYS.INVOICES, cancelledInvoice);
+    setPosPoints((prev) => {
+      const next = refreshPOSBalances(prev, nextInvoices, sales, payments);
+      saveData(STORAGE_KEYS.POS_POINTS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.POS_POINTS, next);
+      return next;
+    });
+    setCustomers((prev) => {
+      const next = refreshCustomerBalances(prev, nextInvoices, payments);
+      saveData(STORAGE_KEYS.CUSTOMERS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CUSTOMERS, next);
+      return next;
+    });
 
     // Audit Log
     logUserActivity(
@@ -2140,21 +2197,38 @@ export default function App() {
     const nextInvoices = [newInvoice, ...invoices];
     setInvoices(nextInvoices);
 
+    saveData(STORAGE_KEYS.INVOICES, nextInvoices);
+    saveDocumentToFirestore(STORAGE_KEYS.INVOICES, newInvoice);
+
     // Adjust warehouse stock
     setCategories((prevCategories) => {
-      return prevCategories.map((cat) => {
-        const item = newInvoice.items.find((i) => i.categoryId === cat.id);
-        if (!item) return cat;
+      const nextCats = prevCategories.map((cat) => {
+        const matchingItems = newInvoice.items.filter((i) => i.categoryId === cat.id);
+        if (matchingItems.length === 0) return cat;
+        const totalQty = matchingItems.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
         return {
           ...cat,
-          warehouseStock: Math.max(0, cat.warehouseStock - item.quantity),
+          warehouseStock: Math.max(0, cat.warehouseStock - totalQty),
         };
       });
+      saveData(STORAGE_KEYS.CATEGORIES, nextCats);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CATEGORIES, nextCats);
+      return nextCats;
     });
 
-    // Refresh POS balances
-    setPosPoints((prev) => refreshPOSBalances(prev, nextInvoices, sales, payments));
-    setCustomers((prev) => refreshCustomerBalances(prev, nextInvoices, payments));
+    // Refresh POS & Customer balances
+    setPosPoints((prev) => {
+      const next = refreshPOSBalances(prev, nextInvoices, sales, payments);
+      saveData(STORAGE_KEYS.POS_POINTS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.POS_POINTS, next);
+      return next;
+    });
+    setCustomers((prev) => {
+      const next = refreshCustomerBalances(prev, nextInvoices, payments);
+      saveData(STORAGE_KEYS.CUSTOMERS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CUSTOMERS, next);
+      return next;
+    });
 
     // Update Order status to delivered
     const updatedOrder = applyUpdateAudit(targetOrder, {
@@ -2166,10 +2240,11 @@ export default function App() {
       details: `تم إنشاء الفاتورة رقم ${newInvoice.invoiceNumber}`,
     });
 
-    setOrders((prev) =>
-      prev.map((ord) => (ord.id === orderId ? updatedOrder : ord))
-    );
-    saveDocumentToFirestore(STORAGE_KEYS.INVOICES, newInvoice);
+    setOrders((prev) => {
+      const next = prev.map((ord) => (ord.id === orderId ? updatedOrder : ord));
+      saveData(STORAGE_KEYS.ORDERS, next);
+      return next;
+    });
     saveDocumentToFirestore(STORAGE_KEYS.ORDERS, updatedOrder);
 
     // Log Activity
@@ -2281,7 +2356,11 @@ export default function App() {
       actionTitle: 'إنشاء بند مصروفات جديد',
       details: `إضافة البند (${rawCat.name})`,
     });
-    setExpenseCategories((prev) => [...prev, newCat]);
+    setExpenseCategories((prev) => {
+      const next = [...prev, newCat];
+      saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, next);
+      return next;
+    });
     saveDocumentToFirestore(STORAGE_KEYS.EXPENSE_CATEGORIES, newCat);
     logUserActivity(
       'إضافة بند مصروفات',
@@ -2298,7 +2377,11 @@ export default function App() {
     const updatedCat = applyUpdateAudit(existing, updatedCatData, activeUser, {
       actionTitle: 'تعديل بند المصروفات',
     });
-    setExpenseCategories((prev) => prev.map((c) => (c.id === updatedCat.id ? updatedCat : c)));
+    setExpenseCategories((prev) => {
+      const next = prev.map((c) => (c.id === updatedCat.id ? updatedCat : c));
+      saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, next);
+      return next;
+    });
     saveDocumentToFirestore(STORAGE_KEYS.EXPENSE_CATEGORIES, updatedCat);
   };
 
@@ -2344,9 +2427,20 @@ export default function App() {
 
     const nextSales = [newSale, ...sales];
     setSales(nextSales);
+    saveData(STORAGE_KEYS.SALES, nextSales);
     saveDocumentToFirestore(STORAGE_KEYS.SALES, newSale);
-    setPosPoints((prev) => refreshPOSBalances(prev, invoices, nextSales, payments));
-    setCustomers((prev) => refreshCustomerBalances(prev, invoices, payments));
+    setPosPoints((prev) => {
+      const next = refreshPOSBalances(prev, invoices, nextSales, payments);
+      saveData(STORAGE_KEYS.POS_POINTS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.POS_POINTS, next);
+      return next;
+    });
+    setCustomers((prev) => {
+      const next = refreshCustomerBalances(prev, invoices, payments);
+      saveData(STORAGE_KEYS.CUSTOMERS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CUSTOMERS, next);
+      return next;
+    });
   };
 
   const handleUpdateSale = (updatedSaleData: SalesRecord) => {
@@ -2357,9 +2451,20 @@ export default function App() {
     });
     const nextSales = sales.map((s) => (s.id === updatedSale.id ? updatedSale : s));
     setSales(nextSales);
+    saveData(STORAGE_KEYS.SALES, nextSales);
     saveDocumentToFirestore(STORAGE_KEYS.SALES, updatedSale);
-    setPosPoints((prev) => refreshPOSBalances(prev, invoices, nextSales, payments));
-    setCustomers((prev) => refreshCustomerBalances(prev, invoices, payments));
+    setPosPoints((prev) => {
+      const next = refreshPOSBalances(prev, invoices, nextSales, payments);
+      saveData(STORAGE_KEYS.POS_POINTS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.POS_POINTS, next);
+      return next;
+    });
+    setCustomers((prev) => {
+      const next = refreshCustomerBalances(prev, invoices, payments);
+      saveData(STORAGE_KEYS.CUSTOMERS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CUSTOMERS, next);
+      return next;
+    });
   };
 
   const handleDeleteSale = (saleId: string) => {
@@ -2368,8 +2473,18 @@ export default function App() {
     const nextSales = sales.filter((s) => s.id !== saleId);
     setSales(nextSales);
     saveData(STORAGE_KEYS.SALES, nextSales);
-    setPosPoints((prev) => refreshPOSBalances(prev, invoices, nextSales, payments));
-    setCustomers((prev) => refreshCustomerBalances(prev, invoices, payments));
+    setPosPoints((prev) => {
+      const next = refreshPOSBalances(prev, invoices, nextSales, payments);
+      saveData(STORAGE_KEYS.POS_POINTS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.POS_POINTS, next);
+      return next;
+    });
+    setCustomers((prev) => {
+      const next = refreshCustomerBalances(prev, invoices, payments);
+      saveData(STORAGE_KEYS.CUSTOMERS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CUSTOMERS, next);
+      return next;
+    });
 
     if (toDelete) {
       logUserActivity(
@@ -2461,8 +2576,8 @@ export default function App() {
   };
 
   const handleAdjustStock = (catId: string, delta: number) => {
-    setCategories((prev) =>
-      prev.map((c) => {
+    setCategories((prev) => {
+      const next = prev.map((c) => {
         if (c.id === catId) {
           const newStock = Math.max(0, c.warehouseStock + delta);
           return applyUpdateAudit(c, { warehouseStock: newStock }, activeUser, {
@@ -2471,8 +2586,11 @@ export default function App() {
           });
         }
         return c;
-      })
-    );
+      });
+      saveData(STORAGE_KEYS.CATEGORIES, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CATEGORIES, next);
+      return next;
+    });
   };
 
   // 6. Batch Dispatch Actions (Legacy)
@@ -2489,16 +2607,21 @@ export default function App() {
       details: `إرسالية عدد ${rawDispatch.quantity} كرت`,
     });
 
-    setDispatches((prev) => [newDispatch, ...prev]);
+    const nextDispatches = [newDispatch, ...dispatches];
+    setDispatches(nextDispatches);
+    saveData(STORAGE_KEYS.DISPATCHES, nextDispatches);
     saveDocumentToFirestore(STORAGE_KEYS.DISPATCHES, newDispatch);
 
-    setCategories((prev) =>
-      prev.map((c) =>
+    setCategories((prev) => {
+      const nextCats = prev.map((c) =>
         c.id === dispatchData.categoryId
           ? { ...c, warehouseStock: Math.max(0, c.warehouseStock - dispatchData.quantity) }
           : c
-      )
-    );
+      );
+      saveData(STORAGE_KEYS.CATEGORIES, nextCats);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CATEGORIES, nextCats);
+      return nextCats;
+    });
   };
 
   const handleUpdateDispatch = (updatedDispatchData: CardBatchDispatch) => {
@@ -2511,17 +2634,22 @@ export default function App() {
       actionType: 'financial',
     });
 
-    setDispatches((prev) => prev.map((d) => (d.id === updatedDispatch.id ? updatedDispatch : d)));
+    const nextDispatches = dispatches.map((d) => (d.id === updatedDispatch.id ? updatedDispatch : d));
+    setDispatches(nextDispatches);
+    saveData(STORAGE_KEYS.DISPATCHES, nextDispatches);
     saveDocumentToFirestore(STORAGE_KEYS.DISPATCHES, updatedDispatch);
 
     if (qtyDiff !== 0) {
-      setCategories((prev) =>
-        prev.map((c) =>
+      setCategories((prev) => {
+        const nextCats = prev.map((c) =>
           c.id === updatedDispatch.categoryId
             ? { ...c, warehouseStock: Math.max(0, c.warehouseStock - qtyDiff) }
             : c
-        )
-      );
+        );
+        saveData(STORAGE_KEYS.CATEGORIES, nextCats);
+        debouncedSyncArrayToFirestore(STORAGE_KEYS.CATEGORIES, nextCats);
+        return nextCats;
+      });
     }
   };
 
@@ -2531,11 +2659,9 @@ export default function App() {
 
     deleteDocumentFromFirestore(STORAGE_KEYS.DISPATCHES, dispatchId);
 
-    setDispatches((prev) => {
-      const next = prev.filter((d) => d.id !== dispatchId);
-      saveData(STORAGE_KEYS.DISPATCHES, next);
-      return next;
-    });
+    const nextDispatches = dispatches.filter((d) => d.id !== dispatchId);
+    setDispatches(nextDispatches);
+    saveData(STORAGE_KEYS.DISPATCHES, nextDispatches);
 
     setCategories((prev) => {
       const next = prev.map((c) =>
@@ -2544,6 +2670,7 @@ export default function App() {
           : c
       );
       saveData(STORAGE_KEYS.CATEGORIES, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CATEGORIES, next);
       return next;
     });
 
@@ -2573,30 +2700,33 @@ export default function App() {
       targetDispatch.quantity - (targetDispatch.soldCount || 0)
     );
 
-    setDispatches((prev) =>
-      prev.map((d) => {
-        if (d.id === dispatchId) {
-          const newQty = d.quantity - actualReturn;
-          return applyUpdateAudit(d, {
-            quantity: newQty,
-            totalWholesaleValue: d.unitWholesalePrice * newQty,
-            totalRetailValue: d.unitRetailPrice * newQty,
-          }, activeUser, {
-            actionTitle: `إرجاع كروت من الإرسالية (${actualReturn} كرت)`,
-            actionType: 'financial',
-          });
-        }
-        return d;
-      })
-    );
+    const nextDispatches = dispatches.map((d) => {
+      if (d.id === dispatchId) {
+        const newQty = d.quantity - actualReturn;
+        return applyUpdateAudit(d, {
+          quantity: newQty,
+          totalWholesaleValue: d.unitWholesalePrice * newQty,
+          totalRetailValue: d.unitRetailPrice * newQty,
+        }, activeUser, {
+          actionTitle: `إرجاع كروت من الإرسالية (${actualReturn} كرت)`,
+          actionType: 'financial',
+        });
+      }
+      return d;
+    });
+    setDispatches(nextDispatches);
+    saveData(STORAGE_KEYS.DISPATCHES, nextDispatches);
 
-    setCategories((prev) =>
-      prev.map((c) =>
+    setCategories((prev) => {
+      const nextCats = prev.map((c) =>
         c.id === targetDispatch.categoryId
           ? { ...c, warehouseStock: c.warehouseStock + actualReturn }
           : c
-      )
-    );
+      );
+      saveData(STORAGE_KEYS.CATEGORIES, nextCats);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CATEGORIES, nextCats);
+      return nextCats;
+    });
   };
 
   // 7. Payment Actions
@@ -2616,10 +2746,21 @@ export default function App() {
 
     const nextPayments = [newPayment, ...payments];
     setPayments(nextPayments);
+    saveData(STORAGE_KEYS.PAYMENTS, nextPayments);
     saveDocumentToFirestore(STORAGE_KEYS.PAYMENTS, newPayment);
 
-    setPosPoints((prev) => refreshPOSBalances(prev, invoices, sales, nextPayments));
-    setCustomers((prev) => refreshCustomerBalances(prev, invoices, nextPayments));
+    setPosPoints((prev) => {
+      const next = refreshPOSBalances(prev, invoices, sales, nextPayments);
+      saveData(STORAGE_KEYS.POS_POINTS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.POS_POINTS, next);
+      return next;
+    });
+    setCustomers((prev) => {
+      const next = refreshCustomerBalances(prev, invoices, nextPayments);
+      saveData(STORAGE_KEYS.CUSTOMERS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CUSTOMERS, next);
+      return next;
+    });
 
     const targetPos = posPoints.find((p) => p.id === newPayment.posPointId);
     logUserActivity(
@@ -2644,9 +2785,20 @@ export default function App() {
 
     const nextPayments = payments.map((p) => (p.id === updatedPayment.id ? updatedPayment : p));
     setPayments(nextPayments);
+    saveData(STORAGE_KEYS.PAYMENTS, nextPayments);
     saveDocumentToFirestore(STORAGE_KEYS.PAYMENTS, updatedPayment);
-    setPosPoints((prev) => refreshPOSBalances(prev, invoices, sales, nextPayments));
-    setCustomers((prev) => refreshCustomerBalances(prev, invoices, nextPayments));
+    setPosPoints((prev) => {
+      const next = refreshPOSBalances(prev, invoices, sales, nextPayments);
+      saveData(STORAGE_KEYS.POS_POINTS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.POS_POINTS, next);
+      return next;
+    });
+    setCustomers((prev) => {
+      const next = refreshCustomerBalances(prev, invoices, nextPayments);
+      saveData(STORAGE_KEYS.CUSTOMERS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CUSTOMERS, next);
+      return next;
+    });
     logUserActivity(
       'تعديل سند قبض',
       'payments',
@@ -3707,6 +3859,11 @@ export default function App() {
                   onViewReceipt={(exp) => setSelectedExpenseForReceipt(exp)}
                   onOpenIncomeStatement={() => setIsIncomeStatementOpen(true)}
                   canViewIncomeStatement={hasPermission(activeUser, 'dashboard', 'viewIncomeStatement', currentTenant)}
+                  invoices={scopedInvoices}
+                  payments={scopedPayments}
+                  sales={scopedSales}
+                  cardCategories={scopedCategories}
+                  posPoints={scopedPOSPoints}
                 />
               )}
 

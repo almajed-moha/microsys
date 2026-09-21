@@ -20,6 +20,7 @@ export default defineConfig(() => {
           clientsClaim: true,
           cleanupOutdatedCaches: true,
           maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10 MiB
+          navigateFallbackDenylist: [/^\/api\//],
         },
         manifest: {
           name: 'MicroSys Cloud POS',

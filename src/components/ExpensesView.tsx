@@ -36,9 +36,10 @@ import {
   ArrowUpDown,
   Check
 } from 'lucide-react';
-import { ExpenseRecord, ExpenseCategory, NetworkSettings } from '../types';
+import { ExpenseRecord, ExpenseCategory, NetworkSettings, InvoiceRecord, PaymentRecord, SalesRecord, CardCategory, POSPoint } from '../types';
 import { exportToCSV, downloadFile } from '../utils/storage';
 import { ExpenseReceiptModal } from './ExpenseReceiptModal';
+import { ExpenseDeleteConfirmModal } from './ExpenseDeleteConfirmModal';
 import { RecordAuditInfo } from './RecordAuditInfo';
 import {
   printElementDocument,
@@ -57,6 +58,12 @@ interface ExpensesViewProps {
   onDeleteCategory: (categoryId: string) => void;
   onOpenIncomeStatement?: () => void;
   canViewIncomeStatement?: boolean;
+  onViewReceipt?: (expense: ExpenseRecord) => void;
+  invoices?: InvoiceRecord[];
+  payments?: PaymentRecord[];
+  sales?: SalesRecord[];
+  cardCategories?: CardCategory[];
+  posPoints?: POSPoint[];
 }
 
 export const ExpensesView: React.FC<ExpensesViewProps> = ({
@@ -71,6 +78,12 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   onDeleteCategory,
   onOpenIncomeStatement,
   canViewIncomeStatement = true,
+  onViewReceipt,
+  invoices = [],
+  payments = [],
+  sales = [],
+  cardCategories = [],
+  posPoints = [],
 }) => {
   const currency = settings?.currencySymbol || 'ر.ي';
 
@@ -458,15 +471,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     }
 
     setIsAddExpenseOpen(false);
-  };
-
-  // Confirm Delete Expense Handler (Safe in iframe)
-  const handleConfirmDeleteExpense = () => {
-    if (!deletingExpense) return;
-    const vNum = deletingExpense.voucherNumber;
-    onDeleteExpense(deletingExpense.id);
-    setDeletingExpense(null);
-    showFeedback(`تم حذف سند الصرف رقم ${vNum} بنجاح ✅`);
   };
 
   // Confirm Delete Category Handler
@@ -1270,45 +1274,26 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       </div>
 
       {/* ========================================================
-          DELETE EXPENSE CONFIRMATION MODAL (In-App Dialog)
+          DELETE EXPENSE FORENSIC CONFIRMATION MODAL
           ======================================================== */}
-      {deletingExpense && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
-          <div className="bg-slate-900 border border-rose-500/40 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3 text-rose-400">
-              <div className="w-10 h-10 rounded-xl bg-rose-500/20 flex items-center justify-center">
-                <Trash2 className="w-5 h-5" />
-              </div>
-              <h3 className="text-base font-bold text-white">تأكيد حذف سند الصرف</h3>
-            </div>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              هل أنت متأكد من رغبتك في حذف سند الصرف رقم{' '}
-              <strong className="text-amber-400 font-mono font-bold">{deletingExpense.voucherNumber}</strong> بمبلغ{' '}
-              <strong className="text-white font-mono font-bold">{(deletingExpense.amount ?? 0).toLocaleString()} {currency}</strong>؟
-              <br />
-              <span className="text-slate-400 block mt-1">
-                البيان: {deletingExpense.title} ({deletingExpense.categoryName})
-              </span>
-            </p>
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setDeletingExpense(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer"
-              >
-                إلغاء
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDeleteExpense}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-600/30 transition cursor-pointer"
-              >
-                تأكيد الحذف
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ExpenseDeleteConfirmModal
+        isOpen={Boolean(deletingExpense)}
+        onClose={() => setDeletingExpense(null)}
+        onConfirmDelete={(expense) => {
+          const vNum = expense.voucherNumber;
+          onDeleteExpense(expense.id);
+          setDeletingExpense(null);
+          showFeedback(`تم حذف سند الصرف رقم ${vNum} بنجاح ✅`);
+        }}
+        expense={deletingExpense}
+        allExpenses={expenses}
+        invoices={invoices}
+        payments={payments}
+        sales={sales}
+        categories={cardCategories}
+        posPoints={posPoints}
+        settings={settings}
+      />
 
       {/* ========================================================
           DELETE CATEGORY CONFIRMATION MODAL

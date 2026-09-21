@@ -23,6 +23,18 @@ interface AIAssistantModalProps {
   onClose: () => void;
 }
 
+async function parseJsonSafely(res: Response) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (text.trim().startsWith('<')) {
+      return { error: 'استلم المتصفح كود HTML بدلاً من JSON من خادم النظام. يرجى تحديث الصفحة أو فتح التطبيق مباشرة.' };
+    }
+    return { error: 'استجابة غير صالحة من خادم النظام.' };
+  }
+}
+
 export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
   categories,
   posPoints,
@@ -48,7 +60,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sales, posPoints, categories }),
       });
-      const data = await res.json();
+      const data = await parseJsonSafely(res);
       if (!res.ok || data.error) {
         setAiResponse(data.error || 'تعذر استكمال تحليل المبيعات.');
       } else {
@@ -77,7 +89,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
           },
         }),
       });
-      const data = await res.json();
+      const data = await parseJsonSafely(res);
       if (!res.ok || data.error) {
         setAiResponse(data.error || 'تعذر اقتراح الباقات.');
       } else {
@@ -103,7 +115,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query }),
       });
-      const data = await res.json();
+      const data = await parseJsonSafely(res);
       if (!res.ok || data.error) {
         setAiResponse(data.error || 'تعذر معالجة الطلب عبر المساعد الذكي.');
       } else {

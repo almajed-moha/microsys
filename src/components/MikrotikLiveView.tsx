@@ -137,6 +137,18 @@ import {
   formatBytesHuman,
 } from '../utils/cardExpiration';
 
+async function parseJsonSafely(res: Response) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (text.trim().startsWith('<')) {
+      return { error: 'استلم المتصفح كود HTML بدلاً من JSON من خادم النظام. يرجى تحديث الصفحة أو فتح التطبيق مباشرة.' };
+    }
+    return { error: 'استجابة غير صالحة من خادم النظام.' };
+  }
+}
+
 export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   settings,
   categories = [],
@@ -575,7 +587,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
           },
         }),
       });
-      const data = await res.json();
+      const data = await parseJsonSafely(res);
       setIsAiConsulting(false);
 
       if (data.success && (data.reply || data.response)) {

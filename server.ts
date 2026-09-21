@@ -957,6 +957,14 @@ ${JSON.stringify(networkContext || {}, null, 2)}
   }
 });
 
+// API 404 handler: ensure unmatched /api routes always return JSON instead of falling through to HTML SPA
+app.all("/api/*", (_req, res) => {
+  res.status(404).json({
+    success: false,
+    error: "المسار البرمجي المطلوب غير متوفر على خادم النظام",
+  });
+});
+
 // Setup Vite or static serving
 async function start() {
   if (process.env.NODE_ENV !== "production") {

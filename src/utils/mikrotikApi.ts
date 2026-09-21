@@ -52,6 +52,27 @@ export function formatBytesToHuman(bytes?: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+// Helper to safely parse JSON responses and guard against Service Worker / Nginx HTML fallback (e.g. <!DOCTYPE html>)
+async function parseJsonResponse<T = any>(res: Response, fallbackErrorMsg = 'استجابة غير متوقعة من الخادم'): Promise<T> {
+  const contentType = res.headers.get('content-type') || '';
+  const text = await res.text();
+
+  if (!contentType.includes('application/json') && (text.trim().startsWith('<') || text.includes('<!DOCTYPE') || text.includes('<!doctype') || text.includes('<html'))) {
+    throw new Error(
+      'استلم المتصفح صفحة HTML بدلاً من بيانات JSON (قد يكون بسبب التخزين المؤقت في Service Worker أو تحويل أمني للرابط). يرجى تحديث الصفحة أو فتح التطبيق مباشرة من نافذة جديدة.'
+    );
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    if (text.trim().startsWith('<')) {
+      throw new Error('استلم المتصفح كود HTML بدلاً من JSON من خادم النظام');
+    }
+    throw new Error(`${fallbackErrorMsg}: تعذر قراءة الاستجابة كـ JSON`);
+  }
+}
+
 // 1. Test Router Connection
 export async function testMikroTikConnection(config: Partial<MikroTikConfig>): Promise<ConnectionTestResult> {
   try {
@@ -60,7 +81,7 @@ export async function testMikroTikConnection(config: Partial<MikroTikConfig>): P
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (error: any) {
     return {
       success: false,
@@ -78,7 +99,7 @@ export async function fetchRouterSystemInfo(config: Partial<MikroTikConfig>): Pr
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data.success ? data.data : null;
   } catch (error) {
     console.warn('fetchRouterSystemInfo notice:', error);
@@ -94,7 +115,7 @@ export async function fetchActiveHotspotUsers(config: Partial<MikroTikConfig>): 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data.success ? data.data : [];
   } catch (error) {
     console.warn('fetchActiveHotspotUsers notice:', error);
@@ -126,7 +147,7 @@ export async function fetchMikrotikSessions(config: Partial<MikroTikConfig> & { 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     if (data.success) {
       return {
         success: true,
@@ -198,7 +219,7 @@ export async function runSyncBenchmark(config: Partial<MikroTikConfig>): Promise
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data;
   } catch (error: any) {
     console.warn('runSyncBenchmark error:', error);
@@ -220,7 +241,7 @@ export async function fetchConnectedHosts(config: Partial<MikroTikConfig>): Prom
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data.success ? data.data : { hosts: [], leases: [] };
   } catch (error) {
     console.warn('fetchConnectedHosts notice:', error);
@@ -236,7 +257,7 @@ export async function fetchRouterInterfaces(config: Partial<MikroTikConfig>): Pr
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data.success ? data.data : [];
   } catch (error) {
     console.warn('fetchRouterInterfaces notice:', error);
@@ -252,7 +273,7 @@ export async function kickHotspotUser(config: Partial<MikroTikConfig>, userId: s
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, userId }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return Boolean(data.success);
   } catch (error) {
     console.warn('kickHotspotUser notice:', error);
@@ -278,7 +299,7 @@ export async function createMikroTikHotspotUsers(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, users }),
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (error: any) {
     console.error('createMikroTikHotspotUsers error:', error);
     return { success: false, createdCount: 0, errors: [error.message || 'تعذر الاتصال'] };
@@ -293,7 +314,7 @@ export async function fetchConfiguredHotspotUsers(config: Partial<MikroTikConfig
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data.success ? data.data : [];
   } catch (error) {
     console.warn('fetchConfiguredHotspotUsers notice:', error);
@@ -309,7 +330,7 @@ export async function fetchHotspotUserProfiles(config: Partial<MikroTikConfig>):
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data.success ? data.data : [];
   } catch (error) {
     console.warn('fetchHotspotUserProfiles notice:', error);
@@ -325,7 +346,7 @@ export async function deleteConfiguredHotspotUser(config: Partial<MikroTikConfig
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, userId }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return Boolean(data.success);
   } catch (error) {
     console.warn('deleteConfiguredHotspotUser notice:', error);
@@ -344,7 +365,7 @@ export async function deleteConfiguredHotspotUsersBulk(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, userIds }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return {
       success: Boolean(data.success),
       deletedCount: data.deletedCount || 0,
@@ -375,7 +396,7 @@ export async function saveHotspotUserProfile(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, profile }),
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (error: any) {
     return { success: false, message: error.message || 'تعذر الاتصال' };
   }
@@ -393,7 +414,7 @@ export async function executeMikrotikSystemCommand(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, command, extraParams }),
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (error: any) {
     return { success: false, message: error.message || 'فشل تنفيذ الأمر' };
   }
@@ -446,7 +467,7 @@ export async function fetchUserManagerUsers(config: Partial<MikroTikConfig>): Pr
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data.success ? data.data : [];
   } catch (error) {
     console.warn('fetchUserManagerUsers notice:', error);
@@ -462,7 +483,7 @@ export async function fetchUserManagerProfiles(config: Partial<MikroTikConfig>):
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data.success ? data.data : [];
   } catch (error) {
     console.warn('fetchUserManagerProfiles notice:', error);
@@ -478,7 +499,7 @@ export async function fetchUserManagerLimitations(config: Partial<MikroTikConfig
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data.success ? data.data : [];
   } catch (error) {
     console.warn('fetchUserManagerLimitations notice:', error);
@@ -494,7 +515,7 @@ export async function fetchUserManagerRouters(config: Partial<MikroTikConfig>): 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data.success ? data.data : [];
   } catch (error) {
     console.warn('fetchUserManagerRouters notice:', error);
@@ -519,7 +540,7 @@ export async function createUserManagerBatchCards(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, cards }),
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (error: any) {
     return { success: false, createdCount: 0, errors: [error.message || 'تعذر الاتصال'] };
   }
@@ -547,7 +568,7 @@ export async function saveUserManagerProfileAndLimitation(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, profileData }),
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (error: any) {
     return { success: false, message: error.message || 'تعذر الاتصال' };
   }
@@ -564,7 +585,7 @@ export async function deleteUserManagerProfile(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, profileId: profileIdOrName, profileName: profileIdOrName }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return Boolean(data.success);
   } catch (error) {
     console.warn('deleteUserManagerProfile notice:', error);
@@ -580,7 +601,7 @@ export async function deleteUserManagerUser(config: Partial<MikroTikConfig>, use
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, userId }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return Boolean(data.success);
   } catch (error) {
     console.warn('deleteUserManagerUser notice:', error);
@@ -596,7 +617,7 @@ export async function resetUserManagerUserCounters(config: Partial<MikroTikConfi
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, userId }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return Boolean(data.success);
   } catch (error) {
     console.warn('resetUserManagerUserCounters notice:', error);
@@ -612,7 +633,7 @@ export async function disconnectUserManagerUser(config: Partial<MikroTikConfig>,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, userName }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return Boolean(data.success);
   } catch (error) {
     console.warn('disconnectUserManagerUser notice:', error);
@@ -628,7 +649,7 @@ export async function assignProfileToUserManagerUser(config: Partial<MikroTikCon
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ options: config, username, profileName }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data.success;
   } catch (error) {
     console.warn("assignProfileToUserManagerUser error:", error);
@@ -656,7 +677,7 @@ export async function updateUserManagerUser(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, userData }),
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (error: any) {
     return { success: false, error: error.message || 'تعذر تحديث الكارت في User Manager' };
   }
@@ -673,7 +694,7 @@ export async function fetchUserManagerSessions(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, userName }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data.success ? data.data : [];
   } catch (error) {
     console.warn('fetchUserManagerSessions notice:', error);
@@ -724,7 +745,7 @@ export async function fetchUserManagerDailyReport(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, date }),
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (error: any) {
     return { success: false, error: error.message || 'تعذر إعداد تقرير السحب اليومي' };
   }
@@ -770,7 +791,7 @@ export async function fetchHotspotServers(config: Partial<MikroTikConfig>): Prom
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data.success && Array.isArray(data.data) ? data.data : [];
   } catch (error) {
     console.warn('fetchHotspotServers notice:', error);
@@ -800,7 +821,7 @@ export async function updateRouterMaintenanceAndNetworkState(
         maintenanceTitle: params.maintenanceTitle,
       }),
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (error: any) {
     return {
       success: false,
@@ -1023,7 +1044,7 @@ export async function fetchMikrotikFiles(config: Partial<MikroTikConfig>): Promi
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data.success ? data.data : [];
   } catch (error) {
     console.warn('fetchMikrotikFiles notice:', error);
@@ -1042,7 +1063,7 @@ export async function fetchMikrotikFileContent(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, fileNameOrId }),
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     return data.success ? data.data : null;
   } catch (error) {
     console.warn('fetchMikrotikFileContent notice:', error);
@@ -1062,7 +1083,7 @@ export async function saveMikrotikFile(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, fileNameOrId, contents }),
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (error: any) {
     return { success: false, message: error.message || 'تعذر حفظ محتوى الملف' };
   }
@@ -1079,7 +1100,7 @@ export async function deleteMikrotikFile(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, fileNameOrId }),
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (error: any) {
     return { success: false, message: error.message || 'تعذر حذف الملف من الراوتر' };
   }
@@ -1098,7 +1119,7 @@ export async function uploadMikrotikFile(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, fileName, fileContent, isBase64 }),
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (error: any) {
     return { success: false, message: error.message || 'تعذر رفع الملف' };
   }
@@ -1115,7 +1136,7 @@ export async function createMikrotikBackup(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, ...params }),
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (error: any) {
     return { success: false, message: error.message || 'تعذر أخذ النسخة الاحتياطية' };
   }
@@ -1132,7 +1153,7 @@ export async function exportMikrotikConfig(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, ...params }),
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (error: any) {
     return { success: false, message: error.message || 'تعذر تصدير إعدادات الراوتر' };
   }
@@ -1149,7 +1170,7 @@ export async function runMikrotikScript(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ options: config, fileName }),
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (error: any) {
     return { success: false, message: error.message || 'تعذر تشغيل السكربت' };
   }
