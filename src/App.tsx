@@ -597,7 +597,34 @@ export default function App() {
     []
   );
 
+  // Recalculate POS Debts dynamically using invoices, sales, and payments
+  const refreshPOSBalances = useCallback(
+    (
+      currentPOS: POSPoint[] = [],
+      currentInvoices: InvoiceRecord[] = [],
+      currentSales: SalesRecord[] = [],
+      currentPayments: PaymentRecord[] = []
+    ) => {
+      const safePOS = currentPOS || [];
+      const safeInvoices = currentInvoices || [];
+      const safeSales = currentSales || [];
+      const safePayments = currentPayments || [];
 
+      return safePOS.map((pos) => {
+        if (!pos) return pos;
+        const balance = calculatePOSBalance(pos.id, safeSales, safePayments, dispatches, safeInvoices);
+        const currentDebt = balance.currentDebt;
+        return {
+          ...pos,
+          currentDebt,
+          totalCardsDelivered: balance.totalCardsDelivered,
+          totalCardsSold: balance.totalRetailSales > 0 ? pos.totalCardsSold : pos.totalCardsSold,
+          totalCashPaid: balance.totalPaid,
+        };
+      });
+    },
+    [dispatches]
+  );
 
   useEffect(() => {
     saveData(STORAGE_KEYS.SALES, sales);
@@ -874,64 +901,211 @@ export default function App() {
         setCloudHydrated(true);
       });
 
-    // 2. Real-time Live Sync: Instantly updates with zero-data-loss merge
-    const unsubscribe = subscribeToCloudUpdates((key, items) => {
-      if (!isMounted) return;
-      if (!Array.isArray(items)) return;
+    // 2. Real-time Live Sync: Instantly updates with zero-data-loss merge and tombstone pruning
+    const unsubscribe = subscribeToCloudUpdates(
+      (key, items) => {
+        if (!isMounted) return;
+        if (!Array.isArray(items)) return;
 
-      const merged = mergeCloudAndLocal(key, items);
+        const merged = mergeCloudAndLocal(key, items);
 
-      switch (key) {
-        case STORAGE_KEYS.USERS:
-          setUsers(merged);
-          saveData(STORAGE_KEYS.USERS, merged);
-          break;
-        case STORAGE_KEYS.CUSTOMERS:
-          setCustomers(merged);
-          saveData(STORAGE_KEYS.CUSTOMERS, merged);
-          break;
-        case STORAGE_KEYS.CATEGORIES:
-          setCategories(merged);
-          saveData(STORAGE_KEYS.CATEGORIES, merged);
-          break;
-        case STORAGE_KEYS.POS_POINTS:
-          setPosPoints(merged);
-          saveData(STORAGE_KEYS.POS_POINTS, merged);
-          break;
-        case STORAGE_KEYS.INVOICES:
-          setInvoices(merged);
-          saveData(STORAGE_KEYS.INVOICES, merged);
-          break;
-        case STORAGE_KEYS.PAYMENTS:
-          setPayments(merged);
-          saveData(STORAGE_KEYS.PAYMENTS, merged);
-          break;
-        case STORAGE_KEYS.EXPENSES:
-          setExpenses(merged);
-          saveData(STORAGE_KEYS.EXPENSES, merged);
-          break;
-        case STORAGE_KEYS.EXPENSE_CATEGORIES:
-          setExpenseCategories(merged);
-          saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, merged);
-          break;
-        case STORAGE_KEYS.DISPATCHES:
-          setDispatches(merged);
-          saveData(STORAGE_KEYS.DISPATCHES, merged);
-          break;
-        case STORAGE_KEYS.SALES:
-          setSales(merged);
-          saveData(STORAGE_KEYS.SALES, merged);
-          break;
-        case STORAGE_KEYS.ORDERS:
-          setOrders(merged);
-          saveData(STORAGE_KEYS.ORDERS, merged);
-          break;
-        case STORAGE_KEYS.TENANTS:
-          setTenants(merged);
-          saveData(STORAGE_KEYS.TENANTS, merged);
-          break;
+        switch (key) {
+          case STORAGE_KEYS.USERS:
+            setUsers(merged);
+            saveData(STORAGE_KEYS.USERS, merged);
+            break;
+          case STORAGE_KEYS.CUSTOMERS:
+            setCustomers((prevCust) => {
+              const synchronized = refreshCustomerBalances(merged, invoices, payments);
+              saveData(STORAGE_KEYS.CUSTOMERS, synchronized);
+              return synchronized;
+            });
+            break;
+          case STORAGE_KEYS.CATEGORIES:
+            setCategories(merged);
+            saveData(STORAGE_KEYS.CATEGORIES, merged);
+            break;
+          case STORAGE_KEYS.POS_POINTS:
+            setPosPoints((prevPos) => {
+              const synchronized = refreshPOSBalances(merged, invoices, sales, payments);
+              saveData(STORAGE_KEYS.POS_POINTS, synchronized);
+              return synchronized;
+            });
+            break;
+          case STORAGE_KEYS.INVOICES:
+            setInvoices(merged);
+            saveData(STORAGE_KEYS.INVOICES, merged);
+            setPosPoints((prevPos) => {
+              const synchronized = refreshPOSBalances(prevPos, merged, sales, payments);
+              saveData(STORAGE_KEYS.POS_POINTS, synchronized);
+              return synchronized;
+            });
+            setCustomers((prevCust) => {
+              const synchronized = refreshCustomerBalances(prevCust, merged, payments);
+              saveData(STORAGE_KEYS.CUSTOMERS, synchronized);
+              return synchronized;
+            });
+            break;
+          case STORAGE_KEYS.PAYMENTS:
+            setPayments(merged);
+            saveData(STORAGE_KEYS.PAYMENTS, merged);
+            setPosPoints((prevPos) => {
+              const synchronized = refreshPOSBalances(prevPos, invoices, sales, merged);
+              saveData(STORAGE_KEYS.POS_POINTS, synchronized);
+              return synchronized;
+            });
+            setCustomers((prevCust) => {
+              const synchronized = refreshCustomerBalances(prevCust, invoices, merged);
+              saveData(STORAGE_KEYS.CUSTOMERS, synchronized);
+              return synchronized;
+            });
+            break;
+          case STORAGE_KEYS.EXPENSES:
+            setExpenses(merged);
+            saveData(STORAGE_KEYS.EXPENSES, merged);
+            break;
+          case STORAGE_KEYS.EXPENSE_CATEGORIES:
+            setExpenseCategories(merged);
+            saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, merged);
+            break;
+          case STORAGE_KEYS.DISPATCHES:
+            setDispatches(merged);
+            saveData(STORAGE_KEYS.DISPATCHES, merged);
+            setPosPoints((prevPos) => {
+              const synchronized = refreshPOSBalances(prevPos, invoices, sales, payments);
+              saveData(STORAGE_KEYS.POS_POINTS, synchronized);
+              return synchronized;
+            });
+            break;
+          case STORAGE_KEYS.SALES:
+            setSales(merged);
+            saveData(STORAGE_KEYS.SALES, merged);
+            setPosPoints((prevPos) => {
+              const synchronized = refreshPOSBalances(prevPos, invoices, merged, payments);
+              saveData(STORAGE_KEYS.POS_POINTS, synchronized);
+              return synchronized;
+            });
+            break;
+          case STORAGE_KEYS.ORDERS:
+            setOrders(merged);
+            saveData(STORAGE_KEYS.ORDERS, merged);
+            break;
+          case STORAGE_KEYS.TENANTS:
+            setTenants(merged);
+            saveData(STORAGE_KEYS.TENANTS, merged);
+            break;
+        }
+      },
+      (deletedId, storageKey) => {
+        if (!isMounted || !deletedId) return;
+
+        // Instantly wipe deleted record from memory across all devices
+        if (!storageKey || storageKey === STORAGE_KEYS.PAYMENTS) {
+          setPayments((prev) => {
+            if (!prev.some((p) => p.id === deletedId)) return prev;
+            const next = prev.filter((p) => p.id !== deletedId);
+            saveData(STORAGE_KEYS.PAYMENTS, next);
+            setPosPoints((pos) => refreshPOSBalances(pos, invoices, sales, next));
+            setCustomers((cust) => refreshCustomerBalances(cust, invoices, next));
+            return next;
+          });
+        }
+
+        if (!storageKey || storageKey === STORAGE_KEYS.INVOICES) {
+          setInvoices((prev) => {
+            if (!prev.some((i) => i.id === deletedId)) return prev;
+            const next = prev.filter((i) => i.id !== deletedId);
+            saveData(STORAGE_KEYS.INVOICES, next);
+            setPosPoints((pos) => refreshPOSBalances(pos, next, sales, payments));
+            setCustomers((cust) => refreshCustomerBalances(cust, next, payments));
+            return next;
+          });
+        }
+
+        if (!storageKey || storageKey === STORAGE_KEYS.SALES) {
+          setSales((prev) => {
+            if (!prev.some((s) => s.id === deletedId)) return prev;
+            const next = prev.filter((s) => s.id !== deletedId);
+            saveData(STORAGE_KEYS.SALES, next);
+            setPosPoints((pos) => refreshPOSBalances(pos, invoices, next, payments));
+            return next;
+          });
+        }
+
+        if (!storageKey || storageKey === STORAGE_KEYS.DISPATCHES) {
+          setDispatches((prev) => {
+            if (!prev.some((d) => d.id === deletedId)) return prev;
+            const next = prev.filter((d) => d.id !== deletedId);
+            saveData(STORAGE_KEYS.DISPATCHES, next);
+            setPosPoints((pos) => refreshPOSBalances(pos, invoices, sales, payments));
+            return next;
+          });
+        }
+
+        if (!storageKey || storageKey === STORAGE_KEYS.CUSTOMERS) {
+          setCustomers((prev) => {
+            if (!prev.some((c) => c.id === deletedId)) return prev;
+            const next = prev.filter((c) => c.id !== deletedId);
+            saveData(STORAGE_KEYS.CUSTOMERS, next);
+            return next;
+          });
+        }
+
+        if (!storageKey || storageKey === STORAGE_KEYS.POS_POINTS) {
+          setPosPoints((prev) => {
+            if (!prev.some((p) => p.id === deletedId)) return prev;
+            const next = prev.filter((p) => p.id !== deletedId);
+            saveData(STORAGE_KEYS.POS_POINTS, next);
+            return next;
+          });
+        }
+
+        if (!storageKey || storageKey === STORAGE_KEYS.EXPENSES) {
+          setExpenses((prev) => {
+            if (!prev.some((e) => e.id === deletedId)) return prev;
+            const next = prev.filter((e) => e.id !== deletedId);
+            saveData(STORAGE_KEYS.EXPENSES, next);
+            return next;
+          });
+        }
+
+        if (!storageKey || storageKey === STORAGE_KEYS.EXPENSE_CATEGORIES) {
+          setExpenseCategories((prev) => {
+            if (!prev.some((c) => c.id === deletedId)) return prev;
+            const next = prev.filter((c) => c.id !== deletedId);
+            saveData(STORAGE_KEYS.EXPENSE_CATEGORIES, next);
+            return next;
+          });
+        }
+
+        if (!storageKey || storageKey === STORAGE_KEYS.CATEGORIES) {
+          setCategories((prev) => {
+            if (!prev.some((c) => c.id === deletedId)) return prev;
+            const next = prev.filter((c) => c.id !== deletedId);
+            saveData(STORAGE_KEYS.CATEGORIES, next);
+            return next;
+          });
+        }
+
+        if (!storageKey || storageKey === STORAGE_KEYS.ORDERS) {
+          setOrders((prev) => {
+            if (!prev.some((o) => o.id === deletedId)) return prev;
+            const next = prev.filter((o) => o.id !== deletedId);
+            saveData(STORAGE_KEYS.ORDERS, next);
+            return next;
+          });
+        }
+
+        if (!storageKey || storageKey === STORAGE_KEYS.USERS) {
+          setUsers((prev) => {
+            if (!prev.some((u) => u.id === deletedId)) return prev;
+            const next = prev.filter((u) => u.id !== deletedId);
+            saveData(STORAGE_KEYS.USERS, next);
+            return next;
+          });
+        }
       }
-    });
+    );
 
     return () => {
       isMounted = false;
@@ -1376,35 +1550,6 @@ export default function App() {
       }
     );
   };
-
-  // Recalculate POS Debts dynamically using invoices, sales, and payments
-  const refreshPOSBalances = useCallback(
-    (
-      currentPOS: POSPoint[] = [],
-      currentInvoices: InvoiceRecord[] = [],
-      currentSales: SalesRecord[] = [],
-      currentPayments: PaymentRecord[] = []
-    ) => {
-      const safePOS = currentPOS || [];
-      const safeInvoices = currentInvoices || [];
-      const safeSales = currentSales || [];
-      const safePayments = currentPayments || [];
-
-      return safePOS.map((pos) => {
-        if (!pos) return pos;
-        const balance = calculatePOSBalance(pos.id, safeSales, safePayments, dispatches, safeInvoices);
-        const currentDebt = balance.currentDebt;
-        return {
-          ...pos,
-          currentDebt,
-          totalCardsDelivered: balance.totalCardsDelivered,
-          totalCardsSold: balance.totalRetailSales > 0 ? pos.totalCardsSold : pos.totalCardsSold,
-          totalCashPaid: balance.totalPaid,
-        };
-      });
-    },
-    [dispatches]
-  );
 
   // 1. POS Actions
   const handleAddPOS = (newPosData: Omit<POSPoint, 'id' | 'createdAt'>) => {
@@ -3598,11 +3743,14 @@ export default function App() {
                 <PaymentsView
                   payments={scopedPayments}
                   posPoints={scopedPOSPoints}
+                  customers={scopedCustomers}
+                  sales={scopedSales}
+                  invoices={scopedInvoices}
+                  dispatches={scopedDispatches}
                   settings={settings}
                   onAddPayment={handleAddPayment}
                   onUpdatePayment={handleUpdatePayment}
                   onDeletePayment={handleDeletePayment}
-                  customers={scopedCustomers}
                   onViewReceipt={(payment) => setSelectedPaymentForReceipt(payment)}
                   onOpenStatement={(posId) => {
                     setStatementPaperMode('a4');

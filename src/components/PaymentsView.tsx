@@ -22,15 +22,19 @@ import {
   ArrowDownLeft,
   Eye
 } from 'lucide-react';
-import { PaymentRecord, POSPoint, NetworkSettings, Customer } from '../types';
+import { PaymentRecord, POSPoint, NetworkSettings, Customer, SalesRecord, InvoiceRecord, CardBatchDispatch } from '../types';
 import { exportToCSV, downloadFile } from '../utils/storage';
 import { exportElementToPdf } from '../utils/pdfExport';
 import { RecordAuditInfo } from './RecordAuditInfo';
+import { PaymentDeleteConfirmModal } from './PaymentDeleteConfirmModal';
 
 interface PaymentsViewProps {
   payments: PaymentRecord[];
   posPoints: POSPoint[];
   customers?: Customer[];
+  sales?: SalesRecord[];
+  invoices?: InvoiceRecord[];
+  dispatches?: CardBatchDispatch[];
   settings: NetworkSettings;
   onAddPayment: (payment: Omit<PaymentRecord, 'id' | 'timestamp'>) => void;
   onUpdatePayment: (payment: PaymentRecord) => void;
@@ -43,6 +47,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   payments,
   posPoints,
   customers = [],
+  sales = [],
+  invoices = [],
+  dispatches = [],
   settings,
   onAddPayment,
   onUpdatePayment,
@@ -823,38 +830,23 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      {deletingPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3 text-rose-400">
-              <AlertCircle className="w-6 h-6 shrink-0" />
-              <h3 className="text-base font-black text-white">تأكيد حذف سند القبض</h3>
-            </div>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              هل أنت متأكد من حذف سند القبض رقم <strong className="text-indigo-400 font-mono">{deletingPayment.referenceNumber || deletingPayment.id}</strong> بمبلغ <strong className="text-emerald-400 font-mono">{(deletingPayment.amount ?? 0).toLocaleString()} {settings.currencySymbol}</strong>؟
-              <br />
-              <span className="text-amber-400 mt-1 block">
-                تنبيه: سيتم إعادة احتساب مديونية نقطة البيع وزيادتها بقيمة هذا المبلغ المحذوف تلقائياً.
-              </span>
-            </p>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setDeletingPayment(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg text-xs transition"
-              >
-                إلغاء
-              </button>
-              <button
-                onClick={confirmDelete}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg text-xs shadow-lg shadow-rose-600/30 transition"
-              >
-                تأكيد الحذف
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Smart Forensic Delete Confirmation Modal */}
+      <PaymentDeleteConfirmModal
+        isOpen={!!deletingPayment}
+        onClose={() => setDeletingPayment(null)}
+        onConfirmDelete={(paymentToDelete) => {
+          onDeletePayment(paymentToDelete.id);
+          setDeletingPayment(null);
+        }}
+        payment={deletingPayment}
+        posPoints={posPoints}
+        customers={customers}
+        allPayments={payments}
+        sales={sales}
+        invoices={invoices}
+        dispatches={dispatches}
+        settings={settings}
+      />
     </div>
   );
 };

@@ -99,9 +99,25 @@
         "notes": { "type": "string" }
       },
       "required": ["date", "downloadBytes", "uploadBytes", "totalBytes"]
+    },
+    "DeletedRecord": {
+      "title": "DeletedRecord",
+      "description": "Tombstone record tracking deleted items across devices",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "storageKey": { "type": "string" },
+        "collection": { "type": "string" },
+        "deletedAt": { "type": "string" }
+      },
+      "required": ["id", "deletedAt"]
     }
   },
   "firestore": {
+    "deletedRecords/{recordId}": {
+      "schema": { "$ref": "#/entities/DeletedRecord" },
+      "description": "Persistent tombstone records for cross-device synchronization"
+    },
     "network_daily_logs/{logId}": {
       "schema": { "$ref": "#/entities/DailyNetworkLog" },
       "description": "Persistent daily bandwidth usage logs"
