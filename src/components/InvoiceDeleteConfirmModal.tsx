@@ -65,27 +65,34 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
     setAcknowledgeImpact(false);
   }, [invoice?.id, isOpen]);
 
-  if (!isOpen || !invoice) return null;
-
   const currency = settings?.currencySymbol || 'ر.ي';
-  const isReturn = invoice.type === 'return';
-  const totalAmount = invoice.totalWholesaleAmount ?? 0;
-  const isCancelled = invoice.status === 'cancelled';
+  const isReturn = invoice?.type === 'return';
+  const totalAmount = invoice?.totalWholesaleAmount ?? 0;
+  const isCancelled = invoice?.status === 'cancelled';
 
   // Find linked POS point or Customer
-  const targetPOS = posPoints.find((p) => p.id === invoice.posPointId);
-  const targetCustomer = customers.find((c) => c.id === invoice.customerId);
+  const targetPOS = useMemo(() => {
+    if (!invoice) return undefined;
+    return posPoints.find((p) => p.id === invoice.posPointId);
+  }, [posPoints, invoice]);
+
+  const targetCustomer = useMemo(() => {
+    if (!invoice) return undefined;
+    return customers.find((c) => c.id === invoice.customerId);
+  }, [customers, invoice]);
 
   const partyName = targetPOS
     ? targetPOS.name
     : targetCustomer
     ? targetCustomer.name
-    : invoice.posPointName || 'مبيعات مباشرة / غير محدد';
+    : invoice?.posPointName || 'مبيعات مباشرة / غير محدد';
 
   const partyType = targetPOS ? 'نقطة بيع' : targetCustomer ? 'عميل' : 'طرف التعامل';
 
   // Calculate BEFORE and AFTER balances for the affected party
   const balanceForensics = useMemo(() => {
+    if (!invoice) return null;
+
     if (targetPOS) {
       // Current balance with existing invoices
       const currentPosCalc = calculatePOSBalance(
@@ -155,6 +162,7 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
 
   // Warehouse inventory restoration forensics
   const inventoryForensics = useMemo(() => {
+    if (!invoice) return [];
     return (invoice.items || []).map((item) => {
       const category = categories.find((c) => c.id === item.categoryId);
       const currentStock = category ? category.warehouseStock : 0;
@@ -175,6 +183,8 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
       };
     });
   }, [invoice, categories, isReturn, isCancelled]);
+
+  if (!isOpen || !invoice) return null;
 
   const requiredConfirmWord = invoice.invoiceNumber;
   const isConfirmInputValid =

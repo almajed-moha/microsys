@@ -58,25 +58,41 @@ export const PaymentDeleteConfirmModal: React.FC<PaymentDeleteConfirmModalProps>
     setAcknowledgeImpact(false);
   }, [payment?.id, isOpen]);
 
-  if (!isOpen || !payment) return null;
-
   const currency = settings?.currencySymbol || 'ر.ي';
-  const paymentAmount = payment.amount ?? 0;
+  const paymentAmount = payment?.amount ?? 0;
 
   // Linked POS point or Customer
-  const targetPOS = posPoints.find((p) => p.id === payment.posPointId);
-  const targetCustomer = customers.find((c) => c.id === payment.customerId);
+  const targetPOS = useMemo(() => {
+    if (!payment) return undefined;
+    return posPoints.find((p) => p.id === payment.posPointId);
+  }, [posPoints, payment]);
+
+  const targetCustomer = useMemo(() => {
+    if (!payment) return undefined;
+    return customers.find((c) => c.id === payment.customerId);
+  }, [customers, payment]);
 
   const partyName = targetPOS
     ? targetPOS.name
     : targetCustomer
     ? targetCustomer.name
-    : payment.posPointId || 'غير محدد';
+    : payment?.posPointId || 'غير محدد';
 
   const partyType = targetPOS ? 'نقطة بيع' : targetCustomer ? 'عميل' : 'جهة السداد';
 
   // Calculate balance impact
   const balanceForensics = useMemo(() => {
+    if (!payment) {
+      return {
+        hasTarget: false,
+        partyType: 'عام',
+        currentDebt: 0,
+        newDebt: 0,
+        debtDifference: 0,
+        isDebtIncreasing: false,
+      };
+    }
+
     if (targetPOS) {
       const currentCalc = calculatePOSBalance(
         targetPOS.id,
@@ -145,6 +161,8 @@ export const PaymentDeleteConfirmModal: React.FC<PaymentDeleteConfirmModalProps>
       isDebtIncreasing: true,
     };
   }, [targetPOS, targetCustomer, sales, allPayments, dispatches, invoices, payment, paymentAmount]);
+
+  if (!isOpen || !payment) return null;
 
   const requiredWord = 'حذف';
   const isHighValue = paymentAmount >= 50000;

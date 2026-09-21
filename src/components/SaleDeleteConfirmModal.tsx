@@ -58,19 +58,25 @@ export const SaleDeleteConfirmModal: React.FC<SaleDeleteConfirmModalProps> = ({
     setAcknowledgeImpact(false);
   }, [sale?.id, isOpen]);
 
-  if (!isOpen || !sale) return null;
-
   const currency = settings?.currencySymbol || 'ر.ي';
-  const targetPOS = posPoints.find((p) => p.id === sale.posPointId);
-  const targetCategory = categories.find((c) => c.id === sale.categoryId);
-  const totalWholesale = sale.totalWholesaleAmount ?? 0;
-  const totalRetail = sale.totalRetailAmount ?? 0;
+  const targetPOS = useMemo(() => {
+    if (!sale) return undefined;
+    return posPoints.find((p) => p.id === sale.posPointId);
+  }, [posPoints, sale]);
 
-  const partyName = targetPOS ? targetPOS.name : sale.posPointName || 'مبيعات مباشرة';
+  const targetCategory = useMemo(() => {
+    if (!sale) return undefined;
+    return categories.find((c) => c.id === sale.categoryId);
+  }, [categories, sale]);
+
+  const totalWholesale = sale?.totalWholesaleAmount ?? 0;
+  const totalRetail = sale?.totalRetailAmount ?? 0;
+
+  const partyName = targetPOS ? targetPOS.name : sale?.posPointName || 'مبيعات مباشرة';
 
   // Balance Forensics for POS
   const balanceForensics = useMemo(() => {
-    if (!targetPOS) return null;
+    if (!sale || !targetPOS) return null;
 
     const currentPosCalc = calculatePOSBalance(
       targetPOS.id,
@@ -109,6 +115,8 @@ export const SaleDeleteConfirmModal: React.FC<SaleDeleteConfirmModalProps> = ({
       newPosCardRemaining: newCatRem,
     };
   }, [targetPOS, sales, payments, dispatches, invoices, sale]);
+
+  if (!isOpen || !sale) return null;
 
   const requiredConfirmWord = sale.invoiceNumber || 'تأكيد';
   const isConfirmInputValid =
