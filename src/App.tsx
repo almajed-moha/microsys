@@ -120,6 +120,7 @@ import { generateSystemBackup } from './utils/backupGenerator';
 import { exportToJSON } from './utils/storage';
 import { DataSyncModal } from './components/DataSyncModal';
 import { useGlobalNetworkUsageSync } from './hooks/useGlobalNetworkUsageSync';
+import { useMikrotikAutoConnect } from './hooks/useMikrotikAutoConnect';
 
 export default function App() {
   // Navigation View State
@@ -544,13 +545,44 @@ export default function App() {
     }
   }, []);
 
-  // Scheduled Automatic Data Sync (every 60 seconds / 1 minute in the background)
+  // MikroTik Automatic Connection on Login (Local IP vs Remote URL based on RBAC permissions)
+  const mikrotikAutoConnect = useMikrotikAutoConnect(
+    isLoggedIn,
+    activeUser,
+    settings,
+    currentTenant,
+    (newSettings) => {
+      setSettings(newSettings);
+      saveData(STORAGE_KEYS.SETTINGS, newSettings);
+      if (currentTenant?.id) {
+        localStorage.setItem(`mikrotik_pos_settings_${currentTenant.id}`, JSON.stringify(newSettings));
+      }
+    },
+    (feedback) => {
+      setUserLoginFeedback(feedback);
+      setTimeout(() => {
+        setUserLoginFeedback((prev) => (prev?.title === feedback.title ? null : prev));
+      }, 6000);
+    }
+  );
+
+  const canAccessMikrotik = mikrotikAutoConnect.canAccessMikrotik;
+
+  // Scheduled Automatic Data Sync (every 60 seconds / 1 minute in the background, only for authorized users)
   const scheduledDataSync = useGlobalNetworkUsageSync(
     settings.mikrotikConfig,
     scopedCategories,
     effectiveTenantId || 'system',
-    60
+    60,
+    canAccessMikrotik
   );
+
+  // If user lacks permission for MikroTik views, safely redirect to their default permitted landing view
+  useEffect(() => {
+    if (!canAccessMikrotik && ['mikrotik', 'mikrotik_sessions', 'card_usage_tracker'].includes(activeView)) {
+      setActiveView(getDefaultLandingViewForUser(activeUser) as NavView);
+    }
+  }, [canAccessMikrotik, activeView, activeUser]);
 
   // Global Keyboard Shortcuts (Ctrl+K, Cmd+K, / to open search)
   useEffect(() => {
@@ -4400,19 +4432,22 @@ export default function App() {
       )}
 
       {/* MikroTik Quick Launcher Command Palette (Alt+M) */}
-      <MikrotikQuickLauncherModal
-        isOpen={isMikrotikLauncherOpen}
-        onClose={() => setIsMikrotikLauncherOpen(false)}
-        settings={settings}
-        onNavigateToMikrotik={handleNavigateToMikrotik}
-      />
+      {canAccessMikrotik && (
+        <MikrotikQuickLauncherModal
+          isOpen={isMikrotikLauncherOpen}
+          onClose={() => setIsMikrotikLauncherOpen(false)}
+          settings={settings}
+          onNavigateToMikrotik={handleNavigateToMikrotik}
+        />
+      )}
 
       {/* Floating Speed Dial for Lightning-Fast MikroTik & User Manager Navigation */}
-      {isLoggedIn && (
+      {isLoggedIn && canAccessMikrotik && (
         <MikrotikFloatingSpeedDial
           settings={settings}
           onNavigateToMikrotik={handleNavigateToMikrotik}
           onOpenQuickLauncher={() => setIsMikrotikLauncherOpen(true)}
+          canAccessMikrotik={canAccessMikrotik}
         />
       )}
 

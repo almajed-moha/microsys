@@ -45,7 +45,8 @@ export function useGlobalNetworkUsageSync(
   config?: Partial<MikroTikConfig>,
   categories: CardCategory[] = [],
   tenantId: string = 'system',
-  defaultIntervalSeconds: number = 60 // Default 1 minute as requested
+  defaultIntervalSeconds: number = 60, // Default 1 minute as requested
+  canSync: boolean = true // RBAC permission check
 ): GlobalNetworkSyncResult {
   // Persistence for user preferences
   const [isEnabled, setIsEnabledState] = useState<boolean>(() => {
@@ -410,7 +411,7 @@ export function useGlobalNetworkUsageSync(
 
   // 1-second countdown ticker & scheduled execution
   useEffect(() => {
-    if (!isEnabled || !config?.host) {
+    if (!canSync || !isEnabled || !config?.host) {
       return;
     }
 
@@ -434,12 +435,12 @@ export function useGlobalNetworkUsageSync(
       clearTimeout(initialTimeout);
       clearInterval(ticker);
     };
-  }, [isEnabled, config?.host, intervalSeconds, runSyncCycle]);
+  }, [canSync, isEnabled, config?.host, intervalSeconds, runSyncCycle]);
 
   // Comprehensive Cumulative Sync on Mount & every 10 cycles
   const hasRunInitialCumulative = useRef(false);
   useEffect(() => {
-    if (!config?.host) return;
+    if (!canSync || !config?.host) return;
     
     if (!hasRunInitialCumulative.current) {
       hasRunInitialCumulative.current = true;

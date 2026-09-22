@@ -21,6 +21,7 @@ interface MikrotikFloatingSpeedDialProps {
   onNavigateToMikrotik: (subTab?: string, umTab?: string) => void;
   activeUsersCount?: number;
   currentView: string;
+  canAccessMikrotik?: boolean;
 }
 
 export const MikrotikFloatingSpeedDial: React.FC<MikrotikFloatingSpeedDialProps> = ({
@@ -29,12 +30,15 @@ export const MikrotikFloatingSpeedDial: React.FC<MikrotikFloatingSpeedDialProps>
   onNavigateToMikrotik,
   activeUsersCount = 0,
   currentView,
+  canAccessMikrotik = true,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const isConnected = settings.mikrotikConfig?.isLiveConnected ?? false;
 
   // Listen for global keyboard shortcuts (Alt+M for launcher, Alt+U for user manager, Alt+A for active users, Alt+G for batch)
   useEffect(() => {
+    if (!canAccessMikrotik) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // Avoid firing when typing inside an input or textarea
       const target = e.target as HTMLElement;
@@ -59,7 +63,11 @@ export const MikrotikFloatingSpeedDial: React.FC<MikrotikFloatingSpeedDialProps>
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onOpenQuickLauncher, onNavigateToMikrotik]);
+  }, [canAccessMikrotik, onOpenQuickLauncher, onNavigateToMikrotik]);
+
+  if (!canAccessMikrotik) {
+    return null;
+  }
 
   return (
     <div className="fixed bottom-4 left-4 z-40 flex flex-col items-start gap-2 select-none print:hidden">
