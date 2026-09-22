@@ -31,6 +31,10 @@ import {
   CheckCircle2,
   RefreshCw,
   History,
+  Server,
+  Users,
+  Zap,
+  Sparkles,
 } from 'lucide-react';
 import { NetworkSettings, POSPoint, SalesRecord, PaymentRecord, AppUser, NetworkTenant } from '../types';
 import { NavView } from './Sidebar';
@@ -68,6 +72,8 @@ interface HeaderProps {
     isSyncing: boolean;
     intervalSeconds: number;
   };
+  onOpenMikrotikQuickLauncher?: () => void;
+  onNavigateToMikrotikSubTab?: (subTab: string, umTab?: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -96,6 +102,8 @@ export const Header: React.FC<HeaderProps> = ({
   totalSalesToday = 0,
   onOpenDataSync,
   dataSyncInfo,
+  onOpenMikrotikQuickLauncher,
+  onNavigateToMikrotikSubTab,
 }) => {
   const activeTenant = React.useMemo(() => {
     const targetId = activeUser?.role === 'system_owner'
@@ -107,6 +115,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isQuickToolsOpen, setIsQuickToolsOpen] = useState(false);
+  const [isMikrotikMenuOpen, setIsMikrotikMenuOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'online' | 'offline' | 'syncing' | 'error' | 'dev-locked'>(
     typeof navigator !== 'undefined' && navigator.onLine === false
       ? 'offline'
@@ -114,6 +123,7 @@ export const Header: React.FC<HeaderProps> = ({
   );
   const userMenuRef = useRef<HTMLDivElement>(null);
   const quickToolsRef = useRef<HTMLDivElement>(null);
+  const mikrotikMenuRef = useRef<HTMLDivElement>(null);
 
   // Close menus on click outside
   useEffect(() => {
@@ -124,6 +134,9 @@ export const Header: React.FC<HeaderProps> = ({
       }
       if (quickToolsRef.current && !quickToolsRef.current.contains(target)) {
         setIsQuickToolsOpen(false);
+      }
+      if (mikrotikMenuRef.current && !mikrotikMenuRef.current.contains(target)) {
+        setIsMikrotikMenuOpen(false);
       }
     };
 
@@ -283,34 +296,160 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="hidden sm:block w-px h-5 bg-slate-800 shrink-0" />
 
             {/* Group B: Realtime Status Indicators & Live Badges */}
-            {/* 1. MikroTik Router Status Badge - مستقل ومنفصل بدون أي تداخل */}
-            <button
-              type="button"
-              onClick={() => setCurrentTab('mikrotik')}
-              className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-bold border transition shadow-xs shrink-0 ${
-                isConnected
-                  ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-              }`}
-              title="حالة اتصال راوتر مايكروتك - انقر للانتقال لمركز المراقبة والتحكم المباشر"
-            >
-              <span className="relative flex h-2 w-2 shrink-0">
-                {isConnected && (
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                )}
-                <span
-                  className={`relative inline-flex rounded-full h-2 w-2 ${
-                    isConnected ? 'bg-emerald-400' : 'bg-slate-500'
+            {/* 1. MikroTik Router Status Badge with Quick Menu */}
+            <div className="relative shrink-0" ref={mikrotikMenuRef}>
+              <div className="flex items-center">
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('mikrotik')}
+                  className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-r-xl text-xs font-bold border-y border-r transition shadow-xs shrink-0 cursor-pointer ${
+                    isConnected
+                      ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
                   }`}
-                ></span>
-              </span>
-              <span className="hidden sm:inline">
-                {isConnected ? 'مايكروتك: متصل' : 'المايكروتك'}
-              </span>
-              <span className="sm:hidden text-[11px]">
-                {isConnected ? 'متصل' : 'الراوتر'}
-              </span>
-            </button>
+                  title="حالة اتصال راوتر مايكروتك - انقر للانتقال لمركز المراقبة والتحكم المباشر"
+                >
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    {isConnected && (
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    )}
+                    <span
+                      className={`relative inline-flex rounded-full h-2 w-2 ${
+                        isConnected ? 'bg-emerald-400' : 'bg-slate-500'
+                      }`}
+                    ></span>
+                  </span>
+                  <span className="hidden sm:inline">
+                    {isConnected ? 'مايكروتك: متصل' : 'المايكروتك'}
+                  </span>
+                  <span className="sm:hidden text-[11px]">
+                    {isConnected ? 'متصل' : 'الراوتر'}
+                  </span>
+                </button>
+
+                {/* Dropdown Toggle Chevron */}
+                <button
+                  type="button"
+                  onClick={() => setIsMikrotikMenuOpen(!isMikrotikMenuOpen)}
+                  className={`px-1.5 py-1.5 rounded-l-xl text-xs font-bold border-y border-l transition shadow-xs shrink-0 cursor-pointer ${
+                    isConnected
+                      ? 'bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/30'
+                      : 'bg-slate-800/90 hover:bg-slate-700 text-slate-400 hover:text-white border-slate-700'
+                  }`}
+                  title="قائمة الوصول السريع لمايكروتك واليوزر مانجر"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* MikroTik Fast Jump Dropdown */}
+              {isMikrotikMenuOpen && (
+                <div className="absolute left-0 mt-2 w-64 bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 text-xs">
+                  <div className="px-2.5 py-1.5 border-b border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+                    <span className="font-bold text-slate-200">الوصول السريع لمايكروتك</span>
+                    <span className="font-mono text-[10px] text-emerald-400 font-bold">
+                      {isConnected ? 'متصل ✓' : 'غير متصل'}
+                    </span>
+                  </div>
+
+                  <div className="py-1 space-y-0.5">
+                    {/* 1. Main Mikrotik Hub */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentTab('mikrotik');
+                        setIsMikrotikMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-slate-200 hover:text-white hover:bg-slate-800 transition text-right cursor-pointer"
+                    >
+                      <Server className="w-4 h-4 text-indigo-400 shrink-0" />
+                      <div>
+                        <div className="font-bold">مركز المراقبة والتحكم الشامل</div>
+                        <div className="text-[10px] text-slate-400">لوحة تحكم الراوتر الكاملة</div>
+                      </div>
+                    </button>
+
+                    {/* 2. Instant User Manager */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onNavigateToMikrotikSubTab) {
+                          onNavigateToMikrotikSubTab('user_manager', 'users');
+                        } else {
+                          setCurrentTab('mikrotik');
+                        }
+                        setIsMikrotikMenuOpen(false);
+                      }}
+                      className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-purple-300 hover:text-white bg-purple-950/20 hover:bg-purple-900/40 border border-purple-500/20 transition text-right cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Server className="w-4 h-4 text-purple-400 shrink-0" />
+                        <div>
+                          <div className="font-bold">اليوزر مانجر (User Manager)</div>
+                          <div className="text-[10px] text-purple-300/80">كروت المشتركين والباقات</div>
+                        </div>
+                      </div>
+                      <kbd className="text-[9px] font-mono px-1 py-0.5 rounded bg-black/40 text-purple-200">Alt+U</kbd>
+                    </button>
+
+                    {/* 3. Active Users */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onNavigateToMikrotikSubTab) {
+                          onNavigateToMikrotikSubTab('active_users');
+                        } else {
+                          setCurrentTab('mikrotik');
+                        }
+                        setIsMikrotikMenuOpen(false);
+                      }}
+                      className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-emerald-300 hover:text-white hover:bg-emerald-950/30 transition text-right cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span className="font-bold">المستخدمين النشطين (Active)</span>
+                      </div>
+                      <kbd className="text-[9px] font-mono px-1 py-0.5 rounded bg-slate-800 text-slate-300">Alt+A</kbd>
+                    </button>
+
+                    {/* 4. Batch Generator */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onNavigateToMikrotikSubTab) {
+                          onNavigateToMikrotikSubTab('user_manager', 'batch');
+                        } else {
+                          setCurrentTab('mikrotik');
+                        }
+                        setIsMikrotikMenuOpen(false);
+                      }}
+                      className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-amber-300 hover:text-white hover:bg-amber-950/30 transition text-right cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span className="font-bold">توليد كروت جديد (Batch)</span>
+                      </div>
+                      <kbd className="text-[9px] font-mono px-1 py-0.5 rounded bg-slate-800 text-slate-300">Alt+G</kbd>
+                    </button>
+
+                    {/* 5. Open Full Launcher */}
+                    {onOpenMikrotikQuickLauncher && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onOpenMikrotikQuickLauncher();
+                          setIsMikrotikMenuOpen(false);
+                        }}
+                        className="mt-1 w-full py-2 px-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black flex items-center justify-center gap-1.5 transition cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>فتح مركز الوصول السريع (Alt+M)</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Scheduled Data Sync Button & Live Countdown */}
             {onOpenDataSync && (

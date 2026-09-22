@@ -936,27 +936,30 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto pb-1.5 no-scrollbar">
-            {/* All Categories Chip */}
+          {/* Category Filter Cards Grid (مربعات سهلة النقر والوصول بدون إزاحة) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+            {/* All Categories Card */}
             <button
               type="button"
               onClick={() => setSelectedCategoryFilter('all')}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap shrink-0 cursor-pointer border ${
+              className={`p-2 sm:p-2.5 rounded-xl border text-center transition-all duration-150 min-h-[72px] flex flex-col items-center justify-center cursor-pointer active:scale-95 shadow-xs ${
                 selectedCategoryFilter === 'all'
-                  ? 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-600/20'
-                  : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+                  ? 'bg-amber-600 text-white border-amber-400 shadow-md shadow-amber-600/30 ring-2 ring-amber-400/40'
+                  : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700 hover:bg-slate-900 hover:text-white'
               }`}
             >
-              <Tag className="w-3.5 h-3.5" />
-              <span>كافة التصنيفات</span>
-              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
-                selectedCategoryFilter === 'all' ? 'bg-amber-700 text-amber-100' : 'bg-slate-800 text-slate-400'
+              <div className="flex items-center gap-1.5 mb-1">
+                <Tag className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-xs font-bold leading-tight">كافة التصنيفات</span>
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+                selectedCategoryFilter === 'all' ? 'bg-black/30 text-white' : 'bg-slate-800 text-slate-400'
               }`}>
-                {categoryStatsInPeriod.countInPeriod}
+                {categoryStatsInPeriod.countInPeriod} سند
               </span>
             </button>
 
-            {/* Category Dynamic Chips */}
+            {/* Category Dynamic Cards */}
             {categories.map((c) => {
               const catStat = categoryStatsInPeriod.byCategory[c.id] || { count: 0, total: 0 };
               const isSelected = selectedCategoryFilter === c.id;
@@ -966,29 +969,31 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                   key={c.id}
                   type="button"
                   onClick={() => setSelectedCategoryFilter(isSelected ? 'all' : c.id)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap shrink-0 cursor-pointer border ${
+                  className={`p-2 sm:p-2.5 rounded-xl border text-center transition-all duration-150 min-h-[72px] flex flex-col items-center justify-center cursor-pointer active:scale-95 shadow-xs ${
                     isSelected
-                      ? 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-600/20'
-                      : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+                      ? 'bg-amber-600 text-white border-amber-400 shadow-md shadow-amber-600/30 ring-2 ring-amber-400/40'
+                      : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700 hover:bg-slate-900 hover:text-white'
                   }`}
                   title={`${c.name} (${(catStat.total ?? 0).toLocaleString()} ${currency})`}
                 >
-                  {renderCategoryIcon(c.name, c.icon)}
-                  <span>{c.name}</span>
-                  {catStat.count > 0 && (
-                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                      isSelected ? 'bg-amber-700 text-amber-100' : 'bg-slate-800 text-slate-300'
+                  <div className="flex items-center gap-1.5 mb-1 max-w-full">
+                    {renderCategoryIcon(c.name, c.icon)}
+                    <span className="text-xs font-bold leading-tight truncate">{c.name}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                      isSelected ? 'bg-black/30 text-white' : 'bg-slate-800 text-slate-400'
                     }`}>
                       {catStat.count}
                     </span>
-                  )}
-                  {catStat.total > 0 && (
-                    <span className={`text-[10px] font-mono opacity-80 ${
-                      isSelected ? 'text-amber-100' : 'text-amber-400/90'
-                    }`}>
-                      {(catStat.total ?? 0).toLocaleString()}
-                    </span>
-                  )}
+                    {catStat.total > 0 && (
+                      <span className={`text-[10px] font-mono font-bold ${
+                        isSelected ? 'text-amber-100' : 'text-amber-400'
+                      }`}>
+                        {(catStat.total ?? 0).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
                 </button>
               );
             })}

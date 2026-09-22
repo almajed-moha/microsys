@@ -442,12 +442,33 @@ export interface HotspotConfiguredUser {
   email?: string;
 }
 
+export interface UserAssignedProfile {
+  id: string;
+  user: string;
+  profile: string;
+  state: 'active' | 'waiting' | 'used' | 'expired' | string;
+  active?: boolean;
+  startsAt?: string;
+  endsAt?: string;
+  validity?: string;
+  addedAt?: string;
+}
+
+export interface UserProfilesSummary {
+  total: number;
+  used: number;
+  waiting: number;
+  active: number;
+}
+
 export interface UserManagerUser {
   id: string;
   name: string;
   password?: string;
   customer?: string;
   actualProfile?: string;
+  assignedProfiles?: UserAssignedProfile[];
+  profilesCount?: UserProfilesSummary;
   group?: string;
   sharedUsers?: number;
   limitUptime?: string;

@@ -2058,12 +2058,45 @@ if (command === 'reboot') {
     { id: '*um6', name: 'UM-88406', password: '319', actualProfile: 'UM-Profile-200', customer: 'admin', uptimeUsed: '3h 10m', downloadUsed: 4200000000, uploadUsed: 350000000, totalBytes: 4550000000, limitUptime: '1d', limitBytesTotal: 10000000000, disabled: false, comment: 'فئة 200 ريال - صيدلية الشفاء' },
   ];
 
-  public static demoUMSessions: any[] = [];
+    public static demoUMSessions: any[] = [];
+
+  public static demoUMAssignedProfiles: any[] = [
+    { id: '*up1', user: 'UM-88401', profile: 'UM-Profile-200', state: 'used', startsAt: '2026-09-10 10:00:00', endsAt: '2026-09-11 10:00:00', validity: '1d' },
+    { id: '*up2', user: 'UM-88401', profile: 'UM-Profile-500', state: 'active', startsAt: '2026-09-20 12:30:00', endsAt: '2026-09-21 12:30:00', validity: '1d' },
+    { id: '*up3', user: 'UM-88401', profile: 'UM-Profile-500', state: 'waiting', startsAt: '', endsAt: '', validity: '1d' },
+    { id: '*up4', user: 'UM-88402', profile: 'UM-Profile-100', state: 'active', startsAt: '2026-09-21 08:00:00', endsAt: '2026-09-21 11:00:00', validity: '3h' },
+    { id: '*up5', user: 'UM-88402', profile: 'UM-Profile-200', state: 'waiting', startsAt: '', endsAt: '', validity: '1d' },
+    { id: '*up6', user: 'UM-88403', profile: 'UM-Profile-200', state: 'used', startsAt: '2026-09-12 09:00:00', endsAt: '2026-09-13 09:00:00', validity: '1d' },
+    { id: '*up7', user: 'UM-88403', profile: 'UM-Profile-200', state: 'used', startsAt: '2026-09-15 14:00:00', endsAt: '2026-09-16 14:00:00', validity: '1d' },
+    { id: '*up8', user: 'UM-88403', profile: 'UM-Profile-200', state: 'active', startsAt: '2026-09-21 02:00:00', endsAt: '2026-09-22 02:00:00', validity: '1d' },
+    { id: '*up9', user: 'UM-88403', profile: 'UM-Profile-500', state: 'waiting', startsAt: '', endsAt: '', validity: '2d' },
+    { id: '*up10', user: 'UM-88403', profile: 'UM-Profile-500', state: 'waiting', startsAt: '', endsAt: '', validity: '2d' },
+    { id: '*up11', user: 'UM-88404', profile: 'UM-Profile-1000', state: 'waiting', startsAt: '', endsAt: '', validity: '3d' },
+    { id: '*up12', user: 'UM-88405', profile: 'UM-Profile-500', state: 'used', startsAt: '2026-09-18 10:00:00', endsAt: '2026-09-19 10:00:00', validity: '1d' },
+    { id: '*up13', user: 'UM-88405', profile: 'UM-Profile-500', state: 'used', startsAt: '2026-09-19 11:00:00', endsAt: '2026-09-20 11:00:00', validity: '1d' },
+    { id: '*up14', user: 'UM-88406', profile: 'UM-Profile-200', state: 'active', startsAt: '2026-09-21 07:00:00', endsAt: '2026-09-22 07:00:00', validity: '1d' },
+    { id: '*up15', user: 'UM-88406', profile: 'UM-Profile-100', state: 'waiting', startsAt: '', endsAt: '', validity: '3h' },
+  ];
 
   // 13. Get User Manager Users / Vouchers (with full RouterOS v7 & v6 support + Hotspot fallback)
   public static async getUserManagerUsers(options: MikroTikConnectionOptions): Promise<any[]> {
     if (options.protocol === 'demo' || options.host === 'demo') {
-      return [...MikroTikService.demoUMUsers];
+      return MikroTikService.demoUMUsers.map(u => {
+        const userAssigned = (MikroTikService.demoUMAssignedProfiles || []).filter(p => p.user === u.name);
+        const used = userAssigned.filter(p => p.state === 'used' || p.state === 'expired').length;
+        const waiting = userAssigned.filter(p => p.state === 'waiting' || p.state === 'unused').length;
+        const active = userAssigned.filter(p => p.state === 'active' || p.state === 'running').length;
+        return {
+          ...u,
+          assignedProfiles: userAssigned,
+          profilesCount: {
+            total: userAssigned.length,
+            used,
+            waiting,
+            active,
+          },
+        };
+      });
     }
 
     const proto = options.protocol || 'auto';
@@ -2130,11 +2163,17 @@ if (command === 'reboot') {
               limitations = Array.isArray(res) ? res : [res];
             } catch {}
 
-            // Build profile map (username -> profileName)
+            // Build profile map (username -> profileName) & all assigned profiles map
             const profileMap = new Map<string, string>();
+            const userProfilesMap = new Map<string, any[]>();
             for (const up of userProfiles) {
               if (up && up.user && up.profile) {
-                profileMap.set(up.user, up.profile);
+                if (!profileMap.has(up.user) || up.active === true || up.active === 'true' || up.state === 'active') {
+                  profileMap.set(up.user, up.profile);
+                }
+                const list = userProfilesMap.get(up.user) || [];
+                list.push(up);
+                userProfilesMap.set(up.user, list);
               }
             }
 
@@ -2184,11 +2223,42 @@ if (command === 'reboot') {
 
               const lim = limMap.get(assignedProfile) || limMap.get(`Lim-${assignedProfile}`);
 
+              const rawUps = userProfilesMap.get(username) || [];
+              const normalizedUps = rawUps.map((item, idx) => {
+                const id = item['.id'] || item.id || `*up_${idx}`;
+                const rawState = String(item.state || '').toLowerCase();
+                const isActive = item.active === true || item.active === 'true' || rawState === 'active' || rawState === 'running';
+                const isUnused = item.unused === true || item.unused === 'true' || rawState === 'waiting' || rawState === 'queued';
+                let state = 'used';
+                if (isActive) state = 'active';
+                else if (isUnused || (!item['starts-at'] && !item.startsAt && !isActive)) state = 'waiting';
+                else if (rawState === 'expired' || rawState === 'used') state = 'used';
+                return {
+                  id,
+                  user: username,
+                  profile: item.profile || 'default',
+                  state,
+                  startsAt: item['starts-at'] || item.startsAt || '',
+                  endsAt: item['ends-at'] || item.endsAt || '',
+                  validity: item.validity || '',
+                };
+              });
+              const usedCount = normalizedUps.filter(p => p.state === 'used' || p.state === 'expired').length;
+              const waitingCount = normalizedUps.filter(p => p.state === 'waiting' || p.state === 'unused').length;
+              const activeCount = normalizedUps.filter(p => p.state === 'active' || p.state === 'running').length;
+
               return {
                 id: u['.id'] || u.id || username,
                 name: username,
                 password: u.password || '',
                 actualProfile: assignedProfile,
+                assignedProfiles: normalizedUps,
+                profilesCount: {
+                  total: normalizedUps.length,
+                  used: usedCount,
+                  waiting: waitingCount,
+                  active: activeCount,
+                },
                 customer: u.customer || 'admin',
                 uptimeUsed: formatSecondsToUptime(totalUptimeSec),
                 downloadUsed: totalDl,
@@ -2291,9 +2361,15 @@ if (command === 'reboot') {
         } catch {}
 
         const profileMap = new Map<string, string>();
+        const userProfilesMap = new Map<string, any[]>();
         for (const up of userProfiles) {
           if (up && up['user'] && up['profile']) {
-            profileMap.set(up['user'], up['profile']);
+            if (!profileMap.has(up['user']) || up['active'] === true || up['active'] === 'true' || up['state'] === 'active') {
+              profileMap.set(up['user'], up['profile']);
+            }
+            const list = userProfilesMap.get(up['user']) || [];
+            list.push(up);
+            userProfilesMap.set(up['user'], list);
           }
         }
 
@@ -2338,11 +2414,42 @@ if (command === 'reboot') {
 
           const lim = limMap.get(assignedProfile) || limMap.get(`Lim-${assignedProfile}`);
 
+          const rawUps = userProfilesMap.get(username) || [];
+          const normalizedUps = rawUps.map((item, idx) => {
+            const id = item['.id'] || item.id || `*up_${idx}`;
+            const rawState = String(item['state'] || '').toLowerCase();
+            const isActive = item['active'] === true || item['active'] === 'true' || rawState === 'active' || rawState === 'running';
+            const isUnused = item['unused'] === true || item['unused'] === 'true' || rawState === 'waiting' || rawState === 'queued';
+            let state = 'used';
+            if (isActive) state = 'active';
+            else if (isUnused || (!item['starts-at'] && !item.startsAt && !isActive)) state = 'waiting';
+            else if (rawState === 'expired' || rawState === 'used') state = 'used';
+            return {
+              id,
+              user: username,
+              profile: item['profile'] || 'default',
+              state,
+              startsAt: item['starts-at'] || item.startsAt || '',
+              endsAt: item['ends-at'] || item.endsAt || '',
+              validity: item.validity || '',
+            };
+          });
+          const usedCount = normalizedUps.filter(p => p.state === 'used' || p.state === 'expired').length;
+          const waitingCount = normalizedUps.filter(p => p.state === 'waiting' || p.state === 'unused').length;
+          const activeCount = normalizedUps.filter(p => p.state === 'active' || p.state === 'running').length;
+
           return {
             id: u['.id'] || username,
             name: username,
             password: u['password'] || '',
             actualProfile: assignedProfile,
+            assignedProfiles: normalizedUps,
+            profilesCount: {
+              total: normalizedUps.length,
+              used: usedCount,
+              waiting: waitingCount,
+              active: activeCount,
+            },
             customer: u['customer'] || 'admin',
             uptimeUsed: formatSecondsToUptime(totalUptimeSec),
             downloadUsed: totalDl,
@@ -3375,7 +3482,21 @@ if (command === 'reboot') {
   // 20b. Update User Manager User (Username, Password, Profile, Comment, Disabled, Limits)
   // 16b. Assign/Add Profile to User Manager User
   public static async assignProfileToUserManagerUser(options: MikroTikConnectionOptions, username: string, profileName: string): Promise<boolean> {
-    if (options.protocol === "demo" || options.host === "demo") return true;
+    if (options.protocol === "demo" || options.host === "demo") {
+      const userProfiles = (MikroTikService.demoUMAssignedProfiles || []).filter(p => p.user === username);
+      const hasActive = userProfiles.some(p => p.state === 'active' || p.state === 'running');
+      const newEntry = {
+        id: `*up_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        user: username,
+        profile: profileName,
+        state: hasActive ? 'waiting' : 'active',
+        startsAt: hasActive ? '' : new Date().toISOString().replace('T', ' ').substring(0, 19),
+        endsAt: '',
+        validity: '1d',
+      };
+      MikroTikService.demoUMAssignedProfiles.push(newEntry);
+      return true;
+    }
     const proto = options.protocol || "auto";
     if (proto === "rest_http" || proto === "rest_https" || proto === "auto") {
       try {
@@ -3409,6 +3530,185 @@ if (command === 'reboot') {
       throw new Error("تعذر إضافة البروفايل: " + e.message);
     } finally {
       client.close();
+    }
+  }
+
+  // 16c. Get User Manager User Assigned Profiles & Queue
+  public static async getUserAssignedProfiles(
+    options: MikroTikConnectionOptions,
+    username: string
+  ): Promise<{
+    profiles: Array<{
+      id: string;
+      user: string;
+      profile: string;
+      state: 'active' | 'waiting' | 'used' | string;
+      startsAt?: string;
+      endsAt?: string;
+      validity?: string;
+    }>;
+    summary: {
+      total: number;
+      used: number;
+      waiting: number;
+      active: number;
+    };
+  }> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      const list = (MikroTikService.demoUMAssignedProfiles || [])
+        .filter(p => p.user.toLowerCase() === username.toLowerCase());
+      const used = list.filter(p => p.state === 'used' || p.state === 'expired').length;
+      const waiting = list.filter(p => p.state === 'waiting' || p.state === 'unused').length;
+      const active = list.filter(p => p.state === 'active' || p.state === 'running').length;
+      return {
+        profiles: list,
+        summary: {
+          total: list.length,
+          used,
+          waiting,
+          active,
+        },
+      };
+    }
+
+    const proto = options.protocol || 'auto';
+    let rawProfiles: any[] = [];
+
+    // REST API Attempt
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+        const restOpt = { ...options, protocol: (isHttps ? 'rest_https' : 'rest_http') as any, port };
+        
+        // RouterOS v7: /user-manager/user-profile
+        try {
+          const res = await fetchRestApi(restOpt, `/user-manager/user-profile?user=${encodeURIComponent(username)}`);
+          rawProfiles = Array.isArray(res) ? res : [res];
+        } catch {
+          // RouterOS v6: /tool/user-manager/user
+          try {
+            const res = await fetchRestApi(restOpt, `/tool/user-manager/user-profile?user=${encodeURIComponent(username)}`);
+            rawProfiles = Array.isArray(res) ? res : [res];
+          } catch {}
+        }
+      } catch (err) {
+        console.warn('REST getUserAssignedProfiles error:', err);
+      }
+    }
+
+    // Binary API Fallback
+    if (rawProfiles.length === 0 && (proto === 'api_binary' || proto === 'api_ssl' || proto === 'auto')) {
+      const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+      const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 25000);
+      try {
+        await client.connect();
+        await client.login(options.username, options.password || '');
+        try {
+          rawProfiles = await client.sendSentence([
+            '/user-manager/user-profile/print',
+            `?user=${username}`
+          ]);
+        } catch {
+          try {
+            rawProfiles = await client.sendSentence([
+              '/tool/user-manager/user-profile/print',
+              `?user=${username}`
+            ]);
+          } catch {}
+        }
+      } catch (err) {
+        console.warn('Binary getUserAssignedProfiles error:', err);
+      } finally {
+        try { client.close(); } catch {}
+      }
+    }
+
+    // Normalize results
+    const normalized = (rawProfiles || []).filter(item => item && (item.profile || item['profile'])).map((item, idx) => {
+      const id = item['.id'] || item.id || `*up_${idx}`;
+      const rawState = String(item.state || item['state'] || '').toLowerCase();
+      const isActive = item.active === true || item['active'] === 'true' || item.active === 'true' || rawState === 'active' || rawState === 'running';
+      const isUnused = item.unused === true || item['unused'] === 'true' || item.unused === 'true' || rawState === 'waiting' || rawState === 'queued';
+      
+      let state = 'used';
+      if (isActive) {
+        state = 'active';
+      } else if (isUnused || (!item['starts-at'] && !item.startsAt && !isActive)) {
+        state = 'waiting';
+      } else if (rawState === 'expired' || rawState === 'used') {
+        state = 'used';
+      }
+
+      return {
+        id,
+        user: item.user || item['user'] || username,
+        profile: item.profile || item['profile'] || 'default',
+        state,
+        startsAt: item['starts-at'] || item.startsAt || '',
+        endsAt: item['ends-at'] || item.endsAt || '',
+        validity: item.validity || item['validity'] || '',
+      };
+    });
+
+    const used = normalized.filter(p => p.state === 'used' || p.state === 'expired').length;
+    const waiting = normalized.filter(p => p.state === 'waiting' || p.state === 'unused').length;
+    const active = normalized.filter(p => p.state === 'active' || p.state === 'running').length;
+
+    return {
+      profiles: normalized,
+      summary: {
+        total: normalized.length,
+        used,
+        waiting,
+        active,
+      },
+    };
+  }
+
+  // 16d. Remove / Cancel User Assigned Profile (from Waiting Queue)
+  public static async removeUserAssignedProfile(
+    options: MikroTikConnectionOptions,
+    assignmentId: string
+  ): Promise<boolean> {
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      MikroTikService.demoUMAssignedProfiles = (MikroTikService.demoUMAssignedProfiles || []).filter(
+        p => p.id !== assignmentId
+      );
+      return true;
+    }
+
+    const proto = options.protocol || 'auto';
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+        const restOpt = { ...options, protocol: (isHttps ? 'rest_https' : 'rest_http') as any, port };
+        try {
+          await fetchRestApi(restOpt, `/user-manager/user-profile/${encodeURIComponent(assignmentId)}`, 'DELETE');
+          return true;
+        } catch {
+          await fetchRestApi(restOpt, `/tool/user-manager/user-profile/${encodeURIComponent(assignmentId)}`, 'DELETE');
+          return true;
+        }
+      } catch {}
+    }
+
+    // Binary fallback
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 25000);
+    try {
+      await client.connect();
+      await client.login(options.username, options.password || '');
+      try {
+        await client.sendSentence(['/user-manager/user-profile/remove', `=.id=${assignmentId}`]);
+        return true;
+      } catch {
+        await client.sendSentence(['/tool/user-manager/user-profile/remove', `=.id=${assignmentId}`]);
+        return true;
+      }
+    } finally {
+      try { client.close(); } catch {}
     }
   }
 

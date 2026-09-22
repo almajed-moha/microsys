@@ -7,6 +7,8 @@ import {
   DhcpLease,
   MikrotikCallerSession,
   MikrotikFileItem,
+  UserAssignedProfile,
+  UserProfilesSummary,
 } from '../types';
 
 export interface ConnectionTestResult {
@@ -653,6 +655,69 @@ export async function assignProfileToUserManagerUser(config: Partial<MikroTikCon
     return data.success;
   } catch (error) {
     console.warn("assignProfileToUserManagerUser error:", error);
+    return false;
+  }
+}
+
+// 21c. Fetch User Manager User Assigned Profiles (Used, Active, Waiting Queue)
+export async function fetchUserAssignedProfiles(
+  config: Partial<MikroTikConfig>,
+  username: string
+): Promise<{
+  success: boolean;
+  profiles: UserAssignedProfile[];
+  summary: UserProfilesSummary;
+  error?: string;
+}> {
+  try {
+    const res = await fetch('/api/mikrotik/um/user-assigned-profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, username }),
+    });
+    const data = await parseJsonResponse(res);
+    if (data.success) {
+      return {
+        success: true,
+        profiles: data.profiles || [],
+        summary: data.summary || {
+          total: (data.profiles || []).length,
+          used: 0,
+          waiting: 0,
+          active: 0,
+        },
+      };
+    }
+    return {
+      success: false,
+      profiles: [],
+      summary: { total: 0, used: 0, waiting: 0, active: 0 },
+      error: data.error || 'تعذر جلب باقات الكارت',
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      profiles: [],
+      summary: { total: 0, used: 0, waiting: 0, active: 0 },
+      error: error?.message || 'خطأ في الاتصال بالخادم',
+    };
+  }
+}
+
+// 21d. Remove / Cancel User Manager User Assigned Profile (Waiting Queue)
+export async function removeUserAssignedProfile(
+  config: Partial<MikroTikConfig>,
+  assignmentId: string
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/mikrotik/um/remove-user-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, assignmentId }),
+    });
+    const data = await parseJsonResponse(res);
+    return Boolean(data.success);
+  } catch {
     return false;
   }
 }

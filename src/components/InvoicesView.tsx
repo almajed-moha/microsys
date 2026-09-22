@@ -717,50 +717,77 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
         </div>
       )}
 
-      {/* Navigation Subtabs (All, Sales, Returns) */}
-      <div className="flex items-center gap-2 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800">
+      {/* Navigation Subtabs (All, Sales, Returns) - Squarish Cards Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2.5 bg-slate-900/90 p-2 sm:p-2.5 rounded-2xl border border-slate-800 shadow-md">
         <button
+          type="button"
           onClick={() => setActiveTab('all')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm transition cursor-pointer ${
+          className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all duration-150 min-h-[76px] sm:min-h-[84px] cursor-pointer active:scale-95 shadow-xs ${
             activeTab === 'all'
-              ? 'bg-indigo-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/40'
+              : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800 hover:border-slate-700'
           }`}
         >
-          <Layers className="w-4 h-4" />
-          <span>كافة الفواتير والسندات</span>
-          <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-black/20">
-            {invoices.length}
+          <div className="flex items-center gap-2 mb-1">
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+              activeTab === 'all' ? 'bg-white/20 text-white' : 'bg-indigo-500/10 text-indigo-400'
+            }`}>
+              <Layers className="w-4 h-4" />
+            </div>
+            <span className="text-xs sm:text-sm font-bold">كافة الفواتير والسندات</span>
+          </div>
+          <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-black ${
+            activeTab === 'all' ? 'bg-black/30 text-white' : 'bg-slate-800 text-indigo-300'
+          }`}>
+            {invoices.length} فاتورة وسند
           </span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('sales')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm transition cursor-pointer ${
+          className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all duration-150 min-h-[76px] sm:min-h-[84px] cursor-pointer active:scale-95 shadow-xs ${
             activeTab === 'sales'
-              ? 'bg-emerald-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 border-emerald-400 ring-2 ring-emerald-400/40'
+              : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800 hover:border-slate-700'
           }`}
         >
-          <ArrowUpRight className="w-4 h-4" />
-          <span>فواتير المبيعات والتسليم</span>
-          <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-black/20">
-            {invoices.filter((i) => i.type === 'sale').length}
+          <div className="flex items-center gap-2 mb-1">
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+              activeTab === 'sales' ? 'bg-white/20 text-white' : 'bg-emerald-500/10 text-emerald-400'
+            }`}>
+              <ArrowUpRight className="w-4 h-4" />
+            </div>
+            <span className="text-xs sm:text-sm font-bold">فواتير المبيعات والتسليم</span>
+          </div>
+          <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-black ${
+            activeTab === 'sales' ? 'bg-black/30 text-white' : 'bg-slate-800 text-emerald-300'
+          }`}>
+            {invoices.filter((i) => i.type === 'sale').length} فاتورة مبيعات
           </span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('returns')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm transition cursor-pointer ${
+          className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all duration-150 min-h-[76px] sm:min-h-[84px] cursor-pointer active:scale-95 shadow-xs ${
             activeTab === 'returns'
-              ? 'bg-rose-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30 border-rose-400 ring-2 ring-rose-400/40'
+              : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800 hover:border-slate-700'
           }`}
         >
-          <RotateCcw className="w-4 h-4" />
-          <span>سندات المرتجع (إشعارات دائنة)</span>
-          <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-black/20">
-            {invoices.filter((i) => i.type === 'return').length}
+          <div className="flex items-center gap-2 mb-1">
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+              activeTab === 'returns' ? 'bg-white/20 text-white' : 'bg-rose-500/10 text-rose-400'
+            }`}>
+              <RotateCcw className="w-4 h-4" />
+            </div>
+            <span className="text-xs sm:text-sm font-bold">سندات المرتجع (إشعار دائن)</span>
+          </div>
+          <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-black ${
+            activeTab === 'returns' ? 'bg-black/30 text-white' : 'bg-slate-800 text-rose-300'
+          }`}>
+            {invoices.filter((i) => i.type === 'return').length} سند مرتجع
           </span>
         </button>
       </div>

@@ -50,7 +50,8 @@ import {
   TrendingUp,
   Sliders,
   Filter,
-  PowerOff
+  PowerOff,
+  Key
 } from 'lucide-react';
 import {
   NetworkSettings,
@@ -93,6 +94,7 @@ interface UserManagerViewProps {
   onSaveTemplate?: (template: CardTemplate) => void;
   onDeleteTemplate?: (templateId: string) => void;
   onRefreshParent?: () => void;
+  initialTab?: 'users' | 'daily-report' | 'profiles' | 'batch' | 'templates' | 'routers' | 'script';
 }
 
 export const UserManagerView: React.FC<UserManagerViewProps> = ({
@@ -104,9 +106,35 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
   onSaveTemplate,
   onDeleteTemplate,
   onRefreshParent,
+  initialTab,
 }) => {
-  // Navigation tabs inside User Manager
-  const [activeTab, setActiveTab] = useState<'users' | 'daily-report' | 'profiles' | 'batch' | 'templates' | 'routers' | 'script'>('users');
+  // Navigation tabs inside User Manager with Smart State Persistence
+  const [activeTab, setActiveTab] = useState<'users' | 'daily-report' | 'profiles' | 'batch' | 'templates' | 'routers' | 'script'>(() => {
+    if (initialTab && ['users', 'daily-report', 'profiles', 'batch', 'templates', 'routers', 'script'].includes(initialTab)) {
+      return initialTab;
+    }
+    try {
+      const saved = localStorage.getItem('usermanager_last_tab');
+      if (saved && ['users', 'daily-report', 'profiles', 'batch', 'templates', 'routers', 'script'].includes(saved)) {
+        return saved as any;
+      }
+    } catch {}
+    return 'users';
+  });
+
+  // Watch for external initialTab changes
+  useEffect(() => {
+    if (initialTab && ['users', 'daily-report', 'profiles', 'batch', 'templates', 'routers', 'script'].includes(initialTab)) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  // Persist selected tab for instant re-opening
+  useEffect(() => {
+    try {
+      localStorage.setItem('usermanager_last_tab', activeTab);
+    } catch {}
+  }, [activeTab]);
 
   // Live Data State
   const [users, setUsers] = useState<UserManagerUser[]>([]);
@@ -853,91 +881,192 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
         </div>
       )}
 
-      {/* Tabs Sub-Navigation */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
-        <button
-          onClick={() => setActiveTab('users')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeTab === 'users'
-              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span>كروت وقسائم اليوزر مانجر ({users.length})</span>
-        </button>
+      {/* Tabs Sub-Navigation - Square Cards Grid (قوائم مربعة سهلة الوصول بدون إزاحة) */}
+      <div className="bg-slate-900/70 p-2.5 sm:p-3 rounded-2xl border border-slate-800 shadow-md">
+        <div className="flex items-center justify-between mb-2 px-1 text-xs text-slate-400">
+          <span className="font-bold flex items-center gap-1.5 text-slate-300">
+            <Layers className="w-4 h-4 text-purple-400" />
+            <span>تبويبات وأدوات اليوزر مانجر (وصول مباشر بدون إزاحة):</span>
+          </span>
+          <span className="text-[11px] font-mono text-slate-500">7 أقسام رئيسية</span>
+        </div>
 
-        <button
-          onClick={() => setActiveTab('daily-report')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeTab === 'daily-report'
-              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <TrendingUp className="w-4 h-4 text-emerald-400" />
-          <span>تقارير السحب اليومي وتدقيق الـ WAN</span>
-        </button>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-2.5">
+          {/* 1. Users */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('users')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeTab === 'users'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 border-purple-400 ring-2 ring-purple-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeTab === 'users' ? 'bg-white/20 text-white' : 'bg-purple-500/10 text-purple-400'
+            }`}>
+              <Users className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">كروت اليوزر مانجر</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+              activeTab === 'users'
+                ? 'bg-black/30 text-white'
+                : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+            }`}>
+              {users.length} كارت
+            </span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('profiles')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeTab === 'profiles'
-              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          <span>بروفايلات وقيود السرعة ({profiles.length})</span>
-        </button>
+          {/* 2. Daily Report & WAN */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('daily-report')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeTab === 'daily-report'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 border-purple-400 ring-2 ring-purple-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeTab === 'daily-report' ? 'bg-white/20 text-white' : 'bg-emerald-500/10 text-emerald-400'
+            }`}>
+              <TrendingUp className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">تقارير السحب و WAN</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              activeTab === 'daily-report'
+                ? 'bg-black/30 text-white'
+                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+            }`}>
+              تدقيق ومطابقة
+            </span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('batch')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeTab === 'batch'
-              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Zap className="w-4 h-4 text-amber-400" />
-          <span>توليد الكروت</span>
-        </button>
+          {/* 3. Profiles & Limits */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('profiles')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeTab === 'profiles'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 border-purple-400 ring-2 ring-purple-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeTab === 'profiles' ? 'bg-white/20 text-white' : 'bg-cyan-500/10 text-cyan-400'
+            }`}>
+              <Layers className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">البروفايلات والسرعات</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+              activeTab === 'profiles'
+                ? 'bg-black/30 text-white'
+                : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+            }`}>
+              {profiles.length} بروفايل
+            </span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab("templates")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeTab === "templates"
-              ? "bg-purple-600 text-white shadow-md shadow-purple-600/20"
-              : "bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800"
-          }`}
-        >
-          <LayoutTemplate className="w-4 h-4 text-cyan-400" />
-          <span>إدارة القوالب</span>
-        </button>
+          {/* 4. Batch Cards Generator */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('batch')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeTab === 'batch'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 border-purple-400 ring-2 ring-purple-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeTab === 'batch' ? 'bg-white/20 text-white' : 'bg-amber-500/10 text-amber-400'
+            }`}>
+              <Zap className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">توليد الكروت</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              activeTab === 'batch'
+                ? 'bg-black/30 text-white'
+                : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+            }`}>
+              طباعة وتوليد
+            </span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('routers')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeTab === 'routers'
-              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Radio className="w-4 h-4 text-cyan-400" />
-          <span>أجهزة الـ RADIUS والراوتر ({routers.length})</span>
-        </button>
+          {/* 5. Templates Manager */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('templates')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeTab === 'templates'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 border-purple-400 ring-2 ring-purple-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeTab === 'templates' ? 'bg-white/20 text-white' : 'bg-sky-500/10 text-sky-400'
+            }`}>
+              <LayoutTemplate className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">إدارة القوالب</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              activeTab === 'templates'
+                ? 'bg-black/30 text-white'
+                : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+            }`}>
+              {templates.length} قوالب
+            </span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('script')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeTab === 'script'
-              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Terminal className="w-4 h-4" />
-          <span>سكربت التثبيت والإعداد الشامل</span>
-        </button>
+          {/* 6. Routers */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('routers')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeTab === 'routers'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 border-purple-400 ring-2 ring-purple-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeTab === 'routers' ? 'bg-white/20 text-white' : 'bg-indigo-500/10 text-indigo-400'
+            }`}>
+              <Radio className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">أجهزة الراوتر</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+              activeTab === 'routers'
+                ? 'bg-black/30 text-white'
+                : 'bg-slate-800 text-slate-300 border border-slate-700'
+            }`}>
+              {routers.length} أجهزة
+            </span>
+          </button>
+
+          {/* 7. Setup Script */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('script')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeTab === 'script'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 border-purple-400 ring-2 ring-purple-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeTab === 'script' ? 'bg-white/20 text-white' : 'bg-slate-700 text-slate-300'
+            }`}>
+              <Terminal className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">سكربت التثبيت</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              activeTab === 'script'
+                ? 'bg-black/30 text-white'
+                : 'bg-slate-800 text-slate-400'
+            }`}>
+              RouterOS Script
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* ========================================================================= */}
@@ -1061,9 +1190,237 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
             </div>
           </div>
 
-          {/* Users Table */}
+          {/* Users Table & Mobile Touch Cards */}
           <div className="bg-slate-900/90 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
-            <div className="overflow-x-auto">
+            {/* Mobile Touch Cards View (md:hidden) */}
+            <div className="md:hidden p-3 space-y-3">
+              {filteredUsers.length === 0 ? (
+                <div className="py-12 px-4 text-center text-slate-400 bg-slate-950/40 rounded-xl border border-slate-800">
+                  {isLoading ? (
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <RefreshCw className="w-6 h-6 animate-spin text-purple-400" />
+                      <span className="text-sm font-bold text-slate-300">جارِ جلب الكروت من User Manager...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <Users className="w-10 h-10 text-slate-600 mx-auto mb-2 opacity-50" />
+                      <p className="font-bold text-sm text-slate-300">لا توجد كروت مطابقة</p>
+                      <p className="text-xs text-slate-500 mt-1">لم يتم العثور على أي كروت تطابق معايير البحث الحالية.</p>
+                    </>
+                  )}
+                </div>
+              ) : (
+                filteredUsers.map((u, idx) => {
+                  const cardStatus = evaluateCardExpirationStatus(u, categories);
+                  const totalBytes = cardStatus.totalBytesUsed;
+                  const hasLimit = cardStatus.hasQuota;
+                  const percentUsed = cardStatus.percentQuotaUsed;
+
+                  return (
+                    <div
+                      key={u.id || u.name || `um-mob-user-${idx}`}
+                      className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3"
+                    >
+                      {/* Top row: Name & Status */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-9 h-9 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 font-bold shrink-0">
+                            <Key className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-bold text-white text-base truncate">{u.name}</span>
+                              <button
+                                onClick={() => handleCopy(u.name, `mob-name-${u.id}`)}
+                                className="p-1 text-slate-400 hover:text-white shrink-0"
+                                title="نسخ اسم الكارت"
+                              >
+                                {copiedId === `mob-name-${u.id}` ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                            {u.customer && (
+                              <span className="text-[10px] text-slate-400 block font-mono">المالك: {u.customer}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Status Badge */}
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border shrink-0 ${cardStatus.statusBadgeClass}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            cardStatus.isQuotaExpired ? 'bg-rose-400' :
+                            cardStatus.isTimeExpired ? 'bg-amber-400' :
+                            cardStatus.isManuallyDisabled ? 'bg-slate-400' : 'bg-emerald-400'
+                          }`} />
+                          {cardStatus.statusLabel}
+                        </span>
+                      </div>
+
+                      {/* Password & Profile Row */}
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
+                          <span className="text-[10px] text-slate-400 block mb-1">كلمة المرور / PIN</span>
+                          <div className="flex items-center justify-between font-mono">
+                            <span className="text-purple-300 font-bold text-xs truncate">
+                              {visiblePasswords[u.id] ? u.password || 'لا يوجد' : '••••••'}
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => togglePasswordVisibility(u.id)}
+                                className="p-1 text-slate-400 hover:text-white"
+                              >
+                                {visiblePasswords[u.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              </button>
+                              {u.password && (
+                                <button
+                                  onClick={() => handleCopy(u.password || '', `mob-pass-${u.id}`)}
+                                  className="p-1 text-slate-400 hover:text-white"
+                                  title="نسخ كلمة المرور"
+                                >
+                                  {copiedId === `mob-pass-${u.id}` ? (
+                                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  ) : (
+                                    <Copy className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
+                          <span className="text-[10px] text-slate-400 block mb-1">البروفايل المخصص</span>
+                          <button
+                            onClick={() => setCardToEdit(u)}
+                            className="w-full text-right text-xs font-mono font-bold text-indigo-300 hover:text-indigo-200 flex items-center justify-between"
+                            title="انقر لتعديل البروفايل"
+                          >
+                            <span className="truncate">{u.actualProfile || 'default'}</span>
+                            {u.profilesCount && u.profilesCount.waiting > 0 && (
+                              <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-sans font-bold flex items-center gap-0.5 shrink-0 ml-1">
+                                <Clock className="w-2.5 h-2.5" />
+                                +{u.profilesCount.waiting}
+                              </span>
+                            )}
+                          </button>
+                          {u.profilesCount && (u.profilesCount.waiting > 0 || u.profilesCount.used > 0) && (
+                            <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-1 font-sans">
+                              {u.profilesCount.used > 0 && (
+                                <span>{u.profilesCount.used} مستخدمة</span>
+                              )}
+                              {u.profilesCount.used > 0 && u.profilesCount.waiting > 0 && <span>•</span>}
+                              {u.profilesCount.waiting > 0 && (
+                                <span className="text-amber-300">{u.profilesCount.waiting} انتظار</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Data & Uptime Metrics */}
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
+                          <span className="text-[10px] text-slate-400 block">الاستهلاك / الرصيد</span>
+                          <span className="font-mono font-bold text-emerald-400 text-xs block mt-0.5">
+                            {formatBytesToHuman(totalBytes)}
+                          </span>
+                          {hasLimit && percentUsed !== null && (
+                            <div className="mt-1.5 space-y-1">
+                              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${
+                                    percentUsed >= 100
+                                      ? 'bg-rose-500'
+                                      : percentUsed > 70
+                                      ? 'bg-amber-400'
+                                      : 'bg-emerald-400'
+                                  }`}
+                                  style={{ width: `${percentUsed}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] text-slate-500 block font-mono">
+                                من {formatBytesToHuman(u.limitBytesTotal!)} ({percentUsed}%)
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
+                          <span className="text-[10px] text-slate-400 block">وقت الاتصال (Uptime)</span>
+                          <span className="font-mono font-bold text-amber-300 text-xs block mt-0.5">
+                            {u.uptime || '0s'}
+                          </span>
+                          <span className="text-[10px] text-slate-500 block mt-1">
+                            الحد: {u.limitUptime || 'غير محدد'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {u.comment && (
+                        <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800/60">
+                          ملاحظة: {u.comment}
+                        </div>
+                      )}
+
+                      {/* Action Buttons Toolbar for Mobile */}
+                      <div className="pt-2 border-t border-slate-800/60 grid grid-cols-5 gap-1.5 text-xs">
+                        <button
+                          onClick={() => setCardForSessions(u)}
+                          className="py-2 rounded-xl bg-cyan-600/15 hover:bg-cyan-600/25 text-cyan-300 border border-cyan-500/20 font-bold flex flex-col items-center justify-center gap-0.5 transition"
+                          title="عرض جلسات الكارت"
+                        >
+                          <Activity className="w-4 h-4" />
+                          <span className="text-[10px]">جلسات</span>
+                        </button>
+
+                        <button
+                          onClick={() => setCardToEdit(u)}
+                          className="py-2 rounded-xl bg-purple-600/15 hover:bg-purple-600/25 text-purple-300 border border-purple-500/20 font-bold flex flex-col items-center justify-center gap-0.5 transition"
+                          title="تعديل الكارت والبروفايل"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                          <span className="text-[10px]">تعديل</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleResetCounters(u.id, u.name)}
+                          className="py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 font-bold flex flex-col items-center justify-center gap-0.5 transition"
+                          title="تصفير العدادات"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          <span className="text-[10px]">تصفير</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleDisconnectUser(u.name)}
+                          className="py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold flex flex-col items-center justify-center gap-0.5 transition"
+                          title="فصل الكارت"
+                        >
+                          <PowerOff className="w-4 h-4" />
+                          <span className="text-[10px]">فصل</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteUser(u.id, u.name)}
+                          disabled={isDeletingUser}
+                          className="py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 font-bold flex flex-col items-center justify-center gap-0.5 transition"
+                          title="حذف الكارت"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          <span className="text-[10px]">حذف</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Desktop Table View (hidden md:block) */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-right text-xs">
                 <thead>
                   <tr className="bg-slate-950/80 text-slate-400 border-b border-slate-800 font-semibold">
@@ -1152,13 +1509,39 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
 
                           {/* Profile */}
                           <td className="p-3.5">
-                            <button
-                              onClick={() => setCardToEdit(u)}
-                              className="px-2.5 py-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 font-mono font-medium border border-indigo-500/20 transition text-right"
-                              title="انقر لتعديل البروفايل"
-                            >
-                              {u.actualProfile || 'default'}
-                            </button>
+                            <div className="flex flex-col items-start gap-1">
+                              <button
+                                onClick={() => setCardToEdit(u)}
+                                className="px-2.5 py-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 font-mono font-medium border border-indigo-500/20 transition text-right flex items-center gap-1.5"
+                                title="انقر لتعديل البروفايل وعرض الباقات المستخدمة وقيد الانتظار"
+                              >
+                                <span>{u.actualProfile || 'default'}</span>
+                                {u.profilesCount && u.profilesCount.waiting > 0 && (
+                                  <span
+                                    className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-sans font-bold flex items-center gap-0.5"
+                                    title={`${u.profilesCount.waiting} باقة قيد الانتظار`}
+                                  >
+                                    <Clock className="w-2.5 h-2.5" />
+                                    +{u.profilesCount.waiting}
+                                  </span>
+                                )}
+                              </button>
+                              {u.profilesCount && (u.profilesCount.waiting > 0 || u.profilesCount.used > 0) && (
+                                <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                                  {u.profilesCount.used > 0 && (
+                                    <span className="text-slate-400 font-sans" title={`${u.profilesCount.used} باقة مستخدمة سابقاً`}>
+                                      {u.profilesCount.used} مستخدمة
+                                    </span>
+                                  )}
+                                  {u.profilesCount.used > 0 && u.profilesCount.waiting > 0 && <span>•</span>}
+                                  {u.profilesCount.waiting > 0 && (
+                                    <span className="text-amber-400 font-sans font-semibold" title={`${u.profilesCount.waiting} باقة قيد الانتظار`}>
+                                      {u.profilesCount.waiting} بالانتظار
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </td>
 
                           {/* Uptime */}

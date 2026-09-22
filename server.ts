@@ -580,6 +580,42 @@ app.post("/api/mikrotik/um/assign-profile", async (req, res) => {
   }
 });
 
+// 20a3. Get User Manager User Assigned Profiles (Used, Active, Waiting Queue)
+app.post("/api/mikrotik/um/user-assigned-profiles", async (req, res) => {
+  try {
+    const { options, username } = req.body;
+    if (!options?.host || !username) {
+      return res.status(400).json({ success: false, error: "اسم المستخدم وبيانات الراوتر مطلوبة" });
+    }
+    const result = await MikroTikService.getUserAssignedProfiles(options, username);
+    res.json({ success: true, ...result });
+  } catch (error: any) {
+    res.json({
+      success: false,
+      error: error.message || "تعذر جلب باقات المستخدم",
+      isPrivateIp: isPrivateIp(req.body?.options?.host),
+    });
+  }
+});
+
+// 20a4. Remove / Cancel User Manager User Assigned Profile (Waiting Queue)
+app.post("/api/mikrotik/um/remove-user-profile", async (req, res) => {
+  try {
+    const { options, assignmentId } = req.body;
+    if (!options?.host || !assignmentId) {
+      return res.status(400).json({ success: false, error: "معرف الباقة وبيانات الراوتر مطلوبة" });
+    }
+    const success = await MikroTikService.removeUserAssignedProfile(options, assignmentId);
+    res.json({ success });
+  } catch (error: any) {
+    res.json({
+      success: false,
+      error: error.message || "تعذر حذف الباقة",
+      isPrivateIp: isPrivateIp(req.body?.options?.host),
+    });
+  }
+});
+
 
 // 20b. Update UM User (Edit Card & Change Profile)
 app.post("/api/mikrotik/um/update-user", async (req, res) => {

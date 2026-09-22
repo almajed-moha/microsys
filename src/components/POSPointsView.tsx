@@ -518,46 +518,81 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
         </div>
       </div>
 
-      {/* Filters & Search */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/80 p-3 rounded-xl border border-slate-800">
-        <div className="relative w-full sm:w-80">
-          <input
-            type="text"
-            placeholder="بحث بالاسم، المدير، الهاتف، اسم الدخول..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 pl-9 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-          />
-          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+      {/* Filters & Search - Mobile & Tablet Friendly Grid */}
+      <div className="space-y-2.5 bg-slate-900/80 p-3 sm:p-4 rounded-2xl border border-slate-800 shadow-md">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="relative w-full sm:w-96">
+            <input
+              type="text"
+              placeholder="بحث بالاسم، المدير، الهاتف، اسم الدخول..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 pl-9 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 shadow-inner"
+            />
+            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-auto text-xs text-slate-400">
+            <span>تصفية نقاط البيع (مربعات سريعة):</span>
+          </div>
         </div>
 
-        <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+        {/* Square Filter Grid - No Horizontal Scrolling Required */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
           {(['all', 'active', 'suspended', 'indebted', 'over_limit'] as const).map((filterKey) => {
             const isSelected = statusFilter === filterKey;
+            let count = posPoints.length;
+            let title = 'كافة النقاط';
+            let icon = <Store className="w-4 h-4" />;
+
+            if (filterKey === 'active') {
+              count = posPoints.filter((p) => p.status === 'active').length;
+              title = 'النقاط النشطة';
+              icon = <Check className="w-4 h-4 text-emerald-400" />;
+            } else if (filterKey === 'suspended') {
+              count = posPoints.filter((p) => p.status === 'suspended').length;
+              title = 'النقاط المتوقفة';
+              icon = <AlertCircle className="w-4 h-4 text-slate-400" />;
+            } else if (filterKey === 'indebted') {
+              count = posPoints.filter((p) => (p.currentDebt || 0) > 0).length;
+              title = 'نقاط مديونة';
+              icon = <DollarSign className="w-4 h-4 text-amber-400" />;
+            } else if (filterKey === 'over_limit') {
+              count = overDebtPoints.length;
+              title = 'تجاوزت سقف الدين';
+              icon = <AlertTriangle className="w-4 h-4 text-rose-400" />;
+            }
+
             return (
               <button
                 key={filterKey}
+                type="button"
                 onClick={() => setStatusFilter(filterKey)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                className={`p-2.5 rounded-xl border text-center transition-all duration-150 min-h-[64px] flex flex-col items-center justify-center cursor-pointer active:scale-95 shadow-xs ${
                   isSelected
                     ? filterKey === 'over_limit'
-                      ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
-                      : 'bg-indigo-600 text-white shadow-xs'
+                      ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30 border-rose-400 ring-2 ring-rose-400/40'
+                      : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/40'
                     : filterKey === 'over_limit' && overDebtPoints.length > 0
-                    ? 'bg-rose-950/60 text-rose-300 border border-rose-500/40 hover:bg-rose-900/60'
-                    : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                    ? 'bg-rose-950/60 text-rose-300 border-rose-500/50 hover:bg-rose-900/60'
+                    : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800 hover:border-slate-700'
                 }`}
               >
-                {filterKey === 'all' && <span>الكل ({posPoints.length})</span>}
-                {filterKey === 'active' && <span>النشطة فقط</span>}
-                {filterKey === 'suspended' && <span>المتوقفة</span>}
-                {filterKey === 'indebted' && <span>المديونة</span>}
-                {filterKey === 'over_limit' && (
-                  <>
-                    <AlertTriangle className="w-3 h-3 text-rose-400" />
-                    <span>متجاوزة سقف الدين ({overDebtPoints.length})</span>
-                  </>
-                )}
+                <div className="flex items-center gap-1.5 mb-1">
+                  {icon}
+                  <span className="text-xs font-bold leading-tight">{title}</span>
+                </div>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+                    isSelected
+                      ? 'bg-black/30 text-white'
+                      : filterKey === 'over_limit' && count > 0
+                      ? 'bg-rose-600 text-white'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  {count} نقطة
+                </span>
               </button>
             );
           })}

@@ -37,6 +37,8 @@ import {
   DatabaseBackupModal,
   CustomersView,
   CardUsageTrackerView,
+  MikrotikQuickLauncherModal,
+  MikrotikFloatingSpeedDial,
 } from './components';
 import {
   CardCategory,
@@ -526,6 +528,21 @@ export default function App() {
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [quickSalePOSId, setQuickSalePOSId] = useState<string | undefined>(undefined);
   const [isDataSyncModalOpen, setIsDataSyncModalOpen] = useState(false);
+
+  // Fast Navigation & Command Palette state for MikroTik & User Manager
+  const [isMikrotikLauncherOpen, setIsMikrotikLauncherOpen] = useState(false);
+  const [mikrotikTargetSubTab, setMikrotikTargetSubTab] = useState<string | undefined>(undefined);
+  const [mikrotikTargetUmTab, setMikrotikTargetUmTab] = useState<string | undefined>(undefined);
+
+  const handleNavigateToMikrotik = useCallback((subTab?: string, umTab?: string) => {
+    setActiveView('mikrotik');
+    if (subTab) {
+      setMikrotikTargetSubTab(subTab);
+    }
+    if (umTab) {
+      setMikrotikTargetUmTab(umTab);
+    }
+  }, []);
 
   // Scheduled Automatic Data Sync (every 60 seconds / 1 minute in the background)
   const scheduledDataSync = useGlobalNetworkUsageSync(
@@ -3723,6 +3740,8 @@ export default function App() {
             isSyncing: scheduledDataSync.isSyncing,
             intervalSeconds: scheduledDataSync.intervalSeconds,
           }}
+          onOpenMikrotikQuickLauncher={() => setIsMikrotikLauncherOpen(true)}
+          onNavigateToMikrotikSubTab={handleNavigateToMikrotik}
         />
 
         {/* Global Feedback Banner */}
@@ -3962,6 +3981,8 @@ export default function App() {
                   categories={scopedCategories}
                   onUpdateSettings={(newSettings) => handleSaveSettings(newSettings)}
                   onOpenDataSync={() => setIsDataSyncModalOpen(true)}
+                  initialSubTab={mikrotikTargetSubTab}
+                  initialUmTab={mikrotikTargetUmTab}
                 />
               )}
 
@@ -4375,6 +4396,23 @@ export default function App() {
           sync={scheduledDataSync}
           routerHost={settings.mikrotikConfig?.host || settings.mikrotikIp}
           routerIdentity={settings.mikrotikConfig?.routerIdentity || settings.networkName}
+        />
+      )}
+
+      {/* MikroTik Quick Launcher Command Palette (Alt+M) */}
+      <MikrotikQuickLauncherModal
+        isOpen={isMikrotikLauncherOpen}
+        onClose={() => setIsMikrotikLauncherOpen(false)}
+        settings={settings}
+        onNavigateToMikrotik={handleNavigateToMikrotik}
+      />
+
+      {/* Floating Speed Dial for Lightning-Fast MikroTik & User Manager Navigation */}
+      {isLoggedIn && (
+        <MikrotikFloatingSpeedDial
+          settings={settings}
+          onNavigateToMikrotik={handleNavigateToMikrotik}
+          onOpenQuickLauncher={() => setIsMikrotikLauncherOpen(true)}
         />
       )}
 

@@ -59,6 +59,10 @@ import {
   Wrench,
   Folder,
   Archive,
+  LayoutGrid,
+  Menu,
+  X,
+  ChevronLeft,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -129,6 +133,8 @@ interface MikrotikLiveViewProps {
   onDeleteTemplate?: (templateId: string) => void;
   onUpdateSettings: (newSettings: NetworkSettings) => void;
   onOpenDataSync?: () => void;
+  initialSubTab?: string;
+  initialUmTab?: string;
 }
 
 import {
@@ -158,6 +164,8 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   onDeleteTemplate,
   onUpdateSettings,
   onOpenDataSync,
+  initialSubTab,
+  initialUmTab,
 }) => {
   // Config state
   const [config, setConfig] = useState<MikroTikConfig>(() => ({
@@ -191,14 +199,68 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
   const [interfaces, setInterfaces] = useState<RouterInterface[]>([]);
   const [trafficHistory, setTrafficHistory] = useState<{ time: string; rxMbps: number; txMbps: number }[]>([]);
 
-  // Sub-tabs
+  // Sub-tabs with smart persistence
+  const validSubTabs = useMemo(() => [
+    'active_users', 'all_users', 'profiles', 'user_manager', 'maintenance',
+    'interfaces', 'remote_control', 'hosts', 'diagnostics', 'ai_assistant',
+    'settings', 'daily_logs', 'files'
+  ], []);
 
   // Auto-track network usage deltas and sync to Firebase
   useNetworkUsageTracker(activeUsers, isConnected, systemInfo?.model || config.routerModel);
 
   const [activeSubTab, setActiveSubTab] = useState<
     'active_users' | 'all_users' | 'profiles' | 'user_manager' | 'maintenance' | 'interfaces' | 'remote_control' | 'hosts' | 'diagnostics' | 'ai_assistant' | 'settings' | 'daily_logs' | 'files'
-  >('active_users');
+  >(() => {
+    if (initialSubTab && [
+      'active_users', 'all_users', 'profiles', 'user_manager', 'maintenance',
+      'interfaces', 'remote_control', 'hosts', 'diagnostics', 'ai_assistant',
+      'settings', 'daily_logs', 'files'
+    ].includes(initialSubTab)) {
+      return initialSubTab as any;
+    }
+    try {
+      const saved = localStorage.getItem('mikrotik_last_subtab');
+      if (saved && [
+        'active_users', 'all_users', 'profiles', 'user_manager', 'maintenance',
+        'interfaces', 'remote_control', 'hosts', 'diagnostics', 'ai_assistant',
+        'settings', 'daily_logs', 'files'
+      ].includes(saved)) {
+        return saved as any;
+      }
+    } catch {}
+    return 'active_users';
+  });
+
+  // Watch for external initialSubTab changes
+  useEffect(() => {
+    if (initialSubTab && [
+      'active_users', 'all_users', 'profiles', 'user_manager', 'maintenance',
+      'interfaces', 'remote_control', 'hosts', 'diagnostics', 'ai_assistant',
+      'settings', 'daily_logs', 'files'
+    ].includes(initialSubTab)) {
+      setActiveSubTab(initialSubTab as any);
+    }
+  }, [initialSubTab]);
+
+  // Persist current subTab
+  useEffect(() => {
+    try {
+      localStorage.setItem('mikrotik_last_subtab', activeSubTab);
+    } catch {}
+  }, [activeSubTab]);
+  const [showMobileTabMenu, setShowMobileTabMenu] = useState(false);
+  const [copiedUserIp, setCopiedUserIp] = useState<string | null>(null);
+
+  const handleCopyText = (text: string, id: string) => {
+    try {
+      navigator.clipboard.writeText(text);
+      setCopiedUserIp(id);
+      setTimeout(() => setCopiedUserIp(null), 2000);
+    } catch {
+      // ignore
+    }
+  };
 
   // Search & Advanced Filter States
   const [activeUserSearch, setActiveUserSearch] = useState('');
@@ -1241,201 +1303,935 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
         </div>
       </div>
 
-      {/* Sub-Navigation Tabs (WinBox Suite Features) */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
-        <button
-          onClick={() => setActiveSubTab('active_users')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeSubTab === 'active_users'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span>المستخدمين النشطين ({activeUsers.length})</span>
-        </button>
+      {/* Mobile Current Section Banner & Quick Switcher Drawer Toggle */}
+      <div className="sm:hidden bg-slate-900/95 border border-slate-800 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-md">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+            {activeSubTab === 'active_users' && <Users className="w-5 h-5 text-emerald-400" />}
+            {activeSubTab === 'user_manager' && <Server className="w-5 h-5 text-purple-400" />}
+            {activeSubTab === 'all_users' && <CreditCard className="w-5 h-5 text-indigo-400" />}
+            {activeSubTab === 'profiles' && <Layers className="w-5 h-5 text-cyan-400" />}
+            {activeSubTab === 'maintenance' && <Wrench className="w-5 h-5 text-amber-400" />}
+            {activeSubTab === 'daily_logs' && <Database className="w-5 h-5 text-emerald-400" />}
+            {activeSubTab === 'files' && <Folder className="w-5 h-5 text-sky-400" />}
+            {activeSubTab === 'remote_control' && <Power className="w-5 h-5 text-amber-400" />}
+            {activeSubTab === 'interfaces' && <Activity className="w-5 h-5 text-indigo-400" />}
+            {activeSubTab === 'hosts' && <Laptop className="w-5 h-5 text-cyan-400" />}
+            {activeSubTab === 'ai_assistant' && <Bot className="w-5 h-5 text-purple-400" />}
+            {activeSubTab === 'diagnostics' && <Terminal className="w-5 h-5 text-indigo-400" />}
+            {activeSubTab === 'settings' && <Sliders className="w-5 h-5 text-slate-400" />}
+          </div>
+          <div className="min-w-0">
+            <span className="text-[10px] text-slate-400 block font-medium">القسم النشط حالياً</span>
+            <div className="flex items-center gap-1.5">
+              <h4 className="font-bold text-white text-sm truncate">
+                {activeSubTab === 'active_users' && `المستخدمين النشطين (${activeUsers.length})`}
+                {activeSubTab === 'user_manager' && 'اليوزر مانجر (User Manager)'}
+                {activeSubTab === 'all_users' && `كروت الهوتسبوت (${configuredUsers.length})`}
+                {activeSubTab === 'profiles' && `بروفايلات السرعة (${userProfiles.length})`}
+                {activeSubTab === 'maintenance' && 'وضع الصيانة والشبكة'}
+                {activeSubTab === 'daily_logs' && 'سجل الاستهلاك اليومي'}
+                {activeSubTab === 'files' && 'الملفات والنسخ الاحتياطية'}
+                {activeSubTab === 'remote_control' && 'التحكم عن بُعد والأوامر'}
+                {activeSubTab === 'interfaces' && `واجهات الشبكة (${interfaces.length})`}
+                {activeSubTab === 'hosts' && `الأجهزة و DHCP (${hosts.length})`}
+                {activeSubTab === 'ai_assistant' && 'المساعد الذكي للمايكروتك'}
+                {activeSubTab === 'diagnostics' && 'سكربتات WinBox'}
+                {activeSubTab === 'settings' && 'إعدادات الاتصال'}
+              </h4>
+            </div>
+          </div>
+        </div>
 
         <button
-          onClick={() => setActiveSubTab('all_users')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeSubTab === 'all_users'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
+          type="button"
+          onClick={() => setShowMobileTabMenu(true)}
+          className="min-h-[44px] px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-md shadow-indigo-600/30 transition active:scale-95"
         >
-          <CreditCard className="w-4 h-4" />
-          <span>جميع الكروت بالراوتر ({configuredUsers.length})</span>
+          <LayoutGrid className="w-4 h-4" />
+          <span>كل الأقسام (13)</span>
+          <ChevronDown className="w-3.5 h-3.5" />
         </button>
+      </div>
 
-        <button
-          onClick={() => setActiveSubTab('profiles')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeSubTab === 'profiles'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
+      {/* Mobile Bottom Sheet Drawer / Modal for Easy Tab Picking */}
+      {showMobileTabMenu && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-xs z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
+          onClick={() => setShowMobileTabMenu(false)}
         >
-          <Layers className="w-4 h-4" />
-          <span>بروفايلات السرعة ({userProfiles.length})</span>
-        </button>
+          <div
+            className="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl max-h-[88vh] w-full max-w-lg overflow-hidden flex flex-col shadow-2xl animate-in slide-in-from-bottom-8 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80 sticky top-0 z-10">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-indigo-600/20 text-indigo-400">
+                  <LayoutGrid className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base">أقسام وتبويبات المايكروتك</h3>
+                  <p className="text-xs text-slate-400">اختر القسم الذي تريد الانتقال إليه بلمسة واحدة</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowMobileTabMenu(false)}
+                className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-        <button
-          onClick={() => setActiveSubTab('user_manager')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition border ${
-            activeSubTab === 'user_manager'
-              ? 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-600/30'
-              : 'bg-slate-900 text-purple-400 border-purple-500/20 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Server className="w-4 h-4 text-purple-400" />
-          <span>اليوزر مانجر (User Manager)</span>
-          <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
-        </button>
+            {/* Modal Content / Grouped Tabs */}
+            <div className="p-4 overflow-y-auto space-y-4 divide-y divide-slate-800/80 text-right">
+              {/* Group 1: المشتركين والكروت */}
+              <div className="space-y-2">
+                <span className="text-xs font-bold text-indigo-400 tracking-wider block">
+                  👤 إدارة المشتركين والكروت
+                </span>
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    onClick={() => {
+                      setActiveSubTab('active_users');
+                      setShowMobileTabMenu(false);
+                    }}
+                    className={`w-full p-3 rounded-2xl border text-right flex items-center justify-between transition min-h-[56px] ${
+                      activeSubTab === 'active_users'
+                        ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/50'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                        <Users className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-sm flex items-center gap-2">
+                          <span>المستخدمين النشطين</span>
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        </div>
+                        <span className="text-[11px] text-slate-400 block">الجلسات المتصلة الآن وسحب السرعات</span>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full text-xs font-bold font-mono bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                      {activeUsers.length} متصل
+                    </span>
+                  </button>
 
-        <button
-          onClick={() => setActiveSubTab('maintenance')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition border ${
-            activeSubTab === 'maintenance'
-              ? 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-600/30'
-              : settings.maintenanceSettings?.networkStatus === 'maintenance' || settings.maintenanceSettings?.enabled
-              ? 'bg-amber-950/40 text-amber-300 border-amber-500/40 hover:bg-slate-800'
-              : settings.maintenanceSettings?.networkStatus === 'disabled'
-              ? 'bg-rose-950/40 text-rose-300 border-rose-500/40 hover:bg-slate-800'
-              : 'bg-slate-900 text-amber-400 border-amber-500/20 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Wrench className="w-4 h-4 text-amber-400" />
-          <span>وضع الصيانة وحالة الشبكة</span>
-          {settings.maintenanceSettings?.networkStatus === 'maintenance' && (
-            <span className="px-1.5 py-0.2 bg-amber-400 text-black text-[9px] font-black rounded-full animate-pulse">نشط</span>
-          )}
-          {settings.maintenanceSettings?.networkStatus === 'disabled' && (
-            <span className="px-1.5 py-0.2 bg-rose-500 text-white text-[9px] font-black rounded-full">معطل</span>
-          )}
-        </button>
+                  <button
+                    onClick={() => {
+                      setActiveSubTab('user_manager');
+                      setShowMobileTabMenu(false);
+                    }}
+                    className={`w-full p-3 rounded-2xl border text-right flex items-center justify-between transition min-h-[56px] ${
+                      activeSubTab === 'user_manager'
+                        ? 'bg-purple-600/25 border-purple-500 text-white shadow-sm ring-1 ring-purple-500/50'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
+                        <Server className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-sm flex items-center gap-2">
+                          <span>اليوزر مانجر (User Manager)</span>
+                          <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 text-[10px] font-bold">UM v6/v7</span>
+                        </div>
+                        <span className="text-[11px] text-slate-400 block">كروت وباقات اليوزر مانجر وطابور الانتظار</span>
+                      </div>
+                    </div>
+                    <ChevronLeft className="w-4 h-4 text-purple-400" />
+                  </button>
 
-        <button
-          onClick={() => setActiveSubTab('remote_control')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeSubTab === 'remote_control'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Power className="w-4 h-4 text-amber-400" />
-          <span>التحكم عن بُعد والأوامر</span>
-        </button>
+                  <button
+                    onClick={() => {
+                      setActiveSubTab('all_users');
+                      setShowMobileTabMenu(false);
+                    }}
+                    className={`w-full p-3 rounded-2xl border text-right flex items-center justify-between transition min-h-[56px] ${
+                      activeSubTab === 'all_users'
+                        ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/50'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                        <CreditCard className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-sm">كروت الهوتسبوت بالراوتر</div>
+                        <span className="text-[11px] text-slate-400 block">كافة الكروت والمنتهية في /ip/hotspot/user</span>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full text-xs font-bold font-mono bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                      {configuredUsers.length} كرت
+                    </span>
+                  </button>
 
-        <button
-          onClick={() => setActiveSubTab('interfaces')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeSubTab === 'interfaces'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Activity className="w-4 h-4" />
-          <span>واجهات الشبكة والسرعات ({interfaces.length})</span>
-        </button>
+                  <button
+                    onClick={() => {
+                      setActiveSubTab('profiles');
+                      setShowMobileTabMenu(false);
+                    }}
+                    className={`w-full p-3 rounded-2xl border text-right flex items-center justify-between transition min-h-[56px] ${
+                      activeSubTab === 'profiles'
+                        ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/50'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+                        <Layers className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-sm">بروفايلات السرعة (Profiles)</div>
+                        <span className="text-[11px] text-slate-400 block">تحديد سرعات التحميل والرفع والمشاركة</span>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full text-xs font-bold font-mono bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                      {userProfiles.length} بروفايل
+                    </span>
+                  </button>
+                </div>
+              </div>
 
-        <button
-          onClick={() => setActiveSubTab('hosts')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeSubTab === 'hosts'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Laptop className="w-4 h-4" />
-          <span>الأجهزة و DHCP ({hosts.length})</span>
-        </button>
+              {/* Group 2: الصيانة والتشغيل والملفات */}
+              <div className="space-y-2 pt-3">
+                <span className="text-xs font-bold text-amber-400 tracking-wider block">
+                  ⚡ الصيانة والتشغيل والملفات
+                </span>
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    onClick={() => {
+                      setActiveSubTab('maintenance');
+                      setShowMobileTabMenu(false);
+                    }}
+                    className={`w-full p-3 rounded-2xl border text-right flex items-center justify-between transition min-h-[56px] ${
+                      activeSubTab === 'maintenance'
+                        ? 'bg-amber-600/20 border-amber-500 text-white shadow-sm ring-1 ring-amber-500/50'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                        <Wrench className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-sm">وضع الصيانة وحالة الشبكة</div>
+                        <span className="text-[11px] text-slate-400 block">إيقاف وتشغيل الشبكة وإظهار صفحة الصيانة</span>
+                      </div>
+                    </div>
+                    <ChevronLeft className="w-4 h-4 text-amber-400" />
+                  </button>
 
-        <button
-          onClick={() => setActiveSubTab('ai_assistant')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeSubTab === 'ai_assistant'
-              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
-              : 'bg-slate-900 text-purple-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Bot className="w-4 h-4" />
-          <span>المساعد الذكي للمايكروتك</span>
-        </button>
+                  <button
+                    onClick={() => {
+                      setActiveSubTab('daily_logs');
+                      setShowMobileTabMenu(false);
+                    }}
+                    className={`w-full p-3 rounded-2xl border text-right flex items-center justify-between transition min-h-[56px] ${
+                      activeSubTab === 'daily_logs'
+                        ? 'bg-emerald-600/20 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/50'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                        <Database className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-sm">سجل الاستهلاك اليومي</div>
+                        <span className="text-[11px] text-slate-400 block">تقارير سحب البيانات والـ WAN التراكمية</span>
+                      </div>
+                    </div>
+                    <ChevronLeft className="w-4 h-4 text-emerald-400" />
+                  </button>
 
-        <button
-          onClick={() => setActiveSubTab('diagnostics')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeSubTab === 'diagnostics'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Terminal className="w-4 h-4" />
-          <span>سكربتات WinBox</span>
-        </button>
+                  <button
+                    onClick={() => {
+                      setActiveSubTab('files');
+                      setShowMobileTabMenu(false);
+                    }}
+                    className={`w-full p-3 rounded-2xl border text-right flex items-center justify-between transition min-h-[56px] ${
+                      activeSubTab === 'files'
+                        ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/50'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400 shrink-0">
+                        <Folder className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-sm flex items-center gap-1.5">
+                          <span>الملفات والنسخ الاحتياطية</span>
+                          <span className="px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 text-[10px] font-bold">جديد</span>
+                        </div>
+                        <span className="text-[11px] text-slate-400 block">إدارة ملفات الراوتر واستعادة Backups</span>
+                      </div>
+                    </div>
+                    <ChevronLeft className="w-4 h-4 text-sky-400" />
+                  </button>
 
+                  <button
+                    onClick={() => {
+                      setActiveSubTab('remote_control');
+                      setShowMobileTabMenu(false);
+                    }}
+                    className={`w-full p-3 rounded-2xl border text-right flex items-center justify-between transition min-h-[56px] ${
+                      activeSubTab === 'remote_control'
+                        ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/50'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                        <Power className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-sm">التحكم عن بُعد والأوامر</div>
+                        <span className="text-[11px] text-slate-400 block">إعادة التشغيل، فحص البنج، وأوامر النظام</span>
+                      </div>
+                    </div>
+                    <ChevronLeft className="w-4 h-4 text-slate-400" />
+                  </button>
+                </div>
+              </div>
 
-        <button
-          onClick={() => setActiveSubTab('daily_logs')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-            activeSubTab === 'daily_logs'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Database className="w-4 h-4 text-emerald-400" />
-          <span>سجل الاستهلاك اليومي</span>
-        </button>
+              {/* Group 3: أدوات الشبكة والمتقدم */}
+              <div className="space-y-2 pt-3">
+                <span className="text-xs font-bold text-sky-400 tracking-wider block">
+                  🛠️ أدوات الشبكة والمتقدم
+                </span>
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    onClick={() => {
+                      setActiveSubTab('interfaces');
+                      setShowMobileTabMenu(false);
+                    }}
+                    className={`w-full p-3 rounded-2xl border text-right flex items-center justify-between transition min-h-[56px] ${
+                      activeSubTab === 'interfaces'
+                        ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/50'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                        <Activity className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-sm">واجهات الشبكة والسرعات</div>
+                        <span className="text-[11px] text-slate-400 block">رسم بياني حي لمعدل سحب المنافذ والـ WAN</span>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-slate-800 text-slate-300">
+                      {interfaces.length} منفذ
+                    </span>
+                  </button>
 
-        <button
-          onClick={() => setActiveSubTab('files')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition border ${
-            activeSubTab === 'files'
-              ? 'bg-gradient-to-r from-indigo-600 via-indigo-700 to-sky-600 text-white border-indigo-500 shadow-md shadow-indigo-600/30'
-              : 'bg-slate-900 text-indigo-400 border-indigo-500/30 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Folder className="w-4 h-4 text-indigo-400" />
-          <span>الملفات والنسخ الاحتياطية (Files & Backups)</span>
-          <span className="px-1.5 py-0.2 bg-indigo-500/20 text-indigo-300 text-[10px] font-bold rounded-full">جديد</span>
-        </button>
+                  <button
+                    onClick={() => {
+                      setActiveSubTab('hosts');
+                      setShowMobileTabMenu(false);
+                    }}
+                    className={`w-full p-3 rounded-2xl border text-right flex items-center justify-between transition min-h-[56px] ${
+                      activeSubTab === 'hosts'
+                        ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/50'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+                        <Laptop className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-sm">الأجهزة المتصلة و DHCP</div>
+                        <span className="text-[11px] text-slate-400 block">جدول Hosts وعناوين الماك المكتشفة</span>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-slate-800 text-slate-300">
+                      {hosts.length} جهاز
+                    </span>
+                  </button>
 
-        <button
-          onClick={() => setActiveSubTab('settings')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition mr-auto ${
-            activeSubTab === 'settings'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Sliders className="w-4 h-4" />
-          <span>إعدادات الاتصال</span>
-        </button>
+                  <button
+                    onClick={() => {
+                      setActiveSubTab('ai_assistant');
+                      setShowMobileTabMenu(false);
+                    }}
+                    className={`w-full p-3 rounded-2xl border text-right flex items-center justify-between transition min-h-[56px] ${
+                      activeSubTab === 'ai_assistant'
+                        ? 'bg-purple-600/20 border-purple-500 text-white shadow-sm ring-1 ring-purple-500/50'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
+                        <Bot className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-sm">المساعد الذكي للمايكروتك</div>
+                        <span className="text-[11px] text-slate-400 block">استشارات وتوليد سكربتات RouterOS</span>
+                      </div>
+                    </div>
+                    <ChevronLeft className="w-4 h-4 text-purple-400" />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setActiveSubTab('diagnostics');
+                      setShowMobileTabMenu(false);
+                    }}
+                    className={`w-full p-3 rounded-2xl border text-right flex items-center justify-between transition min-h-[56px] ${
+                      activeSubTab === 'diagnostics'
+                        ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/50'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-slate-800 text-slate-300 shrink-0 flex items-center justify-center">
+                        <Terminal className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-sm">سكربتات WinBox</div>
+                        <span className="text-[11px] text-slate-400 block">سكربت One-Click Setup وأوامر التثبيت</span>
+                      </div>
+                    </div>
+                    <ChevronLeft className="w-4 h-4 text-slate-400" />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setActiveSubTab('settings');
+                      setShowMobileTabMenu(false);
+                    }}
+                    className={`w-full p-3 rounded-2xl border text-right flex items-center justify-between transition min-h-[56px] ${
+                      activeSubTab === 'settings'
+                        ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/50'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-slate-800 text-slate-300 shrink-0 flex items-center justify-center">
+                        <Sliders className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-sm">إعدادات الاتصال</div>
+                        <span className="text-[11px] text-slate-400 block">تعديل IP الراوتر والمنافذ وبروتوكول API</span>
+                      </div>
+                    </div>
+                    <ChevronLeft className="w-4 h-4 text-slate-400" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Square Cards Grid Navigation Menu (القوائم الداخلية على شكل مربعات سهلة الوصول والتحكم) */}
+      <div className="bg-slate-900/70 p-2.5 sm:p-3 rounded-2xl border border-slate-800 shadow-md">
+        <div className="flex items-center justify-between mb-2 px-1 text-xs text-slate-400">
+          <span className="font-bold flex items-center gap-1.5 text-slate-300">
+            <Layers className="w-4 h-4 text-indigo-400" />
+            <span>أقسام وتبويبات مايكروتك (وصول سريع مباشر بدون إزاحة):</span>
+          </span>
+          <span className="text-[11px] font-mono text-slate-500">13 قسماً متكاملاً</span>
+        </div>
+
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-2 sm:gap-2.5">
+          {/* 1. Active Users */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('active_users')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeSubTab === 'active_users'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeSubTab === 'active_users' ? 'bg-white/20 text-white' : 'bg-emerald-500/10 text-emerald-400'
+            }`}>
+              <Users className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">المستخدمين النشطين</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+              activeSubTab === 'active_users'
+                ? 'bg-black/30 text-white'
+                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+            }`}>
+              {activeUsers.length} نشط
+            </span>
+          </button>
+
+          {/* 2. User Manager */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('user_manager')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeSubTab === 'user_manager'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 border-purple-400 ring-2 ring-purple-400/40'
+                : 'bg-slate-900/90 text-purple-300 border-purple-500/30 hover:text-white hover:bg-slate-800/90 hover:border-purple-500/50'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeSubTab === 'user_manager' ? 'bg-white/20 text-white' : 'bg-purple-500/10 text-purple-400'
+            }`}>
+              <Server className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">اليوزر مانجر</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${
+              activeSubTab === 'user_manager'
+                ? 'bg-black/30 text-white'
+                : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+            }`}>
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>
+              <span>v6 / v7</span>
+            </span>
+          </button>
+
+          {/* 3. Hotspot Users */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('all_users')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeSubTab === 'all_users'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeSubTab === 'all_users' ? 'bg-white/20 text-white' : 'bg-indigo-500/10 text-indigo-400'
+            }`}>
+              <CreditCard className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">كروت الهوتسبوت</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+              activeSubTab === 'all_users'
+                ? 'bg-black/30 text-white'
+                : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+            }`}>
+              {configuredUsers.length} كارت
+            </span>
+          </button>
+
+          {/* 4. Speed Profiles */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('profiles')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeSubTab === 'profiles'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeSubTab === 'profiles' ? 'bg-white/20 text-white' : 'bg-cyan-500/10 text-cyan-400'
+            }`}>
+              <Layers className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">بروفايلات السرعة</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+              activeSubTab === 'profiles'
+                ? 'bg-black/30 text-white'
+                : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+            }`}>
+              {userProfiles.length} بروفايل
+            </span>
+          </button>
+
+          {/* 5. Maintenance & Network Status */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('maintenance')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeSubTab === 'maintenance'
+                ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30 border-amber-400 ring-2 ring-amber-400/40'
+                : settings.maintenanceSettings?.networkStatus === 'maintenance' || settings.maintenanceSettings?.enabled
+                ? 'bg-amber-950/50 text-amber-300 border-amber-500/60 hover:bg-amber-900/50'
+                : settings.maintenanceSettings?.networkStatus === 'disabled'
+                ? 'bg-rose-950/50 text-rose-300 border-rose-500/60 hover:bg-rose-900/50'
+                : 'bg-slate-900/90 text-amber-300 border-amber-500/30 hover:text-white hover:bg-slate-800/90'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeSubTab === 'maintenance' ? 'bg-white/20 text-white' : 'bg-amber-500/10 text-amber-400'
+            }`}>
+              <Wrench className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">وضع الصيانة</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-black ${
+              activeSubTab === 'maintenance'
+                ? 'bg-black/30 text-white'
+                : settings.maintenanceSettings?.networkStatus === 'maintenance'
+                ? 'bg-amber-400 text-black animate-pulse'
+                : settings.maintenanceSettings?.networkStatus === 'disabled'
+                ? 'bg-rose-500 text-white'
+                : 'bg-slate-800 text-slate-400'
+            }`}>
+              {settings.maintenanceSettings?.networkStatus === 'maintenance' ? 'صيانة نشطة' : settings.maintenanceSettings?.networkStatus === 'disabled' ? 'معطلة' : 'جاهزة'}
+            </span>
+          </button>
+
+          {/* 6. Daily Usage Logs */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('daily_logs')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeSubTab === 'daily_logs'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeSubTab === 'daily_logs' ? 'bg-white/20 text-white' : 'bg-emerald-500/10 text-emerald-400'
+            }`}>
+              <Database className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">سجل الاستهلاك</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-mono ${
+              activeSubTab === 'daily_logs' ? 'bg-black/30 text-white' : 'bg-slate-800 text-slate-400'
+            }`}>
+              يومي / شهري
+            </span>
+          </button>
+
+          {/* 7. Files & Backups */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('files')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeSubTab === 'files'
+                ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30 border-sky-400 ring-2 ring-sky-400/40'
+                : 'bg-slate-900/90 text-sky-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeSubTab === 'files' ? 'bg-white/20 text-white' : 'bg-sky-500/10 text-sky-400'
+            }`}>
+              <Folder className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">الملفات والنسخ</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              activeSubTab === 'files' ? 'bg-black/30 text-white' : 'bg-sky-500/20 text-sky-300'
+            }`}>
+              Backups
+            </span>
+          </button>
+
+          {/* 8. Remote Control */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('remote_control')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeSubTab === 'remote_control'
+                ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30 border-amber-400 ring-2 ring-amber-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeSubTab === 'remote_control' ? 'bg-white/20 text-white' : 'bg-amber-500/10 text-amber-400'
+            }`}>
+              <Power className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">التحكم بالأوامر</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              activeSubTab === 'remote_control' ? 'bg-black/30 text-white' : 'bg-slate-800 text-slate-400'
+            }`}>
+              أوامر سريعة
+            </span>
+          </button>
+
+          {/* 9. Interfaces */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('interfaces')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeSubTab === 'interfaces'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeSubTab === 'interfaces' ? 'bg-white/20 text-white' : 'bg-indigo-500/10 text-indigo-400'
+            }`}>
+              <Activity className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">واجهات الشبكة</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+              activeSubTab === 'interfaces'
+                ? 'bg-black/30 text-white'
+                : 'bg-slate-800 text-slate-300 border border-slate-700'
+            }`}>
+              {interfaces.length} منافذ
+            </span>
+          </button>
+
+          {/* 10. Hosts & DHCP */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('hosts')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeSubTab === 'hosts'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeSubTab === 'hosts' ? 'bg-white/20 text-white' : 'bg-cyan-500/10 text-cyan-400'
+            }`}>
+              <Laptop className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">الأجهزة و DHCP</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+              activeSubTab === 'hosts'
+                ? 'bg-black/30 text-white'
+                : 'bg-slate-800 text-slate-300 border border-slate-700'
+            }`}>
+              {hosts.length} جهاز
+            </span>
+          </button>
+
+          {/* 11. AI Assistant */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('ai_assistant')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeSubTab === 'ai_assistant'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 border-purple-400 ring-2 ring-purple-400/40'
+                : 'bg-slate-900/90 text-purple-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-purple-500/40'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeSubTab === 'ai_assistant' ? 'bg-white/20 text-white' : 'bg-purple-500/10 text-purple-400'
+            }`}>
+              <Bot className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">المساعد الذكي</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              activeSubTab === 'ai_assistant' ? 'bg-black/30 text-white' : 'bg-purple-500/20 text-purple-300'
+            }`}>
+              AI Bot
+            </span>
+          </button>
+
+          {/* 12. WinBox Scripts */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('diagnostics')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeSubTab === 'diagnostics'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeSubTab === 'diagnostics' ? 'bg-white/20 text-white' : 'bg-indigo-500/10 text-indigo-400'
+            }`}>
+              <Terminal className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">سكربتات WinBox</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              activeSubTab === 'diagnostics' ? 'bg-black/30 text-white' : 'bg-slate-800 text-slate-400'
+            }`}>
+              أوامر جاهزة
+            </span>
+          </button>
+
+          {/* 13. Settings */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('settings')}
+            className={`relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-2xl border text-center transition-all duration-150 min-h-[84px] sm:min-h-[88px] active:scale-95 cursor-pointer shadow-sm ${
+              activeSubTab === 'settings'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/40'
+                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+              activeSubTab === 'settings' ? 'bg-white/20 text-white' : 'bg-slate-700 text-slate-300'
+            }`}>
+              <Sliders className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-xs font-bold leading-tight line-clamp-1">إعدادات الاتصال</span>
+            <span className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              activeSubTab === 'settings' ? 'bg-black/30 text-white' : 'bg-slate-800 text-slate-400'
+            }`}>
+              IP & Port
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* SUB-VIEW 1: Active Users (Hotspot Active) */}
       {activeSubTab === 'active_users' && (
         <div className="space-y-4 animate-in fade-in duration-200">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-900/90 p-3.5 sm:p-4 rounded-2xl border border-slate-800 shadow-md">
             <div className="relative w-full sm:w-80">
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+              <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5" />
               <input
                 type="text"
                 placeholder="بحث بالمستخدم، IP، أو الماك..."
                 value={activeUserSearch}
                 onChange={(e) => setActiveUserSearch(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg pr-9 pl-3 py-1.5 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-slate-800/90 border border-slate-700 rounded-xl pr-10 pl-3.5 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
               />
             </div>
 
-            <div className="flex items-center gap-3 text-xs text-slate-400">
-              <span>المتصلين الآن: <strong className="text-emerald-400 font-mono font-bold">{filteredActiveUsers.length}</strong></span>
-              <span>• آخر تحديث: <strong className="font-mono text-slate-200">{lastUpdated || 'الآن'}</strong></span>
+            <div className="flex items-center justify-between sm:justify-end gap-3 text-xs text-slate-300 bg-slate-950/60 p-2 sm:p-0 rounded-xl border sm:border-0 border-slate-800">
+              <div className="flex items-center gap-1.5">
+                <span>المتصلين الآن:</span>
+                <span className="text-emerald-400 font-mono font-black text-sm bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                  {filteredActiveUsers.length}
+                </span>
+              </div>
+              <span className="text-slate-600">•</span>
+              <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
+                <span>آخر تحديث:</span>
+                <strong className="font-mono text-slate-200">{lastUpdated || 'الآن'}</strong>
+              </div>
             </div>
           </div>
 
           <div className="bg-slate-900/90 rounded-2xl border border-slate-800 shadow-md overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* Mobile Touch Cards View (md:hidden) */}
+            <div className="block md:hidden p-3 space-y-3">
+              {filteredActiveUsers.length === 0 ? (
+                <div className="p-8 text-center text-slate-500 bg-slate-950/40 rounded-2xl border border-slate-800">
+                  <Users className="w-10 h-10 text-slate-600 mx-auto mb-2" />
+                  <p className="text-sm font-medium">لا يوجد مستخدمين متصلين حالياً أو لا توجد نتائج مطابقة للبحث.</p>
+                </div>
+              ) : (
+                filteredActiveUsers.map((user) => (
+                  <div
+                    key={user.id}
+                    className="bg-slate-950/80 border border-slate-800/90 hover:border-slate-700 rounded-2xl p-4 shadow-sm space-y-3.5 transition-all"
+                  >
+                    {/* Top row: Avatar + Username + Status + Kick Button */}
+                    <div className="flex items-center justify-between gap-2.5 pb-2.5 border-b border-slate-800/80">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                          <Smartphone className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white font-mono text-base tracking-wide truncate block">
+                              {user.user}
+                            </span>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                              متصل
+                            </span>
+                          </div>
+                          {user.comment && (
+                            <span className="text-xs text-slate-400 truncate block mt-0.5">{user.comment}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleKickUser(user.id, user.user)}
+                        disabled={isKicking && kickTargetId === user.id}
+                        className="min-h-[42px] px-3.5 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 active:bg-rose-500/30 text-rose-300 border border-rose-500/30 transition text-xs font-bold flex items-center gap-1.5 shrink-0 shadow-xs disabled:opacity-50"
+                        title="فصل الجلسة فوراً"
+                      >
+                        {isKicking && kickTargetId === user.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-rose-400" />
+                        ) : (
+                          <LogOut className="w-4 h-4 text-rose-400" />
+                        )}
+                        <span>فصل</span>
+                      </button>
+                    </div>
+
+                    {/* 2x2 Grid for Key Metrics (Download, Upload, Uptime, Rate Limit) */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800/80 flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 shrink-0">
+                          <ArrowDownCircle className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-[10px] text-slate-400 block">سحب التحميل</span>
+                          <span className="font-mono font-bold text-emerald-400 text-sm block truncate">
+                            {formatBytesToHuman(user.bytesOut)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800/80 flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 shrink-0">
+                          <ArrowUpCircle className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-[10px] text-slate-400 block">سحب الرفع</span>
+                          <span className="font-mono font-bold text-cyan-400 text-sm block truncate">
+                            {formatBytesToHuman(user.bytesIn)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800/80 flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 shrink-0">
+                          <Clock className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-[10px] text-slate-400 block">مدة الجلسة</span>
+                          <span className="font-mono font-bold text-amber-300 text-xs block truncate">
+                            {user.uptime}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800/80 flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 shrink-0">
+                          <Zap className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-[10px] text-slate-400 block">السرعة المحددة</span>
+                          <span className="font-mono font-bold text-slate-200 text-xs block truncate">
+                            {user.rateLimit || 'حسب البروفايل'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer info: IP & MAC & LoginBy */}
+                    <div className="pt-2 border-t border-slate-800/60 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 font-mono">
+                      <div className="flex items-center gap-1.5 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-800">
+                        <span className="text-slate-500">IP:</span>
+                        <span className="text-slate-200 font-bold">{user.address}</span>
+                        <button
+                          onClick={() => handleCopyText(user.address, `ip-${user.id}`)}
+                          className="text-slate-400 hover:text-white p-0.5 ml-1"
+                          title="نسخ عنوان IP"
+                        >
+                          {copiedUserIp === `ip-${user.id}` ? (
+                            <Check className="w-3 h-3 text-emerald-400" />
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-800 text-[10px]">
+                        <span className="text-slate-500">MAC:</span>
+                        <span className="text-slate-300">{user.macAddress}</span>
+                      </div>
+
+                      <span className="px-2 py-0.5 rounded bg-slate-900 text-slate-400 text-[10px] border border-slate-800">
+                        {user.loginBy || 'http-chap'}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Desktop Table View (hidden md:block) */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-right text-xs">
                 <thead className="bg-slate-800/80 text-slate-300 font-semibold border-b border-slate-700/80">
                   <tr>
@@ -1810,9 +2606,181 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
             )}
           </div>
 
-          {/* Configured Users Table with Checkboxes */}
+          {/* Configured Users Table & Mobile Touch Cards */}
           <div className="bg-slate-900/90 rounded-2xl border border-slate-800 shadow-md overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* Mobile Touch Cards View (md:hidden) */}
+            <div className="md:hidden p-3 space-y-3">
+              {/* Mobile Selection Toolbar */}
+              <div className="flex items-center justify-between bg-slate-950/80 px-3 py-2.5 rounded-xl border border-slate-800 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedUserIds.length === filteredConfiguredUsers.length && filteredConfiguredUsers.length > 0) {
+                      setSelectedUserIds([]);
+                    } else {
+                      setSelectedUserIds(filteredConfiguredUsers.map((u) => u.id));
+                    }
+                  }}
+                  className="flex items-center gap-2 text-slate-300 font-bold hover:text-white"
+                >
+                  {selectedUserIds.length === filteredConfiguredUsers.length && filteredConfiguredUsers.length > 0 ? (
+                    <CheckSquare className="w-5 h-5 text-indigo-400" />
+                  ) : (
+                    <Square className="w-5 h-5 text-slate-500" />
+                  )}
+                  <span>تحديد كل المعروض ({filteredConfiguredUsers.length})</span>
+                </button>
+                {selectedUserIds.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[11px] font-bold">
+                    تم تحديد {selectedUserIds.length}
+                  </span>
+                )}
+              </div>
+
+              {filteredConfiguredUsers.length === 0 ? (
+                <div className="py-12 px-4 text-center text-slate-400 bg-slate-950/40 rounded-xl border border-slate-800">
+                  <Key className="w-10 h-10 text-slate-600 mx-auto mb-2 opacity-50" />
+                  <p className="font-bold text-sm text-slate-300">لا توجد كروت مسجلة</p>
+                  <p className="text-xs text-slate-500 mt-1">لا توجد نتائج مطابقة لشروط البحث أو التصفية الحالية.</p>
+                </div>
+              ) : (
+                filteredConfiguredUsers.map((user) => {
+                  const st = evaluateCardExpirationStatus(user, categories);
+                  const isSelected = selectedUserIds.includes(user.id);
+
+                  return (
+                    <div
+                      key={user.id}
+                      className={`p-3.5 rounded-2xl border transition-all space-y-3 ${
+                        isSelected
+                          ? 'bg-indigo-950/30 border-indigo-500/50 shadow-md shadow-indigo-950/30'
+                          : st.isQuotaExpired
+                          ? 'bg-rose-950/20 border-rose-800/40'
+                          : st.isTimeExpired
+                          ? 'bg-amber-950/20 border-amber-800/40'
+                          : st.isManuallyDisabled
+                          ? 'bg-slate-900/60 border-slate-800 opacity-75'
+                          : 'bg-slate-950/70 border-slate-800/80 hover:border-slate-700'
+                      }`}
+                    >
+                      {/* Top Row: Selection Checkbox + User Name + Status Badge */}
+                      <div className="flex items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setSelectedUserIds((prev) => prev.filter((id) => id !== user.id));
+                              } else {
+                                setSelectedUserIds((prev) => [...prev, user.id]);
+                              }
+                            }}
+                            className="p-1 -m-1 text-slate-400 hover:text-white"
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-5 h-5 text-indigo-400" />
+                            ) : (
+                              <Square className="w-5 h-5 text-slate-500" />
+                            )}
+                          </button>
+
+                          <div
+                            className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold shrink-0 ${
+                              st.isExpired
+                                ? 'bg-rose-500/15 border border-rose-500/30 text-rose-400'
+                                : st.isManuallyDisabled
+                                ? 'bg-slate-500/15 border border-slate-600/30 text-slate-400'
+                                : 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
+                            }`}
+                          >
+                            {st.isManuallyDisabled ? (
+                              <Power className="w-4 h-4 text-slate-400" />
+                            ) : (
+                              <Key className="w-4 h-4" />
+                            )}
+                          </div>
+
+                          <div className="min-w-0">
+                            <span className="font-bold text-white font-mono text-sm block truncate">
+                              {user.name}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block font-mono">
+                              بروفايل: <span className="text-indigo-300 font-bold">{user.profile}</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Status Badge */}
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border shrink-0 ${st.statusBadgeClass}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            st.isQuotaExpired ? 'bg-rose-400' :
+                            st.isTimeExpired ? 'bg-amber-400' :
+                            st.isManuallyDisabled ? 'bg-slate-400' :
+                            st.statusType === 'active_quota' ? 'bg-emerald-400' : 'bg-slate-400'
+                          }`} />
+                          {st.statusLabel}
+                        </span>
+                      </div>
+
+                      {/* 2x2 Stats Grid for Mobile */}
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800/80">
+                          <span className="text-[10px] text-slate-400 block">حجم الكارت (Quota)</span>
+                          <span className="font-mono font-bold text-emerald-400 text-xs block truncate mt-0.5">
+                            {st.limitBytesTotal > 0 ? formatBytesHuman(st.limitBytesTotal) : 'غير محدود'}
+                          </span>
+                        </div>
+
+                        <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800/80">
+                          <span className="text-[10px] text-slate-400 block">الاستهلاك الفعلي</span>
+                          <span className="font-mono font-bold text-cyan-400 text-xs block truncate mt-0.5">
+                            {formatBytesHuman(st.totalBytesUsed)}
+                            {st.percentQuotaUsed !== null && (
+                              <span className="text-[10px] text-slate-400 font-sans mr-1">
+                                ({st.percentQuotaUsed}%)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+
+                        <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800/80">
+                          <span className="text-[10px] text-slate-400 block">الوقت المحدد</span>
+                          <span className="font-mono font-bold text-slate-300 text-xs block truncate mt-0.5">
+                            {user.limitUptime || 'غير محدد'}
+                          </span>
+                        </div>
+
+                        <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800/80">
+                          <span className="text-[10px] text-slate-400 block">الوقت المستهلك</span>
+                          <span className="font-mono font-bold text-amber-300 text-xs block truncate mt-0.5">
+                            {user.uptime || '0s'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Comment & Actions Footer */}
+                      <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between gap-2 text-xs">
+                        <span className="text-[11px] text-slate-400 truncate">
+                          {user.comment ? `ملاحظة: ${user.comment}` : 'بدون ملاحظات'}
+                        </span>
+                        <button
+                          onClick={() => handleDeleteConfiguredUser(user.id, user.name)}
+                          disabled={isDeletingUser && deleteTargetId === user.id}
+                          className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 font-bold transition flex items-center gap-1 shrink-0"
+                          title="حذف الكارت من الراوتر"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>حذف الكارت</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Desktop Table View (hidden md:block) */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-right text-xs">
                 <thead className="bg-slate-800/80 text-slate-300 font-semibold border-b border-slate-700/80">
                   <tr>
@@ -2080,6 +3048,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
           onSaveTemplate={onSaveTemplate}
           onDeleteTemplate={onDeleteTemplate}
           onRefreshParent={() => fetchAllLiveData(config)}
+          initialTab={initialUmTab as any}
         />
       )}
 
@@ -2258,7 +3227,75 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
               <span className="text-slate-400">{interfaces.length} منفذ نشط</span>
             </div>
 
-            <div className="overflow-x-auto">
+            {/* Mobile Touch Cards View (md:hidden) */}
+            <div className="md:hidden p-3 space-y-3">
+              {interfaces.length === 0 ? (
+                <div className="py-8 text-center text-slate-500">لا توجد واجهات شبكة متوفرة.</div>
+              ) : (
+                interfaces.map((iface) => (
+                  <div
+                    key={iface.id}
+                    className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                          <Network className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-white font-mono text-sm block">{iface.name}</span>
+                          <span className="text-[10px] text-slate-400 font-mono">{iface.type}</span>
+                        </div>
+                      </div>
+                      <div>
+                        {iface.running ? (
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            <span>متصل</span>
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                            مفصول
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 2-col Speeds */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">سرعة التحميل اللحظية (Rx)</span>
+                        <span className="font-mono font-bold text-emerald-400 text-sm block truncate mt-0.5">
+                          {formatBitsToSpeed(iface.rxRateBps)}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono block mt-1">
+                          الإجمالي: {formatBytesToHuman(iface.rxByte)}
+                        </span>
+                      </div>
+
+                      <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">سرعة الرفع اللحظية (Tx)</span>
+                        <span className="font-mono font-bold text-cyan-400 text-sm block truncate mt-0.5">
+                          {formatBitsToSpeed(iface.txRateBps)}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono block mt-1">
+                          الإجمالي: {formatBytesToHuman(iface.txByte)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {iface.comment && (
+                      <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800/60">
+                        ملاحظة: {iface.comment}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Desktop Table View (hidden md:block) */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-right">
                 <thead className="bg-slate-800/80 text-slate-300 font-semibold border-b border-slate-700/80">
                   <tr>
@@ -2334,7 +3371,78 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
               </h4>
             </div>
 
-            <div className="overflow-x-auto">
+            {/* Mobile Touch Cards View (md:hidden) */}
+            <div className="md:hidden p-3 space-y-3">
+              {hosts.length === 0 ? (
+                <div className="py-8 text-center text-slate-500">لا توجد أجهزة متصلة بالهوتسبوت حالياً.</div>
+              ) : (
+                hosts.map((h) => (
+                  <div
+                    key={h.id}
+                    className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-2.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-bold font-mono">
+                          <Laptop className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5 font-mono text-white font-bold text-sm">
+                            <span>{h.address}</span>
+                            <button
+                              onClick={() => handleCopyText(h.address, `host-ip-${h.id}`)}
+                              className="text-slate-400 hover:text-white p-0.5"
+                              title="نسخ IP"
+                            >
+                              {copiedUserIp === `host-ip-${h.id}` ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono block">{h.macAddress}</span>
+                        </div>
+                      </div>
+
+                      {h.authorized ? (
+                        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          <span>مسجل (Auth)</span>
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                          في صفحة الدخول
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">سحب التحميل</span>
+                        <span className="font-mono font-bold text-emerald-400 text-xs block truncate mt-0.5">
+                          {formatBytesToHuman(h.bytesOut)}
+                        </span>
+                      </div>
+                      <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">سحب الرفع</span>
+                        <span className="font-mono font-bold text-cyan-400 text-xs block truncate mt-0.5">
+                          {formatBytesToHuman(h.bytesIn)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                      <span>مدة الاتصال: <span className="text-amber-300 font-bold">{h.uptime}</span></span>
+                      <span>المنفذ: <span className="text-slate-200">{h.bridgePort || '-'}</span></span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Desktop Table View (hidden md:block) */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-right">
                 <thead className="bg-slate-800/80 text-slate-300 font-semibold border-b border-slate-700/80">
                   <tr>
@@ -2917,6 +4025,98 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Sticky Quick-Switch Navigation Dock (شريط التنقل السريع المثبت لسهولة وسرعة التبديل) */}
+      <div className="sticky bottom-3 z-30 mx-auto max-w-2xl px-2">
+        <div className="bg-slate-900/90 border border-slate-700/80 rounded-2xl p-1.5 shadow-2xl backdrop-blur-md flex items-center justify-between gap-1 text-xs">
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('active_users')}
+              className={`px-2.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                activeSubTab === 'active_users'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5 text-emerald-400" />
+              <span>النشطين ({activeUsers.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('user_manager')}
+              className={`px-2.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                activeSubTab === 'user_manager'
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'text-purple-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Server className="w-3.5 h-3.5 text-purple-400" />
+              <span>اليوزر مانجر</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('all_users')}
+              className={`px-2.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                activeSubTab === 'all_users'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <CreditCard className="w-3.5 h-3.5 text-indigo-400" />
+              <span>الكروت ({configuredUsers.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('profiles')}
+              className={`px-2.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                activeSubTab === 'profiles'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5 text-cyan-400" />
+              <span>البروفايلات</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('interfaces')}
+              className={`px-2.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                activeSubTab === 'interfaces'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5 text-amber-400" />
+              <span>الواجهات</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0 pl-1 border-r border-slate-800 pr-1">
+            <button
+              type="button"
+              onClick={() => fetchAllLiveData(config)}
+              className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 transition cursor-pointer"
+              title="تحديث البيانات فوراً"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
+              title="العودة لأعلى الصفحة"
+            >
+              <ChevronUp className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Remote MikroTik Wizard Modal */}
       <RemoteMikrotikWizardModal

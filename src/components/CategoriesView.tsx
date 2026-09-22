@@ -305,18 +305,19 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
         </div>
       </div>
 
-      {/* Quick Category Price Pills Filter / Quick Add */}
-      <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800 flex items-center justify-between gap-3 overflow-x-auto">
-        <div className="flex items-center gap-2 text-xs text-slate-400 whitespace-nowrap">
-          <Layers className="w-4 h-4 text-indigo-400" />
-          <span className="font-semibold text-slate-300">الفئات المتاحة للشبكة:</span>
+      {/* Quick Category Price Pills Filter / Quick Add - Responsive Grid */}
+      <div className="bg-slate-900/60 p-3 sm:p-4 rounded-2xl border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-md">
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          <Layers className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span className="font-bold text-slate-300">الفئات السريعة للشبكة (نقر مباشر):</span>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="grid grid-cols-4 sm:grid-cols-4 lg:grid-cols-8 gap-1.5 w-full md:w-auto">
           {[100, 200, 300, 500, 1000, 1500, 3000, 5000].map(price => {
             const exists = categories.some(c => c.retailPrice === price);
             return (
               <button
                 key={price}
+                type="button"
                 onClick={() => {
                   if (exists) {
                     const cat = categories.find(c => c.retailPrice === price);
@@ -326,15 +327,19 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                     setTimeout(() => handleApplyPreset(price), 50);
                   }
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1 ${
+                className={`py-2 px-2.5 rounded-xl text-xs font-mono font-bold transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 text-center ${
                   exists
-                    ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30'
-                    : 'bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700/60'
+                    ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-600/30'
+                    : 'bg-slate-850 text-slate-400 hover:text-white border border-slate-750 hover:bg-slate-800'
                 }`}
                 title={exists ? `تعديل فئة ${price} ${settings.currencySymbol}` : `إضافة فئة ${price} ${settings.currencySymbol}`}
               >
-                <span>{price} {settings.currencySymbol}</span>
-                {exists && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>}
+                <span>{price}</span>
+                {exists ? (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
+                ) : (
+                  <Plus className="w-2.5 h-2.5 text-slate-500" />
+                )}
               </button>
             );
           })}
