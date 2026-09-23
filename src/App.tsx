@@ -38,7 +38,6 @@ import {
   CustomersView,
   CardUsageTrackerView,
   MikrotikQuickLauncherModal,
-  MikrotikFloatingSpeedDial,
 } from './components';
 import {
   CardCategory,
@@ -4438,16 +4437,6 @@ export default function App() {
           onClose={() => setIsMikrotikLauncherOpen(false)}
           settings={settings}
           onNavigateToMikrotik={handleNavigateToMikrotik}
-        />
-      )}
-
-      {/* Floating Speed Dial for Lightning-Fast MikroTik & User Manager Navigation */}
-      {isLoggedIn && canAccessMikrotik && (
-        <MikrotikFloatingSpeedDial
-          settings={settings}
-          onNavigateToMikrotik={handleNavigateToMikrotik}
-          onOpenQuickLauncher={() => setIsMikrotikLauncherOpen(true)}
-          canAccessMikrotik={canAccessMikrotik}
         />
       )}
 

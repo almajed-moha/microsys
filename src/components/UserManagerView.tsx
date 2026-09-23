@@ -78,6 +78,11 @@ import {
   generateUserManagerBatchRscScript,
   formatBytesToHuman
 } from '../utils/mikrotikApi';
+import {
+  getMikrotikDataStore,
+  updateMikrotikDataStore,
+  subscribeToMikrotikDataStore,
+} from '../utils/mikrotikDataStore';
 import { exportElementToPdf } from '../utils/pdfExport';
 import { UserManagerCardEditModal } from './UserManagerCardEditModal';
 import { UserManagerCardSessionsModal } from './UserManagerCardSessionsModal';
@@ -136,13 +141,24 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     } catch {}
   }, [activeTab]);
 
-  // Live Data State
-  const [users, setUsers] = useState<UserManagerUser[]>([]);
-  const [profiles, setProfiles] = useState<UserManagerProfile[]>([]);
-  const [limitations, setLimitations] = useState<UserManagerLimitation[]>([]);
-  const [routers, setRouters] = useState<UserManagerRouter[]>([]);
+  // Live Data State initialized from preloaded store for instant viewing
+  const [users, setUsers] = useState<UserManagerUser[]>(() => getMikrotikDataStore().umUsers);
+  const [profiles, setProfiles] = useState<UserManagerProfile[]>(() => getMikrotikDataStore().umProfiles);
+  const [limitations, setLimitations] = useState<UserManagerLimitation[]>(() => getMikrotikDataStore().umLimitations);
+  const [routers, setRouters] = useState<UserManagerRouter[]>(() => getMikrotikDataStore().umRouters);
   const [isLoading, setIsLoading] = useState(false);
-  const [lastRefreshed, setLastRefreshed] = useState<string | null>(null);
+  const [lastRefreshed, setLastRefreshed] = useState<string | null>(() => getMikrotikDataStore().lastUpdated);
+
+  // Subscribe to background store updates
+  useEffect(() => {
+    return subscribeToMikrotikDataStore((store) => {
+      if (store.umUsers && store.umUsers.length > 0) setUsers(store.umUsers);
+      if (store.umProfiles && store.umProfiles.length > 0) setProfiles(store.umProfiles);
+      if (store.umLimitations && store.umLimitations.length > 0) setLimitations(store.umLimitations);
+      if (store.umRouters && store.umRouters.length > 0) setRouters(store.umRouters);
+      if (store.lastUpdated) setLastRefreshed(store.lastUpdated);
+    });
+  }, []);
 
   // Search & Filters
   const [userSearch, setUserSearch] = useState('');
@@ -211,7 +227,10 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
 
   // Fetch all User Manager data from router
   const fetchAllUMData = async () => {
-    setIsLoading(true);
+    // Only show full loading spinner if there's no preloaded data
+    if (users.length === 0) {
+      setIsLoading(true);
+    }
     try {
       const [uList, pList, lList, rList] = await Promise.all([
         fetchUserManagerUsers(config),
@@ -220,11 +239,21 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
         fetchUserManagerRouters(config),
       ]);
 
+      const nowTime = new Date().toLocaleTimeString('ar-YE');
       setUsers(uList || []);
       setProfiles(pList || []);
       setLimitations(lList || []);
       setRouters(rList || []);
-      setLastRefreshed(new Date().toLocaleTimeString('ar-YE'));
+      setLastRefreshed(nowTime);
+
+      // Keep preloaded store updated
+      updateMikrotikDataStore({
+        umUsers: uList || [],
+        umProfiles: pList || [],
+        umLimitations: lList || [],
+        umRouters: rList || [],
+        lastUpdated: nowTime,
+      });
 
       if (pList && pList.length > 0 && !batchProfile) {
         setBatchProfile(pList[0].name);

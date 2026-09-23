@@ -106,6 +106,11 @@ import {
   formatBitsToSpeed,
   ConnectionTestResult,
 } from '../utils/mikrotikApi';
+import {
+  getMikrotikDataStore,
+  updateMikrotikDataStore,
+  subscribeToMikrotikDataStore,
+} from '../utils/mikrotikDataStore';
 import { exportElementToPdf } from '../utils/pdfExport';
 import { CircularMetricCard } from './CircularMetricGauge';
 import { UserManagerView } from './UserManagerView';
@@ -182,22 +187,38 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
     routerIdentity: settings.mikrotikConfig?.routerIdentity,
   }));
 
-  // Connection & Diagnostics State
+  // Connection & Diagnostics State initialized from preloaded store
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
-  const [isConnected, setIsConnected] = useState(config.isLiveConnected ?? false);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(() => config.isLiveConnected || getMikrotikDataStore().isConnected);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(() => getMikrotikDataStore().lastUpdated);
   const [copiedScript, setCopiedScript] = useState<string | null>(null);
 
-  // Live Data State
-  const [systemInfo, setSystemInfo] = useState<RouterSystemInfo | null>(null);
-  const [activeUsers, setActiveUsers] = useState<HotspotActiveUser[]>([]);
-  const [configuredUsers, setConfiguredUsers] = useState<HotspotConfiguredUser[]>([]);
-  const [userProfiles, setUserProfiles] = useState<HotspotUserProfile[]>([]);
-  const [hosts, setHosts] = useState<HotspotHost[]>([]);
-  const [dhcpLeases, setDhcpLeases] = useState<DhcpLease[]>([]);
-  const [interfaces, setInterfaces] = useState<RouterInterface[]>([]);
-  const [trafficHistory, setTrafficHistory] = useState<{ time: string; rxMbps: number; txMbps: number }[]>([]);
+  // Live Data State initialized directly from preloaded store for instant display without waiting!
+  const [systemInfo, setSystemInfo] = useState<RouterSystemInfo | null>(() => getMikrotikDataStore().systemInfo);
+  const [activeUsers, setActiveUsers] = useState<HotspotActiveUser[]>(() => getMikrotikDataStore().activeUsers);
+  const [configuredUsers, setConfiguredUsers] = useState<HotspotConfiguredUser[]>(() => getMikrotikDataStore().configuredUsers);
+  const [userProfiles, setUserProfiles] = useState<HotspotUserProfile[]>(() => getMikrotikDataStore().userProfiles);
+  const [hosts, setHosts] = useState<HotspotHost[]>(() => getMikrotikDataStore().hosts);
+  const [dhcpLeases, setDhcpLeases] = useState<DhcpLease[]>(() => getMikrotikDataStore().dhcpLeases);
+  const [interfaces, setInterfaces] = useState<RouterInterface[]>(() => getMikrotikDataStore().interfaces);
+  const [trafficHistory, setTrafficHistory] = useState<{ time: string; rxMbps: number; txMbps: number }[]>(() => getMikrotikDataStore().trafficHistory);
+
+  // Subscribe to background store updates so the view updates seamlessly when preload completes
+  useEffect(() => {
+    return subscribeToMikrotikDataStore((store) => {
+      if (store.systemInfo) setSystemInfo(store.systemInfo);
+      if (store.activeUsers && store.activeUsers.length >= 0) setActiveUsers(store.activeUsers);
+      if (store.configuredUsers && store.configuredUsers.length >= 0) setConfiguredUsers(store.configuredUsers);
+      if (store.userProfiles && store.userProfiles.length >= 0) setUserProfiles(store.userProfiles);
+      if (store.hosts && store.hosts.length >= 0) setHosts(store.hosts);
+      if (store.dhcpLeases && store.dhcpLeases.length >= 0) setDhcpLeases(store.dhcpLeases);
+      if (store.interfaces && store.interfaces.length >= 0) setInterfaces(store.interfaces);
+      if (store.trafficHistory && store.trafficHistory.length > 0) setTrafficHistory(store.trafficHistory);
+      if (store.lastUpdated) setLastUpdated(store.lastUpdated);
+      if (store.isConnected !== undefined) setIsConnected(store.isConnected);
+    });
+  }, []);
 
   // Sub-tabs with smart persistence
   const validSubTabs = useMemo(() => [
@@ -384,7 +405,22 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
         });
       }
 
-      setLastUpdated(new Date().toLocaleTimeString('ar-YE'));
+      const updateTime = new Date().toLocaleTimeString('ar-YE');
+      setLastUpdated(updateTime);
+
+      // Keep preloaded store synchronized in background
+      updateMikrotikDataStore({
+        systemInfo: sys || undefined,
+        activeUsers: actUsers || undefined,
+        configuredUsers: confUsers || undefined,
+        userProfiles: profs || undefined,
+        hosts: hostsData?.hosts || undefined,
+        dhcpLeases: hostsData?.leases || undefined,
+        interfaces: ifaces || undefined,
+        lastUpdated: updateTime,
+        isConnected: true,
+        isPreloaded: true,
+      });
     } catch (error) {
       console.error('Error polling MikroTik live data:', error);
     }

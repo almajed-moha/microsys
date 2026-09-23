@@ -6,6 +6,7 @@ import {
   AutoConnectResult,
   resolveMikrotikCandidates,
 } from '../utils/mikrotikAutoConnect';
+import { preloadMikrotikData } from '../utils/mikrotikDataStore';
 
 export type AutoConnectStatus =
   | 'idle'
@@ -105,6 +106,11 @@ export function useMikrotikAutoConnect(
             });
           }
 
+          // Preload all router data in background so that entering the MikroTik view is instantaneous
+          preloadMikrotikData(result.updatedConfig).catch((err) => {
+            console.warn('Background MikroTik data preload completed with notice:', err);
+          });
+
           // Emit feedback banner if requested
           if (onShowFeedback) {
             onShowFeedback({
@@ -170,6 +176,11 @@ export function useMikrotikAutoConnect(
     }
 
     hasAttemptedRef.current = attemptKey;
+
+    // If router was already flagged as connected from previous session, kick off immediate data preloading
+    if (settings.mikrotikConfig?.host && settings.mikrotikConfig?.isLiveConnected) {
+      preloadMikrotikData(settings.mikrotikConfig).catch(() => {});
+    }
 
     // Small delay (600ms) to allow initial render & token propagation
     const timer = setTimeout(() => {
