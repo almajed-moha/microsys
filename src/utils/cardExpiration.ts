@@ -105,6 +105,7 @@ export type CardStatusType =
   | 'expired_quota'
   | 'expired_uptime'
   | 'expired_comment'
+  | 'expired_profile'
   | 'manually_disabled'
   | 'active_quota'
   | 'unlimited';
@@ -114,6 +115,7 @@ export interface EvaluatedCardStatus {
   isQuotaExpired: boolean;
   isTimeExpired: boolean;
   isCommentExpired: boolean;
+  isProfileExpired: boolean;
   isManuallyDisabled: boolean;
   hasQuota: boolean;
   hasTimeLimit: boolean;
@@ -133,7 +135,8 @@ export interface EvaluatedCardStatus {
  * Evaluates the precise expiration and active status of a card or hotspot user.
  * 
  * CRITICAL RULE:
- * - A card is "Expired" ONLY if its data quota ran out, its uptime ran out, or its comment marks it expired.
+ * - A card is "Expired" ONLY if its data quota ran out, its uptime ran out, its comment marks it expired,
+ *   or its User Manager profiles/packages have all completed/expired.
  * - A card that was manually disabled by the admin (disabled=true) without meeting quota/uptime/comment criteria
  *   is STRICTLY classified as "Manually Disabled" (معطل يدوياً), NOT expired.
  */
@@ -156,8 +159,14 @@ export function evaluateCardExpirationStatus(
     limitBytesOut?: number | string;
     disabled?: boolean;
     comment?: string;
+    profilesCount?: { total?: number; waiting?: number; active?: number; used?: number };
+    assignedProfiles?: Array<{ state?: string }>;
   },
-  categories?: CardCategory[]
+  categories?: CardCategory[],
+  umContext?: {
+    limitations?: Array<{ name: string; downloadLimit?: any; uploadLimit?: any; totalLimit?: any; uptimeLimit?: any }>;
+    profiles?: Array<{ name: string; limitations?: string[] }>;
+  }
 ): EvaluatedCardStatus {
   const bytesIn = user.bytesIn ?? user.uploadUsed ?? 0;
   const bytesOut = user.bytesOut ?? user.downloadUsed ?? 0;
@@ -173,6 +182,15 @@ export function evaluateCardExpirationStatus(
       (c.code && user.name && user.name.toLowerCase().startsWith(c.code.toLowerCase()))
   );
 
+  // Cross-reference User Manager limitation if available
+  const matchedLimitation = umContext?.limitations?.find((l) => {
+    if (!profileName) return false;
+    if (l.name === profileName || l.name === `Lim-${profileName}` || l.name === `UM-Lim-${profileName.replace(/^UM-Profile-/, '')}`) return true;
+    const parentProf = umContext.profiles?.find((p) => p.name === profileName);
+    if (parentProf && parentProf.limitations && parentProf.limitations.includes(l.name)) return true;
+    return false;
+  });
+
   // 1. Quota Limit Determination
   let quotaLimitBytes = parseMikrotikBytes(user.limitBytesTotal);
   if (quotaLimitBytes === 0 && (user.limitBytesIn || user.limitBytesOut)) {
@@ -180,6 +198,9 @@ export function evaluateCardExpirationStatus(
   }
   if (quotaLimitBytes === 0 && matchedCategory?.quotaLimit) {
     quotaLimitBytes = parseMikrotikBytes(matchedCategory.quotaLimit);
+  }
+  if (quotaLimitBytes === 0 && matchedLimitation) {
+    quotaLimitBytes = parseMikrotikBytes(matchedLimitation.downloadLimit || matchedLimitation.totalLimit);
   }
 
   const hasQuota = quotaLimitBytes > 0;
@@ -189,7 +210,7 @@ export function evaluateCardExpirationStatus(
     : 0;
 
   // 2. Uptime Limit Determination
-  const effectiveUptimeLimit = user.limitUptime || matchedCategory?.uptimeLimit;
+  const effectiveUptimeLimit = user.limitUptime || matchedCategory?.uptimeLimit || matchedLimitation?.uptimeLimit;
   const limitUptimeSec = parseMikrotikUptimeToSeconds(effectiveUptimeLimit);
   const usedUptimeSec = parseMikrotikUptimeToSeconds(user.uptime ?? user.uptimeUsed);
 
@@ -203,11 +224,20 @@ export function evaluateCardExpirationStatus(
   // 3. Comment Expiration (script/radius/winbox marked)
   const isCommentExpired = isCommentMarkedExpired(user.comment);
 
-  // 4. Overall Expired Status
-  const isExpired = isQuotaExpired || isTimeExpired || isCommentExpired;
+  // 4. User Manager Profile Completion (v7 user-profile: all used, none waiting, none active)
+  const isProfileExpired = Boolean(
+    user.profilesCount &&
+    (user.profilesCount.total ?? 0) > 0 &&
+    (user.profilesCount.active ?? 0) === 0 &&
+    (user.profilesCount.waiting ?? 0) === 0 &&
+    (user.profilesCount.used ?? 0) > 0
+  );
 
-  // 5. Manually Disabled vs Expired
-  // CRITICAL: A disabled card is ONLY "manually disabled" if it is NOT truly expired by quota/time/comment.
+  // 5. Overall Expired Status
+  const isExpired = isQuotaExpired || isTimeExpired || isCommentExpired || isProfileExpired;
+
+  // 6. Manually Disabled vs Expired
+  // CRITICAL: A disabled card is ONLY "manually disabled" if it is NOT truly expired by quota/time/comment/profile.
   const isManuallyDisabled = Boolean(user.disabled && !isExpired);
 
   // Status classification
@@ -217,15 +247,19 @@ export function evaluateCardExpirationStatus(
 
   if (isQuotaExpired) {
     statusType = 'expired_quota';
-    statusLabel = 'منتهي (نفذ الرصيد)';
+    statusLabel = 'منتهي (نفذ رصيد التحميل)';
     statusBadgeClass = 'bg-rose-500/15 text-rose-300 border border-rose-500/30';
   } else if (isTimeExpired) {
     statusType = 'expired_uptime';
-    statusLabel = 'منتهي (نفذ الوقت)';
+    statusLabel = 'منتهي (نفذ وقت الاستخدام)';
     statusBadgeClass = 'bg-amber-500/15 text-amber-300 border border-amber-500/30';
   } else if (isCommentExpired) {
     statusType = 'expired_comment';
     statusLabel = 'منتهي الصلاحية';
+    statusBadgeClass = 'bg-rose-500/15 text-rose-300 border border-rose-500/30';
+  } else if (isProfileExpired) {
+    statusType = 'expired_profile';
+    statusLabel = 'منتهي (انتهت باقة اليوزر مانجر)';
     statusBadgeClass = 'bg-rose-500/15 text-rose-300 border border-rose-500/30';
   } else if (isManuallyDisabled) {
     statusType = 'manually_disabled';
@@ -242,6 +276,7 @@ export function evaluateCardExpirationStatus(
     isQuotaExpired,
     isTimeExpired,
     isCommentExpired,
+    isProfileExpired,
     isManuallyDisabled,
     hasQuota,
     hasTimeLimit,

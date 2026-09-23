@@ -17,13 +17,21 @@ import {
   Filter,
   ShieldAlert,
 } from 'lucide-react';
-import { MikroTikConfig, MikrotikCallerSession, HotspotConfiguredUser, CardCategory } from '../types';
+import {
+  MikroTikConfig,
+  MikrotikCallerSession,
+  HotspotConfiguredUser,
+  CardCategory,
+  UserManagerLimitation,
+  UserManagerProfile,
+} from '../types';
 import {
   fetchConfiguredHotspotUsers,
   fetchUserManagerUsers,
   deleteConfiguredHotspotUser,
   deleteConfiguredHotspotUsersBulk,
   deleteUserManagerUser,
+  deleteUserManagerUsersBatch,
 } from '../utils/mikrotikApi';
 import { printElementDocument, exportElementToPdf } from '../utils/pdfExport';
 import { evaluateCardExpirationStatus, parseMikrotikUptimeToSeconds } from '../utils/cardExpiration';
@@ -50,6 +58,10 @@ interface MikrotikExpiredCardsModalProps {
   config: Partial<MikroTikConfig>;
   sessions: MikrotikCallerSession[];
   categories?: CardCategory[];
+  umContext?: {
+    limitations?: UserManagerLimitation[];
+    profiles?: UserManagerProfile[];
+  };
   onCardsDeleted?: () => void;
 }
 
@@ -67,6 +79,7 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
   config,
   sessions,
   categories = [],
+  umContext,
   onCardsDeleted,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -134,7 +147,7 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
         const umUsers = await fetchUserManagerUsers(config);
         if (Array.isArray(umUsers)) {
           for (const u of umUsers) {
-            const status = evaluateCardExpirationStatus(u, categories);
+            const status = evaluateCardExpirationStatus(u, categories, umContext);
 
             // Genuinely expired check - NO conflation with disabled cards
             if (status.isExpired) {
@@ -277,9 +290,11 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
     setFeedbackMessage(null);
 
     try {
-      // Collect Hotspot card IDs
+      // Collect Hotspot card IDs & UM card details
       const hotspotIds = expiredCards.filter((c) => c.source === 'hotspot').map((c) => c.id || c.name);
-      const umNames = expiredCards.filter((c) => c.source === 'user-manager').map((c) => c.name);
+      const umCards = expiredCards
+        .filter((c) => c.source === 'user-manager')
+        .map((c) => ({ id: c.id || c.name, name: c.name }));
 
       let deletedTotal = 0;
 
@@ -288,11 +303,19 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
         if (hsRes.success) deletedTotal += hsRes.deletedCount;
       }
 
-      for (const umUser of umNames) {
-        try {
-          const ok = await deleteUserManagerUser(config, umUser);
-          if (ok) deletedTotal++;
-        } catch {}
+      if (umCards.length > 0) {
+        const umRes = await deleteUserManagerUsersBatch(config, umCards);
+        if (umRes.success) {
+          deletedTotal += umRes.count;
+        } else {
+          // Fallback to sequential deletion if needed
+          for (const c of umCards) {
+            try {
+              const ok = await deleteUserManagerUser(config, c.name);
+              if (ok) deletedTotal++;
+            } catch {}
+          }
+        }
       }
 
       setFeedbackMessage({

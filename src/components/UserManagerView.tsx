@@ -56,6 +56,7 @@ import {
   Pause,
   Ban,
   CheckSquare,
+  ArrowDownCircle,
   X
 } from 'lucide-react';
 import {
@@ -171,7 +172,9 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
   // Search & Filters
   const [userSearch, setUserSearch] = useState('');
   const [profileFilter, setProfileFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active_now' | 'has_usage' | 'unused' | 'disabled' | 'expired'>('all');
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'expired_all' | 'expired_quota' | 'expired_time' | 'active_now' | 'has_usage' | 'unused' | 'disabled' | 'expired'
+  >('all');
   const [userSortBy, setUserSortBy] = useState<'name' | 'usage_desc' | 'uptime_desc'>('usage_desc');
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -910,33 +913,74 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     }
   };
 
+  // UM Context for profile and limitation limit resolutions
+  const umContext = useMemo(() => ({
+    limitations,
+    profiles,
+  }), [limitations, profiles]);
+
+  // Analyzed cards status for all users with full limitations and profile mappings
+  const analyzedUsers = useMemo(() => {
+    return users.map((u) => ({
+      user: u,
+      status: evaluateCardExpirationStatus(u, categories, umContext),
+    }));
+  }, [users, categories, umContext]);
+
+  // Expired cards categorization
+  const expiredQuotaCards = useMemo(() => {
+    return analyzedUsers.filter((item) => item.status.isQuotaExpired);
+  }, [analyzedUsers]);
+
+  const expiredTimeCards = useMemo(() => {
+    return analyzedUsers.filter((item) => item.status.isTimeExpired);
+  }, [analyzedUsers]);
+
+  const allExpiredCards = useMemo(() => {
+    return analyzedUsers.filter((item) => item.status.isExpired);
+  }, [analyzedUsers]);
+
+  // Fast map to get card status by card name or id without re-evaluating
+  const cardStatusMap = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof evaluateCardExpirationStatus>>();
+    for (const item of analyzedUsers) {
+      if (item.user.id) map.set(item.user.id, item.status);
+      if (item.user.name) map.set(item.user.name, item.status);
+    }
+    return map;
+  }, [analyzedUsers]);
+
   // Filtered Users
   const filteredUsers = useMemo(() => {
-    let list = users.filter((u) => {
-      const q = (userSearch || '').toLowerCase();
-      const matchesSearch =
-        (u.name || '').toLowerCase().includes(q) ||
-        (u.comment && (u.comment || '').toLowerCase().includes(q)) ||
-        (u.actualProfile && (u.actualProfile || '').toLowerCase().includes(q));
-      const matchesProfile = profileFilter === 'all' || u.actualProfile === profileFilter;
-      
-      const cardStatus = evaluateCardExpirationStatus(u, categories);
+    let list = analyzedUsers
+      .filter(({ user: u, status: cardStatus }) => {
+        const q = (userSearch || '').toLowerCase();
+        const matchesSearch =
+          (u.name || '').toLowerCase().includes(q) ||
+          (u.comment && (u.comment || '').toLowerCase().includes(q)) ||
+          (u.actualProfile && (u.actualProfile || '').toLowerCase().includes(q));
+        const matchesProfile = profileFilter === 'all' || u.actualProfile === profileFilter;
 
-      let matchesStatus = true;
-      if (statusFilter === 'disabled') {
-        matchesStatus = cardStatus.isManuallyDisabled;
-      } else if (statusFilter === 'expired') {
-        matchesStatus = cardStatus.isExpired;
-      } else if (statusFilter === 'has_usage') {
-        matchesStatus = cardStatus.totalBytesUsed > 0;
-      } else if (statusFilter === 'unused') {
-        matchesStatus = cardStatus.totalBytesUsed === 0 && !cardStatus.isManuallyDisabled && !cardStatus.isExpired;
-      } else if (statusFilter === 'active_now') {
-        matchesStatus = !cardStatus.isManuallyDisabled && !cardStatus.isExpired && (cardStatus.totalBytesUsed > 0 || cardStatus.usedUptimeSec > 0);
-      }
+        let matchesStatus = true;
+        if (statusFilter === 'disabled') {
+          matchesStatus = cardStatus.isManuallyDisabled;
+        } else if (statusFilter === 'expired' || statusFilter === 'expired_all') {
+          matchesStatus = cardStatus.isExpired;
+        } else if (statusFilter === 'expired_quota') {
+          matchesStatus = cardStatus.isQuotaExpired;
+        } else if (statusFilter === 'expired_time') {
+          matchesStatus = cardStatus.isTimeExpired;
+        } else if (statusFilter === 'has_usage') {
+          matchesStatus = cardStatus.totalBytesUsed > 0;
+        } else if (statusFilter === 'unused') {
+          matchesStatus = cardStatus.totalBytesUsed === 0 && !cardStatus.isManuallyDisabled && !cardStatus.isExpired;
+        } else if (statusFilter === 'active_now') {
+          matchesStatus = !cardStatus.isManuallyDisabled && !cardStatus.isExpired && (cardStatus.totalBytesUsed > 0 || cardStatus.usedUptimeSec > 0);
+        }
 
-      return matchesSearch && matchesProfile && matchesStatus;
-    });
+        return matchesSearch && matchesProfile && matchesStatus;
+      })
+      .map((item) => item.user);
 
     if (userSortBy === 'usage_desc') {
       list.sort((a, b) => (b.totalBytes || 0) - (a.totalBytes || 0));
@@ -947,7 +991,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     }
 
     return list;
-  }, [users, userSearch, profileFilter, statusFilter, userSortBy]);
+  }, [analyzedUsers, userSearch, profileFilter, statusFilter, userSortBy]);
 
   // Aggregate stats
   const totalUMBytesUsed = users.reduce((acc, u) => acc + (u.totalBytes || 0), 0);
@@ -1265,46 +1309,203 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
       {activeTab === 'users' && (
         <div className="space-y-4">
           {/* Quick KPI Overview */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm flex items-center justify-between">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
+            {/* Total Cards */}
+            <button
+              type="button"
+              onClick={() => setStatusFilter('all')}
+              className={`p-3.5 rounded-2xl border text-right transition flex items-center justify-between ${
+                statusFilter === 'all'
+                  ? 'bg-purple-950/40 border-purple-500 shadow-md shadow-purple-900/20'
+                  : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
+              }`}
+            >
               <div>
                 <span className="text-slate-400 text-[11px] block">إجمالي الكروت</span>
                 <span className="text-lg font-black text-white font-mono">{users.length}</span>
               </div>
-              <div className="w-9 h-9 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+              <div className="w-9 h-9 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
                 <Users className="w-4 h-4" />
               </div>
-            </div>
+            </button>
 
-            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm flex items-center justify-between">
+            {/* Expired Download / Quota */}
+            <button
+              type="button"
+              onClick={() => setStatusFilter(statusFilter === 'expired_quota' ? 'all' : 'expired_quota')}
+              className={`p-3.5 rounded-2xl border text-right transition flex items-center justify-between ${
+                statusFilter === 'expired_quota'
+                  ? 'bg-rose-950/60 border-rose-500 shadow-lg shadow-rose-950/50'
+                  : 'bg-slate-900/90 border-slate-800 hover:border-rose-500/40'
+              }`}
+            >
               <div>
-                <span className="text-slate-400 text-[11px] block">كروت ذات استهلاك</span>
-                <span className="text-lg font-black text-emerald-400 font-mono">{totalCardsWithUsage}</span>
+                <span className="text-rose-300 font-bold text-[11px] block flex items-center gap-1">
+                  <span>منتهية التحميل</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                </span>
+                <span className="text-lg font-black text-rose-400 font-mono">{expiredQuotaCards.length}</span>
               </div>
-              <div className="w-9 h-9 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                <Activity className="w-4 h-4" />
+              <div className="w-9 h-9 rounded-xl bg-rose-600/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                <ArrowDownCircle className="w-4 h-4" />
               </div>
-            </div>
+            </button>
 
-            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm flex items-center justify-between">
+            {/* Expired Uptime / Time */}
+            <button
+              type="button"
+              onClick={() => setStatusFilter(statusFilter === 'expired_time' ? 'all' : 'expired_time')}
+              className={`p-3.5 rounded-2xl border text-right transition flex items-center justify-between ${
+                statusFilter === 'expired_time'
+                  ? 'bg-amber-950/60 border-amber-500 shadow-lg shadow-amber-950/50'
+                  : 'bg-slate-900/90 border-slate-800 hover:border-amber-500/40'
+              }`}
+            >
               <div>
-                <span className="text-slate-400 text-[11px] block">إجمالي السحب المتراكم</span>
+                <span className="text-amber-300 font-bold text-[11px] block flex items-center gap-1">
+                  <span>منتهية الوقت</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                </span>
+                <span className="text-lg font-black text-amber-400 font-mono">{expiredTimeCards.length}</span>
+              </div>
+              <div className="w-9 h-9 rounded-xl bg-amber-600/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                <Clock className="w-4 h-4" />
+              </div>
+            </button>
+
+            {/* All Expired Cards */}
+            <button
+              type="button"
+              onClick={() => setStatusFilter(statusFilter === 'expired_all' || statusFilter === 'expired' ? 'all' : 'expired_all')}
+              className={`p-3.5 rounded-2xl border text-right transition flex items-center justify-between ${
+                statusFilter === 'expired_all' || statusFilter === 'expired'
+                  ? 'bg-red-950/60 border-red-500 shadow-lg shadow-red-950/50'
+                  : 'bg-slate-900/90 border-slate-800 hover:border-red-500/40'
+              }`}
+            >
+              <div>
+                <span className="text-slate-400 text-[11px] block">كافة المنتهية</span>
+                <span className="text-lg font-black text-red-400 font-mono">{allExpiredCards.length}</span>
+              </div>
+              <div className="w-9 h-9 rounded-xl bg-red-600/20 border border-red-500/30 flex items-center justify-center text-red-400 shrink-0">
+                <Trash2 className="w-4 h-4" />
+              </div>
+            </button>
+
+            {/* Total Usage Bytes */}
+            <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-slate-400 text-[11px] block">السحب المتراكم</span>
                 <span className="text-base font-black text-cyan-300 font-mono">{formatBytesToHuman(totalUMBytesUsed)}</span>
               </div>
-              <div className="w-9 h-9 rounded-xl bg-cyan-600/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+              <div className="w-9 h-9 rounded-xl bg-cyan-600/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
                 <HardDrive className="w-4 h-4" />
               </div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm flex items-center justify-between">
+            {/* Disabled Cards */}
+            <button
+              type="button"
+              onClick={() => setStatusFilter(statusFilter === 'disabled' ? 'all' : 'disabled')}
+              className={`p-3.5 rounded-2xl border text-right transition flex items-center justify-between ${
+                statusFilter === 'disabled'
+                  ? 'bg-slate-800 border-slate-600 shadow-md'
+                  : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
+              }`}
+            >
               <div>
-                <span className="text-slate-400 text-[11px] block">كروت معطلة</span>
-                <span className="text-lg font-black text-rose-400 font-mono">{totalDisabledCards}</span>
+                <span className="text-slate-400 text-[11px] block">معطلة يدوياً</span>
+                <span className="text-lg font-black text-slate-300 font-mono">{totalDisabledCards}</span>
               </div>
-              <div className="w-9 h-9 rounded-xl bg-rose-600/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
-                <AlertTriangle className="w-4 h-4" />
+              <div className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 shrink-0">
+                <Pause className="w-4 h-4" />
               </div>
-            </div>
+            </button>
+          </div>
+
+          {/* Quick Filter Chips Row */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+            <span className="text-slate-400 text-[11px] font-bold shrink-0 ml-1">فلترة سريعة:</span>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1.5 rounded-xl font-bold transition shrink-0 flex items-center gap-1.5 ${
+                statusFilter === 'all'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
+                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60'
+              }`}
+            >
+              <span>الكل</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-black/30 text-[10px] font-mono">{users.length}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusFilter('expired_quota')}
+              className={`px-3 py-1.5 rounded-xl font-bold transition shrink-0 flex items-center gap-1.5 ${
+                statusFilter === 'expired_quota'
+                  ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
+                  : 'bg-rose-950/30 hover:bg-rose-900/40 text-rose-300 border border-rose-500/30'
+              }`}
+            >
+              <ArrowDownCircle className="w-3.5 h-3.5" />
+              <span>منتهية التحميل</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-black/40 text-[10px] font-mono font-bold">{expiredQuotaCards.length}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusFilter('expired_time')}
+              className={`px-3 py-1.5 rounded-xl font-bold transition shrink-0 flex items-center gap-1.5 ${
+                statusFilter === 'expired_time'
+                  ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
+                  : 'bg-amber-950/30 hover:bg-amber-900/40 text-amber-300 border border-amber-500/30'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>منتهية الوقت</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-black/40 text-[10px] font-mono font-bold">{expiredTimeCards.length}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusFilter('expired_all')}
+              className={`px-3 py-1.5 rounded-xl font-bold transition shrink-0 flex items-center gap-1.5 ${
+                statusFilter === 'expired_all' || statusFilter === 'expired'
+                  ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                  : 'bg-red-950/30 hover:bg-red-900/40 text-red-300 border border-red-500/30'
+              }`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>كافة المنتهية</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-black/40 text-[10px] font-mono font-bold">{allExpiredCards.length}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusFilter('active_now')}
+              className={`px-3 py-1.5 rounded-xl font-bold transition shrink-0 flex items-center gap-1.5 ${
+                statusFilter === 'active_now'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5 text-emerald-400" />
+              <span>نشطة وغير منتهية</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusFilter('disabled')}
+              className={`px-3 py-1.5 rounded-xl font-bold transition shrink-0 flex items-center gap-1.5 ${
+                statusFilter === 'disabled'
+                  ? 'bg-slate-600 text-white shadow-md'
+                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60'
+              }`}
+            >
+              <Pause className="w-3.5 h-3.5 text-slate-400" />
+              <span>معطلة يدوياً ({totalDisabledCards})</span>
+            </button>
           </div>
 
           {/* Filter / Search Bar */}
@@ -1340,14 +1541,16 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as any)}
-                className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-purple-500"
+                className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-purple-500 font-medium"
               >
-                <option value="all">كافة الحالات</option>
+                <option value="all">كافة الحالات ({users.length})</option>
+                <option value="expired_quota">منتهية التحميل / نفذ الرصيد ({expiredQuotaCards.length})</option>
+                <option value="expired_time">منتهية الوقت / نفذت المدة ({expiredTimeCards.length})</option>
+                <option value="expired_all">كافة الكروت المنتهية ({allExpiredCards.length})</option>
                 <option value="active_now">نشطة وغير معطلة</option>
-                <option value="has_usage">كروت سحبت بيانات</option>
+                <option value="has_usage">كروت سحبت بيانات ({totalCardsWithUsage})</option>
                 <option value="unused">كروت جديدة لم تُستخدم</option>
-                <option value="disabled">كروت معطلة يدوياً</option>
-                <option value="expired">كروت منتهية (رصيد/وقت)</option>
+                <option value="disabled">كروت معطلة يدوياً ({totalDisabledCards})</option>
               </select>
 
               {/* Sort By */}
@@ -1366,9 +1569,15 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
               <button
                 onClick={() => setShowExpiredCardsModal(true)}
                 className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold transition flex items-center gap-1.5"
+                title="فتح نافذة الفحص الشامل وحذف الكروت المنتهية"
               >
                 <Trash2 className="w-4 h-4" />
                 <span className="hidden sm:inline">الكروت المنتهية</span>
+                {allExpiredCards.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-rose-500/30 text-rose-300 text-[10px] font-mono">
+                    {allExpiredCards.length}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setActiveTab('batch')}
@@ -1379,6 +1588,65 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Dedicated Expired Cards Action Banner */}
+          {(statusFilter === 'expired_all' || statusFilter === 'expired_quota' || statusFilter === 'expired_time' || statusFilter === 'expired') && (
+            <div className="bg-gradient-to-r from-rose-950/80 via-slate-900 to-amber-950/70 border border-rose-500/40 p-4 rounded-2xl shadow-xl flex flex-wrap items-center justify-between gap-3 animate-in fade-in duration-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-bold text-white text-sm">
+                      {statusFilter === 'expired_quota'
+                        ? `الكروت المنتهية التحميل / نفذ الرصيد (${filteredUsers.length} كارت)`
+                        : statusFilter === 'expired_time'
+                        ? `الكروت المنتهية الوقت / نفذت المدة (${filteredUsers.length} كارت)`
+                        : `كافة الكروت المنتهية الصلاحية في User Manager (${filteredUsers.length} كارت)`}
+                    </h4>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">
+                      جاهزة للحذف المباشر
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-1">
+                    منتهية التحميل: <strong className="text-rose-400 font-mono font-bold">{expiredQuotaCards.length}</strong> كارت | 
+                    منتهية الوقت: <strong className="text-amber-400 font-mono font-bold">{expiredTimeCards.length}</strong> كارت
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleSelectAllFiltered}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition flex items-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>
+                    {selectedCardKeys.size > 0 && selectedCardKeys.size >= filteredUsers.length && filteredUsers.length > 0
+                      ? 'إلغاء التحديد'
+                      : `تحديد المعروضة (${filteredUsers.length})`}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (filteredUsers.length === 0) return;
+                    const allKeys = new Set(filteredUsers.map((u) => u.id || u.name));
+                    setSelectedCardKeys(allKeys);
+                    setShowBulkDeleteConfirm(true);
+                  }}
+                  disabled={filteredUsers.length === 0}
+                  className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-lg shadow-rose-600/30 disabled:opacity-50"
+                  title="حذف كافة الكروت المنتهية المعروضة حالياً"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>حذف كافة المعروضة ({filteredUsers.length}) نهائياً</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Bulk Selection Actions Floating Toolbar */}
           {selectedCardKeys.size > 0 && (
@@ -1469,7 +1737,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                 </div>
               ) : (
                 filteredUsers.map((u, idx) => {
-                  const cardStatus = evaluateCardExpirationStatus(u, categories);
+                  const cardStatus = cardStatusMap.get(u.id || u.name) || evaluateCardExpirationStatus(u, categories, umContext);
                   const totalBytes = cardStatus.totalBytesUsed;
                   const hasLimit = cardStatus.hasQuota;
                   const percentUsed = cardStatus.percentQuotaUsed;
@@ -1477,7 +1745,15 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                   return (
                     <div
                       key={u.id || u.name || `um-mob-user-${idx}`}
-                      className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3"
+                      className={`p-4 rounded-2xl border space-y-3 transition ${
+                        cardStatus.isQuotaExpired
+                          ? 'bg-rose-950/25 border-rose-500/40 shadow-sm shadow-rose-950/30'
+                          : cardStatus.isTimeExpired
+                          ? 'bg-amber-950/25 border-amber-500/40 shadow-sm shadow-amber-950/30'
+                          : cardStatus.isProfileExpired
+                          ? 'bg-rose-950/20 border-rose-500/30'
+                          : 'bg-slate-950/70 border-slate-800'
+                      }`}
                     >
                       {/* Top row: Checkbox, Name & Status */}
                       <div className="flex items-center justify-between gap-2">
@@ -1494,8 +1770,20 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                           >
                             {selectedCardKeys.has(u.id || u.name) && <Check className="w-3.5 h-3.5" />}
                           </button>
-                          <div className="w-9 h-9 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 font-bold shrink-0">
-                            <Key className="w-4 h-4" />
+                          <div className={`w-9 h-9 rounded-xl border flex items-center justify-center font-bold shrink-0 ${
+                            cardStatus.isQuotaExpired
+                              ? 'bg-rose-500/20 border-rose-500/40 text-rose-300'
+                              : cardStatus.isTimeExpired
+                              ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                              : 'bg-purple-500/15 border-purple-500/30 text-purple-400'
+                          }`}>
+                            {cardStatus.isQuotaExpired ? (
+                              <ArrowDownCircle className="w-4 h-4" />
+                            ) : cardStatus.isTimeExpired ? (
+                              <Clock className="w-4 h-4" />
+                            ) : (
+                              <Key className="w-4 h-4" />
+                            )}
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
@@ -1520,9 +1808,12 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
 
                         {/* Status Badge */}
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border shrink-0 ${cardStatus.statusBadgeClass}`}>
+                          {cardStatus.isQuotaExpired && <ArrowDownCircle className="w-3 h-3 text-rose-400" />}
+                          {cardStatus.isTimeExpired && <Clock className="w-3 h-3 text-amber-400" />}
                           <span className={`w-1.5 h-1.5 rounded-full ${
                             cardStatus.isQuotaExpired ? 'bg-rose-400' :
                             cardStatus.isTimeExpired ? 'bg-amber-400' :
+                            cardStatus.isProfileExpired ? 'bg-rose-400' :
                             cardStatus.isManuallyDisabled ? 'bg-slate-400' : 'bg-emerald-400'
                           }`} />
                           {cardStatus.statusLabel}
@@ -1757,7 +2048,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                     </tr>
                   ) : (
                     filteredUsers.map((u, idx) => {
-                      const cardStatus = evaluateCardExpirationStatus(u, categories);
+                      const cardStatus = cardStatusMap.get(u.id || u.name) || evaluateCardExpirationStatus(u, categories, umContext);
                       const totalBytes = cardStatus.totalBytesUsed;
                       const hasLimit = cardStatus.hasQuota;
                       const percentUsed = cardStatus.percentQuotaUsed;
@@ -1772,6 +2063,12 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                           className={`transition ${
                             selectedCardKeys.has(u.id || u.name)
                               ? 'bg-purple-950/30 hover:bg-purple-950/40'
+                              : isQuotaExpired
+                              ? 'bg-rose-950/20 hover:bg-rose-950/30'
+                              : isTimeExpired
+                              ? 'bg-amber-950/20 hover:bg-amber-950/30'
+                              : isExpired
+                              ? 'bg-red-950/20 hover:bg-red-950/30'
                               : 'hover:bg-slate-800/40'
                           }`}
                         >
@@ -1936,9 +2233,12 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                           {/* Status */}
                           <td className="p-3.5">
                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${cardStatus.statusBadgeClass}`}>
+                              {cardStatus.isQuotaExpired && <ArrowDownCircle className="w-3 h-3 text-rose-400 shrink-0" />}
+                              {cardStatus.isTimeExpired && <Clock className="w-3 h-3 text-amber-400 shrink-0" />}
                               <span className={`w-1.5 h-1.5 rounded-full ${
                                 cardStatus.isQuotaExpired ? 'bg-rose-400' :
                                 cardStatus.isTimeExpired ? 'bg-amber-400' :
+                                cardStatus.isProfileExpired ? 'bg-rose-400' :
                                 cardStatus.isManuallyDisabled ? 'bg-slate-400' : 'bg-emerald-400'
                               }`} />
                               {cardStatus.statusLabel}
@@ -2009,8 +2309,12 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                               <button
                                 onClick={() => handleDeleteUser(u.id, u.name)}
                                 disabled={isDeletingUser}
-                                className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 transition text-xs"
-                                title="حذف الكارت نهائياً من الراوتر"
+                                className={`p-1.5 rounded-lg border transition text-xs ${
+                                  cardStatus.isExpired
+                                    ? 'bg-rose-600/30 hover:bg-rose-600/40 text-rose-200 border-rose-500/50 shadow-sm'
+                                    : 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30'
+                                }`}
+                                title={cardStatus.isExpired ? 'حذف هذا الكارت المنتهي نهائياً' : 'حذف الكارت نهائياً من الراوتر'}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -3534,6 +3838,7 @@ set [find] use-radius=yes radius-accounting=yes`}
         config={config}
         sessions={[]}
         categories={categories}
+        umContext={umContext}
         onCardsDeleted={() => {
           fetchAllUMData();
         }}
@@ -3602,14 +3907,44 @@ set [find] use-radius=yes radius-accounting=yes`}
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 space-y-2">
-              <p>
-                أنت على وشك حذف <strong className="text-rose-400 font-bold font-mono text-sm">{selectedCardKeys.size}</strong> كارت نهائياً من قاعدة بيانات اليوزر مانجر في الراوتر.
-              </p>
-              <p className="text-[11px] text-rose-400">
-                ⚠️ هذا الإجراء لا يمكن التراجع عنه وسيتم مسح كافة الكروت المحددة فوراً.
-              </p>
-            </div>
+            {(() => {
+              const selectedItems = analyzedUsers.filter((item) => selectedCardKeys.has(item.user.id || item.user.name));
+              const quotaExpCount = selectedItems.filter((i) => i.status.isQuotaExpired).length;
+              const timeExpCount = selectedItems.filter((i) => i.status.isTimeExpired).length;
+              const otherCount = selectedItems.length - quotaExpCount - timeExpCount;
+
+              return (
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 space-y-2.5">
+                  <p>
+                    أنت على وشك حذف <strong className="text-rose-400 font-bold font-mono text-sm">{selectedCardKeys.size}</strong> كارت نهائياً من قاعدة بيانات اليوزر مانجر في الراوتر.
+                  </p>
+                  {(quotaExpCount > 0 || timeExpCount > 0) && (
+                    <div className="flex flex-wrap gap-2 pt-0.5 text-[11px]">
+                      {quotaExpCount > 0 && (
+                        <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold flex items-center gap-1">
+                          <ArrowDownCircle className="w-3 h-3" />
+                          <span>منتهية التحميل: {quotaExpCount}</span>
+                        </span>
+                      )}
+                      {timeExpCount > 0 && (
+                        <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          <span>منتهية الوقت: {timeExpCount}</span>
+                        </span>
+                      )}
+                      {otherCount > 0 && (
+                        <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700">
+                          أخرى: {otherCount}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <p className="text-[11px] text-rose-400 font-medium">
+                    ⚠️ هذا الإجراء لا يمكن التراجع عنه وسيتم مسح كافة الكروت المحددة فوراً من MikroTik User Manager.
+                  </p>
+                </div>
+              );
+            })()}
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
