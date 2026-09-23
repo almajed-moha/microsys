@@ -3302,9 +3302,16 @@ if (command === 'reboot') {
   }
 
   // 19. Delete User Manager User
-  public static async deleteUserManagerUser(options: MikroTikConnectionOptions, userIdOrName: string): Promise<boolean> {
+  public static async deleteUserManagerUser(options: MikroTikConnectionOptions, userIdOrName: string, userName?: string): Promise<boolean> {
+    const effectiveName = userName || (!userIdOrName.startsWith('*') ? userIdOrName : '');
     if (options.protocol === 'demo' || options.host === 'demo') {
-      MikroTikService.demoUMUsers = MikroTikService.demoUMUsers.filter(u => u.id !== userIdOrName && u.name !== userIdOrName);
+      MikroTikService.demoUMUsers = MikroTikService.demoUMUsers.filter(
+        u => u.id !== userIdOrName && u.name !== userIdOrName && (!effectiveName || u.name !== effectiveName)
+      );
+      if (effectiveName) {
+        MikroTikService.demoUMSessions = MikroTikService.demoUMSessions.filter(s => s.user !== effectiveName);
+        MikroTikService.demoUMAssignedProfiles = (MikroTikService.demoUMAssignedProfiles || []).filter(p => p.user !== effectiveName);
+      }
       return true;
     }
 
@@ -3314,16 +3321,72 @@ if (command === 'reboot') {
       try {
         const isHttps = proto === 'rest_https' || options.useSsl;
         const port = options.port || (isHttps ? 443 : 80);
+        const restOpt = { ...options, protocol: (isHttps ? 'rest_https' : 'rest_http') as any, port };
 
+        let removed = false;
+
+        // Try v7 /user-manager/user
         try {
-          if (userIdOrName.startsWith('*')) {
-            await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, `/user-manager/user/${encodeURIComponent(userIdOrName)}`, 'DELETE');
-          } else {
-            await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/user-manager/user/remove', 'POST', { numbers: userIdOrName });
+          let targetId = userIdOrName;
+          if (!targetId.startsWith('*') && effectiveName) {
+            const list = await fetchRestApi(restOpt, `/user-manager/user?name=${encodeURIComponent(effectiveName)}`);
+            const users = Array.isArray(list) ? list : [list];
+            const match = users.find((u: any) => u && (u.name === effectiveName || u['.id']));
+            if (match && match['.id']) {
+              targetId = match['.id'];
+            }
           }
-        } catch {
-          await fetchRestApi({ ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port }, '/tool/user-manager/user/remove', 'POST', { numbers: userIdOrName });
+
+          if (targetId.startsWith('*')) {
+            await fetchRestApi(restOpt, `/user-manager/user/${encodeURIComponent(targetId)}`, 'DELETE');
+            removed = true;
+          } else {
+            await fetchRestApi(restOpt, '/user-manager/user/remove', 'POST', { numbers: targetId });
+            removed = true;
+          }
+
+          // Clean up assigned user-profile in v7
+          if (effectiveName) {
+            try {
+              const ups = await fetchRestApi(restOpt, `/user-manager/user-profile?user=${encodeURIComponent(effectiveName)}`);
+              const upList = Array.isArray(ups) ? ups : [ups];
+              for (const p of upList) {
+                if (p && p['.id']) {
+                  await fetchRestApi(restOpt, `/user-manager/user-profile/${encodeURIComponent(p['.id'])}`, 'DELETE');
+                }
+              }
+            } catch {}
+          }
+        } catch {}
+
+        // Try v6 /tool/user-manager/user
+        if (!removed) {
+          try {
+            await fetchRestApi(restOpt, '/tool/user-manager/user/remove', 'POST', { numbers: effectiveName || userIdOrName });
+            removed = true;
+          } catch {}
         }
+
+        // Try Hotspot user fallback
+        try {
+          const hsTarget = effectiveName || userIdOrName;
+          const hsList = await fetchRestApi(restOpt, `/ip/hotspot/user?name=${encodeURIComponent(hsTarget)}`);
+          const list = Array.isArray(hsList) ? hsList : [hsList];
+          for (const u of list) {
+            if (u && u['.id']) {
+              await fetchRestApi(restOpt, `/ip/hotspot/user/${encodeURIComponent(u['.id'])}`, 'DELETE');
+              removed = true;
+            }
+          }
+        } catch {}
+
+        // Disconnect active session if any
+        if (effectiveName) {
+          try {
+            await MikroTikService.disconnectUserManagerUser(options, effectiveName);
+          } catch {}
+        }
+
         return true;
       } catch (err) {
         if (proto !== 'auto') throw err;
@@ -3337,12 +3400,285 @@ if (command === 'reboot') {
     await client.login(options.username, options.password || '');
 
     try {
-      await client.sendSentence(['/user-manager/user/remove', `=numbers=${userIdOrName}`]);
+      // 1. Try RouterOS v7 User Manager
+      let deleted = false;
+      try {
+        let v7Id = userIdOrName.startsWith('*') ? userIdOrName : '';
+        if (!v7Id && effectiveName) {
+          const found = await client.sendSentence(['/user-manager/user/print', `?name=${effectiveName}`]);
+          if (found && found.length > 0 && found[0]['.id']) {
+            v7Id = found[0]['.id'];
+          }
+        }
+
+        if (v7Id) {
+          await client.sendSentence(['/user-manager/user/remove', `=.id=${v7Id}`]);
+          deleted = true;
+        } else {
+          await client.sendSentence(['/user-manager/user/remove', `=numbers=${userIdOrName}`]);
+          deleted = true;
+        }
+
+        // Remove assigned profile
+        if (effectiveName) {
+          try {
+            const upList = await client.sendSentence(['/user-manager/user-profile/print', `?user=${effectiveName}`]);
+            for (const p of upList) {
+              if (p['.id']) {
+                await client.sendSentence(['/user-manager/user-profile/remove', `=.id=${p['.id']}`]);
+              }
+            }
+          } catch {}
+        }
+      } catch {}
+
+      // 2. Try RouterOS v6 User Manager
+      if (!deleted) {
+        try {
+          await client.sendSentence(['/tool/user-manager/user/remove', `=numbers=${effectiveName || userIdOrName}`]);
+          deleted = true;
+        } catch {}
+      }
+
+      // 3. Hotspot fallback
+      try {
+        const hsFound = await client.sendSentence(['/ip/hotspot/user/print', `?name=${effectiveName || userIdOrName}`]);
+        for (const u of hsFound) {
+          if (u['.id']) {
+            await client.sendSentence(['/ip/hotspot/user/remove', `=numbers=${u['.id']}`]);
+            deleted = true;
+          }
+        }
+      } catch {}
+
+      client.close();
+
+      // Disconnect active session
+      if (effectiveName) {
+        try {
+          await MikroTikService.disconnectUserManagerUser(options, effectiveName);
+        } catch {}
+      }
+
+      return true;
     } catch {
-      await client.sendSentence(['/tool/user-manager/user/remove', `=numbers=${userIdOrName}`]);
+      client.close();
+      return false;
     }
-    client.close();
-    return true;
+  }
+
+  // 19.1 Delete Users in Batch
+  public static async deleteUserManagerUsersBatch(
+    options: MikroTikConnectionOptions,
+    users: Array<{ id: string; name: string }>
+  ): Promise<{ success: boolean; count: number; message?: string }> {
+    let count = 0;
+    for (const u of users) {
+      try {
+        const ok = await MikroTikService.deleteUserManagerUser(options, u.id, u.name);
+        if (ok) count++;
+      } catch (e) {
+        console.warn(`Failed to delete user ${u.name}:`, e);
+      }
+    }
+    return {
+      success: count > 0,
+      count,
+      message: `تم بنجاح حذف ${count} كارت من إجمالي ${users.length} كارت من User Manager.`,
+    };
+  }
+
+  // 19.2 Set Single User Disabled/Enabled Status (Pause / Resume)
+  public static async setUserDisabledStatus(
+    options: MikroTikConnectionOptions,
+    userIdOrName: string,
+    userName: string,
+    disabled: boolean
+  ): Promise<{ success: boolean; message?: string }> {
+    const effectiveName = userName || (!userIdOrName.startsWith('*') ? userIdOrName : '');
+    const stateArabic = disabled ? 'إيقاف / تعطيل' : 'تفعيل / استئناف';
+
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      const idx = MikroTikService.demoUMUsers.findIndex(
+        u => u.id === userIdOrName || u.name === userIdOrName || (effectiveName && u.name === effectiveName)
+      );
+      if (idx >= 0) {
+        MikroTikService.demoUMUsers[idx].disabled = disabled;
+      }
+      if (disabled && effectiveName) {
+        await MikroTikService.disconnectUserManagerUser(options, effectiveName);
+      }
+      return { success: true, message: `تم ${stateArabic} الكارت (${effectiveName || userIdOrName}) بنجاح.` };
+    }
+
+    const proto = options.protocol || 'auto';
+
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+        const restOpt = { ...options, protocol: (isHttps ? 'rest_https' : 'rest_http') as any, port };
+
+        let updated = false;
+
+        // Try v7 User Manager
+        try {
+          let targetId = userIdOrName;
+          if (!targetId.startsWith('*') && effectiveName) {
+            const list = await fetchRestApi(restOpt, `/user-manager/user?name=${encodeURIComponent(effectiveName)}`);
+            const users = Array.isArray(list) ? list : [list];
+            const match = users.find((u: any) => u && (u.name === effectiveName || u['.id']));
+            if (match && match['.id']) {
+              targetId = match['.id'];
+            }
+          }
+
+          if (targetId.startsWith('*')) {
+            await fetchRestApi(restOpt, `/user-manager/user/${encodeURIComponent(targetId)}`, 'PATCH', {
+              disabled: disabled ? 'true' : 'false',
+            });
+            updated = true;
+          } else {
+            await fetchRestApi(restOpt, '/user-manager/user/set', 'POST', {
+              numbers: targetId,
+              disabled: disabled ? 'true' : 'false',
+            });
+            updated = true;
+          }
+        } catch {}
+
+        // Try v6 User Manager
+        if (!updated) {
+          try {
+            await fetchRestApi(restOpt, '/tool/user-manager/user/set', 'POST', {
+              numbers: effectiveName || userIdOrName,
+              disabled: disabled ? 'true' : 'false',
+            });
+            updated = true;
+          } catch {}
+        }
+
+        // Try Hotspot User fallback
+        if (!updated) {
+          try {
+            const hsList = await fetchRestApi(restOpt, `/ip/hotspot/user?name=${encodeURIComponent(effectiveName || userIdOrName)}`);
+            const list = Array.isArray(hsList) ? hsList : [hsList];
+            for (const u of list) {
+              if (u && u['.id']) {
+                await fetchRestApi(restOpt, `/ip/hotspot/user/${encodeURIComponent(u['.id'])}`, 'PATCH', {
+                  disabled: disabled ? 'true' : 'false',
+                });
+                updated = true;
+              }
+            }
+          } catch {}
+        }
+
+        // If disabling, terminate active session immediately so internet cuts out
+        if (disabled && effectiveName) {
+          try {
+            await MikroTikService.disconnectUserManagerUser(options, effectiveName);
+          } catch {}
+        }
+
+        return {
+          success: true,
+          message: `تم ${stateArabic} الكارت (${effectiveName || userIdOrName}) بنجاح.`,
+        };
+      } catch (err: any) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    // Binary API
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
+    await client.connect();
+    await client.login(options.username, options.password || '');
+
+    try {
+      let updated = false;
+
+      // 1. Try v7
+      try {
+        let v7Id = userIdOrName.startsWith('*') ? userIdOrName : '';
+        if (!v7Id && effectiveName) {
+          const found = await client.sendSentence(['/user-manager/user/print', `?name=${effectiveName}`]);
+          if (found && found.length > 0 && found[0]['.id']) {
+            v7Id = found[0]['.id'];
+          }
+        }
+
+        if (v7Id) {
+          await client.sendSentence(['/user-manager/user/set', `=.id=${v7Id}`, `=disabled=${disabled ? 'yes' : 'no'}`]);
+          updated = true;
+        } else {
+          await client.sendSentence(['/user-manager/user/set', `=numbers=${userIdOrName}`, `=disabled=${disabled ? 'yes' : 'no'}`]);
+          updated = true;
+        }
+      } catch {}
+
+      // 2. Try v6
+      if (!updated) {
+        try {
+          await client.sendSentence(['/tool/user-manager/user/set', `=numbers=${effectiveName || userIdOrName}`, `=disabled=${disabled ? 'yes' : 'no'}`]);
+          updated = true;
+        } catch {}
+      }
+
+      // 3. Hotspot fallback
+      if (!updated) {
+        try {
+          const hsFound = await client.sendSentence(['/ip/hotspot/user/print', `?name=${effectiveName || userIdOrName}`]);
+          for (const u of hsFound) {
+            if (u['.id']) {
+              await client.sendSentence(['/ip/hotspot/user/set', `=numbers=${u['.id']}`, `=disabled=${disabled ? 'yes' : 'no'}`]);
+              updated = true;
+            }
+          }
+        } catch {}
+      }
+
+      client.close();
+
+      // If disabling, disconnect immediately
+      if (disabled && effectiveName) {
+        try {
+          await MikroTikService.disconnectUserManagerUser(options, effectiveName);
+        } catch {}
+      }
+
+      return {
+        success: true,
+        message: `تم ${stateArabic} الكارت (${effectiveName || userIdOrName}) بنجاح.`,
+      };
+    } catch (err: any) {
+      client.close();
+      return { success: false, message: `تعذر ${stateArabic} الكارت: ${err.message}` };
+    }
+  }
+
+  // 19.3 Set Users Disabled/Enabled Status in Batch
+  public static async setUsersDisabledStatusBatch(
+    options: MikroTikConnectionOptions,
+    users: Array<{ id: string; name: string }>,
+    disabled: boolean
+  ): Promise<{ success: boolean; count: number; message?: string }> {
+    let count = 0;
+    for (const u of users) {
+      try {
+        const res = await MikroTikService.setUserDisabledStatus(options, u.id, u.name, disabled);
+        if (res.success) count++;
+      } catch (e) {
+        console.warn(`Failed to set status for ${u.name}:`, e);
+      }
+    }
+    const stateArabic = disabled ? 'إيقاف / تعطيل' : 'تفعيل / استئناف';
+    return {
+      success: count > 0,
+      count,
+      message: `تم بنجاح ${stateArabic} ${count} كارت من إجمالي ${users.length} كارت في User Manager.`,
+    };
   }
 
   // 19b. Disconnect Active User Manager User (Terminate sessions)
@@ -3922,7 +4258,7 @@ if (command === 'reboot') {
 
       if (userData.disabled) {
         try {
-          await client.sendSentence(['/ip/hotspot/active/print', `?user=${userData.name}`]);
+          await MikroTikService.disconnectUserManagerUser(options, userData.name);
         } catch {}
       }
 

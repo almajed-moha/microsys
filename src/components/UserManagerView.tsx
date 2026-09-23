@@ -51,7 +51,12 @@ import {
   Sliders,
   Filter,
   PowerOff,
-  Key
+  Key,
+  Play,
+  Pause,
+  Ban,
+  CheckSquare,
+  X
 } from 'lucide-react';
 import {
   NetworkSettings,
@@ -73,6 +78,9 @@ import {
   saveUserManagerProfileAndLimitation,
   deleteUserManagerProfile,
   deleteUserManagerUser,
+  deleteUserManagerUsersBatch,
+  toggleUserManagerUserDisabled,
+  toggleUserManagerUsersBatch,
   resetUserManagerUserCounters,
   disconnectUserManagerUser,
   generateUserManagerBatchRscScript,
@@ -281,20 +289,173 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     setVisiblePasswords((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // Delete User Voucher
-  const handleDeleteUser = async (userId: string, userName: string) => {
-    if (!confirm(`هل أنت متأكد من حذف كارت (${userName}) نهائياً من User Manager؟`)) return;
+  // Card Selection & Bulk Actions State
+  const [selectedCardKeys, setSelectedCardKeys] = useState<Set<string>>(new Set());
+  const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
+  const [isBulkOperating, setIsBulkOperating] = useState(false);
+  const [cardToDelete, setCardToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
+  // Toggle Single User Disabled/Enabled (Pause / Resume)
+  const handleToggleUserDisabled = async (userId: string, userName: string, currentDisabled: boolean) => {
+    const nextDisabled = !currentDisabled;
+    setTogglingUserId(userId || userName);
+    const res = await toggleUserManagerUserDisabled(config, userId, userName, nextDisabled);
+    setTogglingUserId(null);
+
+    if (res.success) {
+      setUsers((prev) => {
+        const next = prev.map((u) => {
+          if (u.id === userId || u.name === userName) {
+            return { ...u, disabled: nextDisabled };
+          }
+          return u;
+        });
+        updateMikrotikDataStore({ umUsers: next });
+        return next;
+      });
+      setActionFeedback({
+        success: true,
+        message: nextDisabled
+          ? `تم إيقاف وتعطيل الكارت (${userName}) وفصل جلسته النشطة فوراً بنجاح.`
+          : `تم تفعيل وتشغيل الكارت (${userName}) بنجاح وأصبح جاهزاً للاتصال بالشبكة.`,
+      });
+      setTimeout(() => setActionFeedback(null), 3500);
+    } else {
+      setActionFeedback({
+        success: false,
+        message: res.message || 'تعذر تغيير حالة الكارت في الراوتر.',
+      });
+    }
+  };
+
+  // Trigger Delete confirmation modal
+  const handleDeleteUser = (userId: string, userName: string) => {
+    setCardToDelete({ id: userId, name: userName });
+  };
+
+  // Confirm Single User Deletion
+  const confirmDeleteSingleUser = async () => {
+    if (!cardToDelete) return;
     setIsDeletingUser(true);
-    const ok = await deleteUserManagerUser(config, userId);
+    const ok = await deleteUserManagerUser(config, cardToDelete.id, cardToDelete.name);
     setIsDeletingUser(false);
 
     if (ok) {
-      setUsers((prev) => prev.filter((u) => u.id !== userId && u.name !== userName));
-      setActionFeedback({ success: true, message: `تم حذف الكارت (${userName}) من اليوزر مانجر بنجاح.` });
+      setUsers((prev) => {
+        const next = prev.filter((u) => u.id !== cardToDelete.id && u.name !== cardToDelete.name);
+        updateMikrotikDataStore({ umUsers: next });
+        return next;
+      });
+      setSelectedCardKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(cardToDelete.id);
+        next.delete(cardToDelete.name);
+        return next;
+      });
+      setActionFeedback({ success: true, message: `تم حذف الكارت (${cardToDelete.name}) نهائياً من User Manager بنجاح.` });
       setTimeout(() => setActionFeedback(null), 3500);
     } else {
-      setActionFeedback({ success: false, message: 'تعذر حذف الكارت من الراوتر.' });
+      setActionFeedback({ success: false, message: `تعذر حذف الكارت (${cardToDelete.name}) من الراوتر.` });
+    }
+    setCardToDelete(null);
+  };
+
+  // Multi-Selection Handlers
+  const handleToggleSelectCard = (key: string) => {
+    setSelectedCardKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllFiltered = () => {
+    if (selectedCardKeys.size >= filteredUsers.length && filteredUsers.length > 0) {
+      setSelectedCardKeys(new Set());
+    } else {
+      const allKeys = new Set(filteredUsers.map((u) => u.id || u.name));
+      setSelectedCardKeys(allKeys);
+    }
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedCardKeys(new Set());
+  };
+
+  // Batch Toggle Disabled (Pause / Resume selected)
+  const handleBatchToggleDisabled = async (disabled: boolean) => {
+    const targets = users
+      .filter((u) => selectedCardKeys.has(u.id || u.name))
+      .map((u) => ({ id: u.id, name: u.name }));
+
+    if (targets.length === 0) return;
+
+    setIsBulkOperating(true);
+    const res = await toggleUserManagerUsersBatch(config, targets, disabled);
+    setIsBulkOperating(false);
+
+    if (res.success) {
+      const targetKeys = new Set(targets.map((t) => t.id || t.name));
+      setUsers((prev) => {
+        const next = prev.map((u) => {
+          if (targetKeys.has(u.id || u.name)) {
+            return { ...u, disabled };
+          }
+          return u;
+        });
+        updateMikrotikDataStore({ umUsers: next });
+        return next;
+      });
+      setSelectedCardKeys(new Set());
+      setActionFeedback({
+        success: true,
+        message: res.message || `تم بنجاح تغيير حالة ${targets.length} كارت.`,
+      });
+      setTimeout(() => setActionFeedback(null), 4000);
+    } else {
+      setActionFeedback({
+        success: false,
+        message: res.message || 'تعذر تطبيق العملية على الكروت المحددة.',
+      });
+    }
+  };
+
+  // Batch Delete Selected Cards
+  const confirmBatchDelete = async () => {
+    const targets = users
+      .filter((u) => selectedCardKeys.has(u.id || u.name))
+      .map((u) => ({ id: u.id, name: u.name }));
+
+    if (targets.length === 0) return;
+
+    setIsBulkOperating(true);
+    const res = await deleteUserManagerUsersBatch(config, targets);
+    setIsBulkOperating(false);
+    setShowBulkDeleteConfirm(false);
+
+    if (res.success) {
+      const targetKeys = new Set(targets.map((t) => t.id || t.name));
+      setUsers((prev) => {
+        const next = prev.filter((u) => !targetKeys.has(u.id || u.name));
+        updateMikrotikDataStore({ umUsers: next });
+        return next;
+      });
+      setSelectedCardKeys(new Set());
+      setActionFeedback({
+        success: true,
+        message: res.message || `تم بنجاح حذف ${res.count} كارت من User Manager.`,
+      });
+      setTimeout(() => setActionFeedback(null), 4000);
+    } else {
+      setActionFeedback({
+        success: false,
+        message: res.message || 'تعذر حذف الكروت المحددة من الراوتر.',
+      });
     }
   };
 
@@ -1219,6 +1380,74 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
             </div>
           </div>
 
+          {/* Bulk Selection Actions Floating Toolbar */}
+          {selectedCardKeys.size > 0 && (
+            <div className="bg-gradient-to-r from-purple-950/90 via-slate-900/95 to-slate-950/90 border border-purple-500/40 p-3 sm:p-4 rounded-2xl shadow-2xl flex flex-wrap items-center justify-between gap-3 animate-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-purple-300 font-bold text-xs">
+                  {selectedCardKeys.size}
+                </div>
+                <div>
+                  <span className="font-bold text-white text-xs sm:text-sm block">
+                    تم تحديد {selectedCardKeys.size} كارت
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    يمكنك إيقاف، تفعيل، أو حذف الكروت المحددة دفعة واحدة من الراوتر.
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Pause Selected */}
+                <button
+                  type="button"
+                  onClick={() => handleBatchToggleDisabled(true)}
+                  disabled={isBulkOperating}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50"
+                  title="إيقاف وتعطيل الكروت المحددة مؤقتاً"
+                >
+                  {isBulkOperating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Pause className="w-3.5 h-3.5" />}
+                  <span>إيقاف المحددة (تجميد)</span>
+                </button>
+
+                {/* Enable Selected */}
+                <button
+                  type="button"
+                  onClick={() => handleBatchToggleDisabled(false)}
+                  disabled={isBulkOperating}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50"
+                  title="تفعيل وتشغيل الكروت المحددة"
+                >
+                  {isBulkOperating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                  <span>تفعيل المحددة</span>
+                </button>
+
+                {/* Delete Selected */}
+                <button
+                  type="button"
+                  onClick={() => setShowBulkDeleteConfirm(true)}
+                  disabled={isBulkOperating}
+                  className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50 shadow-md shadow-rose-950"
+                  title="حذف الكروت المحددة نهائياً من الراوتر"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>حذف المحددة نهائياً</span>
+                </button>
+
+                {/* Cancel selection */}
+                <button
+                  type="button"
+                  onClick={handleDeselectAll}
+                  disabled={isBulkOperating}
+                  className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
+                  title="إلغاء التحديد"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Users Table & Mobile Touch Cards */}
           <div className="bg-slate-900/90 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
             {/* Mobile Touch Cards View (md:hidden) */}
@@ -1250,9 +1479,21 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                       key={u.id || u.name || `um-mob-user-${idx}`}
                       className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3"
                     >
-                      {/* Top row: Name & Status */}
+                      {/* Top row: Checkbox, Name & Status */}
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSelectCard(u.id || u.name)}
+                            className={`w-5 h-5 rounded-md border flex items-center justify-center transition shrink-0 ${
+                              selectedCardKeys.has(u.id || u.name)
+                                ? 'bg-purple-600 border-purple-500 text-white'
+                                : 'border-slate-700 bg-slate-900 hover:border-purple-400'
+                            }`}
+                            title="تحديد الكارت"
+                          >
+                            {selectedCardKeys.has(u.id || u.name) && <Check className="w-3.5 h-3.5" />}
+                          </button>
                           <div className="w-9 h-9 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 font-bold shrink-0">
                             <Key className="w-4 h-4" />
                           </div>
@@ -1395,7 +1636,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                       )}
 
                       {/* Action Buttons Toolbar for Mobile */}
-                      <div className="pt-2 border-t border-slate-800/60 grid grid-cols-5 gap-1.5 text-xs">
+                      <div className="pt-2 border-t border-slate-800/60 grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-xs">
                         <button
                           onClick={() => setCardForSessions(u)}
                           className="py-2 rounded-xl bg-cyan-600/15 hover:bg-cyan-600/25 text-cyan-300 border border-cyan-500/20 font-bold flex flex-col items-center justify-center gap-0.5 transition"
@@ -1412,6 +1653,27 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                         >
                           <Edit3 className="w-4 h-4" />
                           <span className="text-[10px]">تعديل</span>
+                        </button>
+
+                        {/* Pause / Resume Button for Mobile */}
+                        <button
+                          onClick={() => handleToggleUserDisabled(u.id, u.name, Boolean(u.disabled))}
+                          disabled={togglingUserId === (u.id || u.name)}
+                          className={`py-2 rounded-xl font-bold flex flex-col items-center justify-center gap-0.5 border transition ${
+                            u.disabled
+                              ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-950'
+                              : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30'
+                          }`}
+                          title={u.disabled ? 'تفعيل واستئناف الكارت' : 'إيقاف وتعطيل الكارت مؤقتاً'}
+                        >
+                          {togglingUserId === (u.id || u.name) ? (
+                            <RefreshCw className="w-4 h-4 animate-spin text-purple-400" />
+                          ) : u.disabled ? (
+                            <Play className="w-4 h-4" />
+                          ) : (
+                            <Pause className="w-4 h-4" />
+                          )}
+                          <span className="text-[10px]">{u.disabled ? 'تفعيل' : 'إيقاف'}</span>
                         </button>
 
                         <button
@@ -1435,8 +1697,8 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                         <button
                           onClick={() => handleDeleteUser(u.id, u.name)}
                           disabled={isDeletingUser}
-                          className="py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 font-bold flex flex-col items-center justify-center gap-0.5 transition"
-                          title="حذف الكارت"
+                          className="py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 font-bold flex flex-col items-center justify-center gap-0.5 transition"
+                          title="حذف الكارت نهائياً"
                         >
                           <Trash2 className="w-4 h-4" />
                           <span className="text-[10px]">حذف</span>
@@ -1453,6 +1715,22 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
               <table className="w-full text-right text-xs">
                 <thead>
                   <tr className="bg-slate-950/80 text-slate-400 border-b border-slate-800 font-semibold">
+                    <th className="p-3.5 w-10 text-center">
+                      <button
+                        type="button"
+                        onClick={handleSelectAllFiltered}
+                        className={`w-4 h-4 rounded border flex items-center justify-center transition mx-auto ${
+                          selectedCardKeys.size > 0 && selectedCardKeys.size >= filteredUsers.length && filteredUsers.length > 0
+                            ? 'bg-purple-600 border-purple-500 text-white'
+                            : selectedCardKeys.size > 0
+                            ? 'bg-purple-600/40 border-purple-400 text-white'
+                            : 'border-slate-700 bg-slate-900 hover:border-purple-400'
+                        }`}
+                        title="تحديد أو إلغاء تحديد كافة الكروت"
+                      >
+                        {selectedCardKeys.size > 0 && <Check className="w-3 h-3" />}
+                      </button>
+                    </th>
                     <th className="p-3.5">اسم الكارت (Username)</th>
                     <th className="p-3.5">كلمة المرور / PIN</th>
                     <th className="p-3.5">البروفايل</th>
@@ -1466,7 +1744,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                 <tbody className="divide-y divide-slate-800/60">
                   {filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-slate-500">
+                      <td colSpan={9} className="p-8 text-center text-slate-500">
                         {isLoading ? (
                           <div className="flex items-center justify-center gap-2">
                             <RefreshCw className="w-4 h-4 animate-spin text-purple-400" />
@@ -1489,7 +1767,30 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                       const isTimeExpired = cardStatus.isTimeExpired;
 
                       return (
-                        <tr key={u.id || u.name || `um-user-row-${idx}`} className="hover:bg-slate-800/40 transition">
+                        <tr
+                          key={u.id || u.name || `um-user-row-${idx}`}
+                          className={`transition ${
+                            selectedCardKeys.has(u.id || u.name)
+                              ? 'bg-purple-950/30 hover:bg-purple-950/40'
+                              : 'hover:bg-slate-800/40'
+                          }`}
+                        >
+                          {/* Selection Checkbox */}
+                          <td className="p-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleSelectCard(u.id || u.name)}
+                              className={`w-4 h-4 rounded border flex items-center justify-center transition mx-auto ${
+                                selectedCardKeys.has(u.id || u.name)
+                                  ? 'bg-purple-600 border-purple-500 text-white'
+                                  : 'border-slate-700 bg-slate-900 hover:border-purple-400'
+                              }`}
+                              title="تحديد هذا الكارت"
+                            >
+                              {selectedCardKeys.has(u.id || u.name) && <Check className="w-3 h-3" />}
+                            </button>
+                          </td>
+
                           {/* Username */}
                           <td className="p-3.5">
                             <div className="flex items-center gap-2">
@@ -1666,6 +1967,26 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
 
+                              {/* Pause / Resume Single Card */}
+                              <button
+                                onClick={() => handleToggleUserDisabled(u.id, u.name, Boolean(u.disabled))}
+                                disabled={togglingUserId === (u.id || u.name)}
+                                className={`p-1.5 rounded-lg border transition text-xs font-semibold flex items-center justify-center ${
+                                  u.disabled
+                                    ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/40 shadow-sm'
+                                    : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30'
+                                }`}
+                                title={u.disabled ? 'تفعيل وتشغيل الكارت (استئناف)' : 'إيقاف وتعطيل الكارت مؤقتاً (تجميد)'}
+                              >
+                                {togglingUserId === (u.id || u.name) ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-purple-400" />
+                                ) : u.disabled ? (
+                                  <Play className="w-3.5 h-3.5" />
+                                ) : (
+                                  <Pause className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+
                               {/* Reset Counters */}
                               <button
                                 onClick={() => handleResetCounters(u.id, u.name)}
@@ -1688,7 +2009,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                               <button
                                 onClick={() => handleDeleteUser(u.id, u.name)}
                                 disabled={isDeletingUser}
-                                className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition text-xs"
+                                className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 transition text-xs"
                                 title="حذف الكارت نهائياً من الراوتر"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -3217,6 +3538,101 @@ set [find] use-radius=yes radius-accounting=yes`}
           fetchAllUMData();
         }}
       />
+
+      {/* Single Card Delete Confirmation Modal */}
+      {cardToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-rose-500/30 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-white text-sm">تأكيد حذف الكارت نهائياً</h4>
+                <p className="text-xs text-slate-400">اليوزر مانجر (MikroTik User Manager)</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 space-y-2">
+              <p>
+                هل أنت متأكد من رغبتك في حذف الكارت التالي نهائياً من الراوتر؟
+              </p>
+              <div className="font-mono font-bold text-purple-300 text-sm bg-purple-500/10 px-2.5 py-1.5 rounded-lg border border-purple-500/20 inline-block">
+                {cardToDelete.name}
+              </div>
+              <p className="text-[11px] text-rose-400">
+                ⚠️ سيتم إزالة الكارت، باقاته، وسجل جلساته بشكل نهائي ولن يتمكن المشترك من الاتصال مجدداً.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setCardToDelete(null)}
+                disabled={isDeletingUser}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition disabled:opacity-50"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteSingleUser}
+                disabled={isDeletingUser}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-lg shadow-rose-600/30 disabled:opacity-50"
+              >
+                {isDeletingUser ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                <span>تأكيد الحذف النهائي</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-rose-500/30 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-white text-sm">تأكيد حذف مجموعة كروت</h4>
+                <p className="text-xs text-slate-400">حذف {selectedCardKeys.size} كارت دفعة واحدة</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 space-y-2">
+              <p>
+                أنت على وشك حذف <strong className="text-rose-400 font-bold font-mono text-sm">{selectedCardKeys.size}</strong> كارت نهائياً من قاعدة بيانات اليوزر مانجر في الراوتر.
+              </p>
+              <p className="text-[11px] text-rose-400">
+                ⚠️ هذا الإجراء لا يمكن التراجع عنه وسيتم مسح كافة الكروت المحددة فوراً.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                disabled={isBulkOperating}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition disabled:opacity-50"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={confirmBatchDelete}
+                disabled={isBulkOperating}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-lg shadow-rose-600/30 disabled:opacity-50"
+              >
+                {isBulkOperating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                <span>تأكيد حذف {selectedCardKeys.size} كارت</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

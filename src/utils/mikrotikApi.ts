@@ -596,18 +596,93 @@ export async function deleteUserManagerProfile(
 }
 
 // 20. Delete User from User Manager
-export async function deleteUserManagerUser(config: Partial<MikroTikConfig>, userId: string): Promise<boolean> {
+export async function deleteUserManagerUser(
+  config: Partial<MikroTikConfig>,
+  userId: string,
+  userName?: string
+): Promise<boolean> {
   try {
     const res = await fetch('/api/mikrotik/um/delete-user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ options: config, userId }),
+      body: JSON.stringify({ options: config, userId, userName }),
     });
     const data = await parseJsonResponse(res);
     return Boolean(data.success);
   } catch (error) {
     console.warn('deleteUserManagerUser notice:', error);
     return false;
+  }
+}
+
+// 20a. Delete Multiple Users from User Manager (Batch)
+export async function deleteUserManagerUsersBatch(
+  config: Partial<MikroTikConfig>,
+  users: Array<{ id: string; name: string }>
+): Promise<{ success: boolean; count: number; message?: string }> {
+  try {
+    const res = await fetch('/api/mikrotik/um/delete-users-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, users }),
+    });
+    const data = await parseJsonResponse(res);
+    return {
+      success: Boolean(data.success),
+      count: data.count || 0,
+      message: data.message,
+    };
+  } catch (error: any) {
+    console.warn('deleteUserManagerUsersBatch notice:', error);
+    return { success: false, count: 0, message: error?.message || 'تعذر حذف الكروت المحددة' };
+  }
+}
+
+// 20b. Toggle User Manager User Disabled/Enabled Status (Pause / Resume)
+export async function toggleUserManagerUserDisabled(
+  config: Partial<MikroTikConfig>,
+  userId: string,
+  userName: string,
+  disabled: boolean
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    const res = await fetch('/api/mikrotik/um/toggle-user-disabled', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, userId, userName, disabled }),
+    });
+    const data = await parseJsonResponse(res);
+    return {
+      success: Boolean(data.success),
+      message: data.message,
+    };
+  } catch (error: any) {
+    console.warn('toggleUserManagerUserDisabled notice:', error);
+    return { success: false, message: error?.message || 'تعذر تغيير حالة الكارت' };
+  }
+}
+
+// 20c. Toggle Multiple Users Disabled/Enabled Status in Batch
+export async function toggleUserManagerUsersBatch(
+  config: Partial<MikroTikConfig>,
+  users: Array<{ id: string; name: string }>,
+  disabled: boolean
+): Promise<{ success: boolean; count: number; message?: string }> {
+  try {
+    const res = await fetch('/api/mikrotik/um/toggle-users-disabled-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, users, disabled }),
+    });
+    const data = await parseJsonResponse(res);
+    return {
+      success: Boolean(data.success),
+      count: data.count || 0,
+      message: data.message,
+    };
+  } catch (error: any) {
+    console.warn('toggleUserManagerUsersBatch notice:', error);
+    return { success: false, count: 0, message: error?.message || 'تعذر تعديل حالة الكروت' };
   }
 }
 

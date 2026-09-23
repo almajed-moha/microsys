@@ -527,14 +527,56 @@ app.post("/api/mikrotik/um/delete-profile", async (req, res) => {
 // 19. Delete UM User
 app.post("/api/mikrotik/um/delete-user", async (req, res) => {
   try {
-    const { options, userId } = req.body;
-    if (!options?.host || !userId) {
+    const { options, userId, userName } = req.body;
+    if (!options?.host || (!userId && !userName)) {
       return res.status(400).json({ success: false, error: "معرّف الكارت والاتصال مطلوبان" });
     }
-    const ok = await MikroTikService.deleteUserManagerUser(options, userId);
+    const ok = await MikroTikService.deleteUserManagerUser(options, userId || userName, userName);
     res.json({ success: ok });
   } catch (error: any) {
     res.json({ success: false, error: error.message || "تعذر حذف الكارت من User Manager" });
+  }
+});
+
+// 19.1 Delete UM Users in Batch
+app.post("/api/mikrotik/um/delete-users-batch", async (req, res) => {
+  try {
+    const { options, users } = req.body;
+    if (!options?.host || !Array.isArray(users) || users.length === 0) {
+      return res.status(400).json({ success: false, error: "قائمة الكروت وبيانات الاتصال مطلوبة" });
+    }
+    const result = await MikroTikService.deleteUserManagerUsersBatch(options, users);
+    res.json(result);
+  } catch (error: any) {
+    res.json({ success: false, error: error.message || "تعذر حذف الكروت المحددة من User Manager" });
+  }
+});
+
+// 19.2 Toggle UM User Disabled/Enabled Status (Pause / Resume)
+app.post("/api/mikrotik/um/toggle-user-disabled", async (req, res) => {
+  try {
+    const { options, userId, userName, disabled } = req.body;
+    if (!options?.host || (!userId && !userName) || typeof disabled !== "boolean") {
+      return res.status(400).json({ success: false, error: "بيانات الكارت والحالة المطلوبة غير مكتملة" });
+    }
+    const result = await MikroTikService.setUserDisabledStatus(options, userId || userName, userName || userId, disabled);
+    res.json(result);
+  } catch (error: any) {
+    res.json({ success: false, error: error.message || "تعذر تغيير حالة الكارت في User Manager" });
+  }
+});
+
+// 19.3 Toggle UM Users Disabled/Enabled Status in Batch
+app.post("/api/mikrotik/um/toggle-users-disabled-batch", async (req, res) => {
+  try {
+    const { options, users, disabled } = req.body;
+    if (!options?.host || !Array.isArray(users) || users.length === 0 || typeof disabled !== "boolean") {
+      return res.status(400).json({ success: false, error: "قائمة الكروت والحالة المطلوبة غير مكتملة" });
+    }
+    const result = await MikroTikService.setUsersDisabledStatusBatch(options, users, disabled);
+    res.json(result);
+  } catch (error: any) {
+    res.json({ success: false, error: error.message || "تعذر تعديل حالة الكروت في User Manager" });
   }
 });
 
