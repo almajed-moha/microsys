@@ -27,6 +27,8 @@ import {
   AccessDeniedView,
   IncomeStatementModal,
   ClientStatementReportModal,
+  DebtsReportModal,
+  TrialBalanceModal,
   FinancialExportModal,
   GlobalSearchModal,
   POSPortalView,
@@ -524,6 +526,8 @@ export default function App() {
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isIncomeStatementOpen, setIsIncomeStatementOpen] = useState(false);
   const [isClientStatementOpen, setIsClientStatementOpen] = useState(false);
+  const [isDebtsReportOpen, setIsDebtsReportOpen] = useState(false);
+  const [isTrialBalanceOpen, setIsTrialBalanceOpen] = useState(false);
   const [isFinancialExportModalOpen, setIsFinancialExportModalOpen] = useState(false);
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [quickSalePOSId, setQuickSalePOSId] = useState<string | undefined>(undefined);
@@ -3691,6 +3695,8 @@ export default function App() {
         onOpenAI={() => setIsAIModalOpen(true)}
         onOpenNewPayment={() => handleOpenPaymentModal()}
         onOpenNewSale={() => setActiveView('invoices')}
+        onOpenDebtsReport={() => setIsDebtsReportOpen(true)}
+        onOpenTrialBalance={() => setIsTrialBalanceOpen(true)}
         settings={settings}
         posPoints={scopedPOSPoints}
         sales={scopedSales}
@@ -3838,6 +3844,8 @@ export default function App() {
                   onPrintSaleReceipt={(sale) => setSelectedSaleForReceipt(sale)}
                   onOpenIncomeStatement={() => setIsIncomeStatementOpen(true)}
                   onOpenClientStatement={() => setIsClientStatementOpen(true)}
+                  onOpenDebtsReport={() => setIsDebtsReportOpen(true)}
+                  onOpenTrialBalance={() => setIsTrialBalanceOpen(true)}
                   canViewIncomeStatement={hasPermission(activeUser, 'dashboard', 'viewIncomeStatement', currentTenant)}
                 />
               )}
@@ -3892,6 +3900,8 @@ export default function App() {
                   customers={scopedCustomers}
                   onViewReceipt={(inv) => setSelectedInvoiceForReceipt(inv)}
                   onOpenFinancialExport={() => setIsFinancialExportModalOpen(true)}
+                  onOpenTrialBalance={() => setIsTrialBalanceOpen(true)}
+                  onOpenDebtsReport={() => setIsDebtsReportOpen(true)}
                 />
               )}
 
@@ -3943,6 +3953,7 @@ export default function App() {
                   onOpenQuickSaleForPOS={(id) => {
                     setActiveView('invoices');
                   }}
+                  onOpenDebtsReport={() => setIsDebtsReportOpen(true)}
                 />
               )}
 
@@ -4030,6 +4041,7 @@ export default function App() {
             onOpenPaymentModal={(customerId) => handleOpenPaymentModal(undefined, customerId)}
             onOpenInvoiceModal={(_customerId) => setActiveView('invoices')}
             onViewInvoiceReceipt={(inv) => setSelectedInvoiceForReceipt(inv)}
+            onOpenDebtsReport={() => setIsDebtsReportOpen(true)}
             onAddCustomer={(customer) => {
               const customerWithNetwork = {
                 ...customer,
@@ -4349,6 +4361,36 @@ export default function App() {
           customers={scopedCustomers}
           invoices={scopedInvoices}
           payments={scopedPayments}
+          settings={settings}
+        />
+      )}
+
+      {/* 9.1 Comprehensive Debts & Aging Report (تقرير المديونية وأعمار الديون) */}
+      {isDebtsReportOpen && (
+        <DebtsReportModal
+          isOpen={isDebtsReportOpen}
+          onClose={() => setIsDebtsReportOpen(false)}
+          posPoints={scopedPOSPoints}
+          customers={scopedCustomers}
+          invoices={scopedInvoices}
+          payments={scopedPayments}
+          settings={settings}
+        />
+      )}
+
+      {/* 9.2 Monthly Trial Balance & Invoices Reconciliation Modal (ميزان المراجعة والتدقيق الشهري للفواتير) */}
+      {isTrialBalanceOpen && (
+        <TrialBalanceModal
+          isOpen={isTrialBalanceOpen}
+          onClose={() => setIsTrialBalanceOpen(false)}
+          invoices={scopedInvoices}
+          expenses={scopedExpenses}
+          expenseCategories={scopedExpenseCategories}
+          posPoints={scopedPOSPoints}
+          customers={scopedCustomers}
+          categories={scopedCategories}
+          payments={scopedPayments}
+          sales={scopedSales}
           settings={settings}
         />
       )}

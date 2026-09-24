@@ -20,7 +20,8 @@ import {
   LayoutGrid,
   Eye,
   Layers,
-  CheckCircle2
+  CheckCircle2,
+  Scale
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -76,6 +77,8 @@ interface DashboardViewProps {
   onOpenIncomeStatement?: () => void;
   onOpenFinancialExport?: () => void;
   onOpenClientStatement?: () => void;
+  onOpenDebtsReport?: () => void;
+  onOpenTrialBalance?: () => void;
   canViewIncomeStatement?: boolean;
 }
 
@@ -98,6 +101,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenIncomeStatement,
   onOpenFinancialExport,
   onOpenClientStatement,
+  onOpenDebtsReport,
+  onOpenTrialBalance,
   canViewIncomeStatement = true,
 }) => {
   const currency = settings?.currencySymbol || 'ر.ي';
@@ -362,7 +367,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span>قائمة الدخل</span>
             </button>
           )}
-          {canViewIncomeStatement && onOpenClientStatement && (
+          {canViewIncomeStatement && onOpenDebtsReport && (
+            <button
+              onClick={onOpenDebtsReport}
+              className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-sm font-medium transition cursor-pointer border border-amber-500/30"
+              title="تقرير المديونيات الشامل وأعمار الديون والحدود الائتمانية"
+            >
+              <CreditCard className="w-4 h-4 text-amber-400" />
+              <span>تقرير المديونية</span>
+            </button>
+          )}
+          {canViewIncomeStatement && onOpenTrialBalance && (
+            <button
+              onClick={onOpenTrialBalance}
+              className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 text-sm font-medium transition cursor-pointer border border-indigo-500/30"
+              title="ميزان المراجعة والتدقيق الشهري للفواتير والكشوفات"
+            >
+              <Scale className="w-4 h-4 text-indigo-400" />
+              <span>ميزان المراجعة</span>
+            </button>
+          )}
+          {canViewIncomeStatement && onOpenClientStatement && !onOpenDebtsReport && (
             <button
               onClick={onOpenClientStatement}
               className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium transition cursor-pointer border border-slate-700"

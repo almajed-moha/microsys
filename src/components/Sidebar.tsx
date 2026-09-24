@@ -29,6 +29,7 @@ import {
   Info,
   Database,
   History,
+  Scale,
 } from 'lucide-react';
 import {
   NetworkSettings,
@@ -108,6 +109,8 @@ interface SidebarProps {
   onOpenLogin?: () => void;
   onLogout?: () => void;
   onOpenAboutProgram?: () => void;
+  onOpenDebtsReport?: () => void;
+  onOpenTrialBalance?: () => void;
   tenantRemainingDays?: number | null;
   tenantPlan?: string;
   activeTenant?: NetworkTenant | null;
@@ -145,6 +148,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenLogin,
   onLogout,
   onOpenAboutProgram,
+  onOpenDebtsReport,
+  onOpenTrialBalance,
   tenantRemainingDays,
   tenantPlan,
   activeTenant,
@@ -442,6 +447,61 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             );
           })}
+
+          {/* Financial & Audit Reports */}
+          {(onOpenDebtsReport || onOpenTrialBalance) && (!activeUser || activeUser.role !== 'pos_agent') && (
+            <div className="pt-3 border-t border-slate-800/80 space-y-1">
+              <div className="text-[10px] font-bold text-slate-500 px-3 pb-1 tracking-wider uppercase">
+                {!isCollapsed ? 'المطابقة والتقارير المالية' : '•••'}
+              </div>
+
+              {onOpenDebtsReport && (
+                <button
+                  onClick={() => {
+                    onOpenDebtsReport();
+                    handleClose();
+                  }}
+                  title="تقرير مديونيات الموزعين والعملاء (PDF / Excel)"
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all text-amber-300 hover:text-white hover:bg-slate-800/70 group ${
+                    isCollapsed ? 'lg:justify-center' : 'justify-between'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <CreditCard className="w-4 h-4 text-amber-400 shrink-0 group-hover:scale-110 transition-transform" />
+                    {!isCollapsed && <span>تقرير المديونية والأعمار</span>}
+                  </div>
+                  {!isCollapsed && (
+                    <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      PDF/إكسيل
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {onOpenTrialBalance && (
+                <button
+                  onClick={() => {
+                    onOpenTrialBalance();
+                    handleClose();
+                  }}
+                  title="ميزان المراجعة والتدقيق الشهري للفواتير (PDF / Excel)"
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all text-indigo-300 hover:text-white hover:bg-slate-800/70 group ${
+                    isCollapsed ? 'lg:justify-center' : 'justify-between'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Scale className="w-4 h-4 text-indigo-400 shrink-0 group-hover:scale-110 transition-transform" />
+                    {!isCollapsed && <span>ميزان المراجعة والتدقيق</span>}
+                  </div>
+                  {!isCollapsed && (
+                    <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                      شهري ⚖️
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="pt-4 text-[10px] font-bold text-slate-500 px-3 pb-1 tracking-wider uppercase border-t border-slate-800/80">
             {!isCollapsed ? 'إعدادات النظام والأدوات' : '•••'}

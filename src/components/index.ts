@@ -42,6 +42,8 @@ export { CustomersView } from './CustomersView';
 export * from './MikrotikSessionsView';
 export { CardUsageTrackerView } from './CardUsageTrackerView';
 export { ClientStatementReportModal } from './ClientStatementReportModal';
+export { DebtsReportModal } from './DebtsReportModal';
+export { TrialBalanceModal } from './TrialBalanceModal';
 export { DashboardCustomizerModal } from './DashboardCustomizerModal';
 export { MikrotikQuickLauncherModal } from './MikrotikQuickLauncherModal';
 export { MikrotikFloatingSpeedDial } from './MikrotikFloatingSpeedDial';

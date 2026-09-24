@@ -71,6 +71,7 @@ interface POSPointsViewProps {
   onOpenPaymentModal: (posId: string) => void;
   onOpenDispatchModal: (posId: string) => void;
   onOpenQuickSaleForPOS: (posId: string) => void;
+  onOpenDebtsReport?: () => void;
 }
 
 export const POSPointsView: React.FC<POSPointsViewProps> = ({
@@ -91,6 +92,7 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
   onOpenPaymentModal,
   onOpenDispatchModal,
   onOpenQuickSaleForPOS,
+  onOpenDebtsReport,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended' | 'indebted' | 'over_limit'>('all');
@@ -410,6 +412,17 @@ export const POSPointsView: React.FC<POSPointsViewProps> = ({
               <span>بطاقات</span>
             </button>
           </div>
+
+          {onOpenDebtsReport && (
+            <button
+              onClick={onOpenDebtsReport}
+              className="flex items-center gap-1.5 py-2 px-3 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition cursor-pointer"
+              title="تقرير المديونية وأعمار الديون والحد الائتماني (PDF / Excel)"
+            >
+              <CreditCard className="w-4 h-4 text-amber-400" />
+              <span>تقرير المديونية الشامل</span>
+            </button>
+          )}
 
           <button
             onClick={() => onOpenStatement('', 'a4')}

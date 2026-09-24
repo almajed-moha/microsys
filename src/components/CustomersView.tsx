@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Plus, Edit2, Trash2, User, Phone, MapPin, Activity, FileText, Download, DollarSign, Receipt, AlertTriangle, CheckCircle, ShieldAlert, X } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, User, Phone, MapPin, Activity, FileText, Download, DollarSign, Receipt, AlertTriangle, CheckCircle, ShieldAlert, X, CreditCard } from 'lucide-react';
 import { Customer, InvoiceRecord, PaymentRecord, SalesRecord, CardCategory, POSPoint, NetworkSettings } from '../types';
 import { CustomerStatementModal } from './CustomerStatementModal';
 
@@ -17,6 +17,7 @@ interface CustomersViewProps {
   onOpenPaymentModal?: (customerId: string) => void;
   onOpenInvoiceModal?: (customerId: string) => void;
   onViewInvoiceReceipt?: (invoice: InvoiceRecord) => void;
+  onOpenDebtsReport?: () => void;
 }
 
 export const CustomersView: React.FC<CustomersViewProps> = ({
@@ -33,6 +34,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   onOpenPaymentModal,
   onOpenInvoiceModal,
   onViewInvoiceReceipt,
+  onOpenDebtsReport,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -172,13 +174,25 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           <h2 className="text-2xl font-bold text-slate-800">إدارة العملاء</h2>
           <p className="text-slate-500 text-sm mt-1">سجل العملاء، الأرصدة، وكشوف الحساب</p>
         </div>
-        <button
-          onClick={() => openModal()}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-all shadow-sm"
-        >
-          <Plus size={20} />
-          <span>إضافة عميل جديد</span>
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {onOpenDebtsReport && (
+            <button
+              onClick={onOpenDebtsReport}
+              className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 px-3.5 py-2 rounded-xl flex items-center gap-2 transition-all font-bold text-xs shadow-xs"
+              title="عرض تقرير المديونية الشامل وأعمار الديون والطباعة وتصدير الإكسيل"
+            >
+              <CreditCard size={16} className="text-amber-600" />
+              <span>تقرير المديونية الشامل (PDF / Excel)</span>
+            </button>
+          )}
+          <button
+            onClick={() => openModal()}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-all shadow-sm font-bold text-xs"
+          >
+            <Plus size={18} />
+            <span>إضافة عميل جديد</span>
+          </button>
+        </div>
       </div>
 
       {/* Feedback Toast Notification */}

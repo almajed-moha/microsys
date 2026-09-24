@@ -28,7 +28,8 @@ import {
   FileCode,
   Share2,
   FileDown,
-  Loader2
+  Loader2,
+  Scale
 } from 'lucide-react';
 import { InvoiceRecord, InvoiceItem, CardCategory, POSPoint, NetworkSettings, ExpenseRecord, SalesRecord, PaymentRecord, Customer } from '../types';
 import { exportToCSV, downloadFile, generateNextInvoiceNumber } from '../utils/storage';
@@ -56,6 +57,8 @@ interface InvoicesViewProps {
   onUpdateInvoice: (invoice: InvoiceRecord) => void;
   onDeleteInvoice: (invoiceId: string) => void;
   onOpenFinancialExport?: () => void;
+  onOpenTrialBalance?: () => void;
+  onOpenDebtsReport?: () => void;
 }
 
 export const InvoicesView: React.FC<InvoicesViewProps> = ({
@@ -72,6 +75,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
   onUpdateInvoice,
   onDeleteInvoice,
   onOpenFinancialExport,
+  onOpenTrialBalance,
+  onOpenDebtsReport,
 }) => {
   const currency = settings?.currencySymbol || 'ر.ي';
 
@@ -681,10 +686,22 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
           <button
             onClick={handleExportCSV}
             className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-sm font-bold transition shadow-sm cursor-pointer"
+            title="تصدير سجل الفواتير إلى إكسيل"
           >
             <Download className="w-4 h-4 text-emerald-400" />
             <span>تصدير Excel</span>
           </button>
+
+          {onOpenTrialBalance && (
+            <button
+              onClick={onOpenTrialBalance}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 text-sm font-bold transition shadow-sm cursor-pointer"
+              title="ميزان المراجعة والتدقيق الشهري للفواتير والكشوفات"
+            >
+              <Scale className="w-4 h-4 text-indigo-400" />
+              <span>ميزان المراجعة والضبط</span>
+            </button>
+          )}
 
           <button
             onClick={() => handleOpenCreateModal('return')}

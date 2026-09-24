@@ -38,6 +38,7 @@ import {
   AppUser
 } from '../types';
 import { exportToCSV } from '../utils/storage';
+import { exportIncomeStatementToExcel } from '../utils/exportAccounting';
 import { calculateComprehensiveFinancials } from '../utils/financialCalculations';
 import { printElementDocument, exportElementToPdf } from '../utils/pdfExport';
 
@@ -207,28 +208,38 @@ export const IncomeStatementModal: React.FC<IncomeStatementModalProps> = ({
     selectedPOSId,
   ]);
 
-  // Export CSV
+  // Export Excel (.xlsx)
   const handleExportCSV = () => {
-    const reportData = [
-      { 'البند المحاسبي': '1. إجمالي إيرادات مبيعات الكروت (Gross Sales)', 'المبلغ': calculations.grossSales, 'العملة': currency, 'ملاحظات': `الكمية: ${calculations.totalCardsSoldQty} كرت` },
-      { 'البند المحاسبي': '(-) مردودات ومسموحات المبيعات (Sales Returns)', 'المبلغ': calculations.salesReturns, 'العملة': currency, 'ملاحظات': `المرتجع: ${calculations.totalCardsReturnedQty} كرت` },
-      { 'البند المحاسبي': '(=) صافي الإيرادات التشغيلية (Net Revenue)', 'المبلغ': calculations.netSalesRevenue, 'العملة': currency, 'ملاحظات': 'أساس احتساب هوامش الربح' },
-      { 'البند المحاسبي': '(-) تكلفة البضاعة المباعة / رأس المال (COGS)', 'المبلغ': calculations.netCOGS, 'العملة': currency, 'ملاحظات': 'تكلفة شراء الكروت من المصدر' },
-      { 'البند المحاسبي': '(=) مجمل الربح التجاري (Gross Profit)', 'المبلغ': calculations.grossProfit, 'العملة': currency, 'ملاحظات': `هامش مجمل الربح: ${(calculations.grossMarginPercent ?? 0).toFixed(1)}%` },
-      { 'البند المحاسبي': '(-) إجمالي المصروفات والنفقات التشغيلية (OPEX)', 'المبلغ': calculations.totalOperatingExpenses, 'العملة': currency, 'ملاحظات': `عدد السندات: ${calculations.expensesCount}` },
-      ...calculations.expenseBreakdownList.map((e) => ({
-        'البند المحاسبي': `   - بند: ${e.categoryName}`,
-        'المبلغ': e.totalAmount,
-        'العملة': currency,
-        'ملاحظات': `${(e.percentOfTotalExpenses ?? (calculations.totalOperatingExpenses > 0 ? (e.totalAmount / calculations.totalOperatingExpenses) * 100 : 0)).toFixed(1)}% من إجمالي المصاريف`,
-      })),
-      { 'البند المحاسبي': '(=) صافي الربح / الخسارة النهائي (Net Income)', 'المبلغ': calculations.netProfit, 'العملة': currency, 'ملاحظات': `هامش صافي الربح: ${(calculations.netProfitMarginPercent ?? 0).toFixed(1)}%` },
-      { 'البند المحاسبي': 'إجمالي المقبوضات النقدية المحصلة (Cash Collected)', 'المبلغ': calculations.totalCashCollected, 'العملة': currency, 'ملاحظات': `عدد السندات: ${calculations.paymentsCount}` },
-      { 'البند المحاسبي': 'إجمالي المديونيات المعلقة في السوق (Total Debt)', 'المبلغ': calculations.currentTotalPOSDebt, 'العملة': currency, 'ملاحظات': 'مستحقات على نقاط البيع' },
-    ];
-
-    exportToCSV(reportData, `قائمة_الدخل_المالية_${period}_${new Date().toISOString().split('T')[0]}`);
-    showFeedback('تم تصدير قائمة الدخل إلى ملف Excel بنجاح ✅');
+    try {
+      exportIncomeStatementToExcel({
+        calculations: {
+          grossSalesRevenue: calculations.grossSales,
+          totalCardsQuantity: calculations.totalCardsSoldQty,
+          salesReturnsValue: calculations.salesReturns,
+          returnedCardsQuantity: calculations.totalCardsReturnedQty,
+          netSalesRevenue: calculations.netSalesRevenue,
+          netCOGS: calculations.netCOGS,
+          grossProfit: calculations.grossProfit,
+          grossMarginPercent: calculations.grossMarginPercent,
+          expenseBreakdownList: calculations.expenseBreakdownList,
+          totalOperatingExpenses: calculations.totalOperatingExpenses,
+          expensesCount: calculations.expensesCount,
+          netProfit: calculations.netProfit,
+          netProfitMarginPercent: calculations.netProfitMarginPercent,
+          totalCashCollected: calculations.totalCashCollected,
+          paymentsCount: calculations.paymentsCount,
+          currentTotalPOSDebt: calculations.currentTotalPOSDebt,
+          netCashFlow: calculations.netCashFlow,
+        },
+        settings,
+        periodName: period === 'today' ? 'اليوم' : period === 'month' ? 'الشهر الحالي' : period === 'year' ? 'السنة الحالية' : period,
+        filename: `قائمة_الدخل_المالية_${period}_${new Date().toISOString().split('T')[0]}.xlsx`,
+      });
+      showFeedback('تم تصدير مصنف الإكسيل لقائمة الدخل بنجاح وتنسيقه بالكامل ✅');
+    } catch (e) {
+      console.error(e);
+      showFeedback('حدث خطأ أثناء تصدير ملف الإكسيل');
+    }
   };
 
   // Print Document Handler
