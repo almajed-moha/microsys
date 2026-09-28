@@ -48,7 +48,10 @@ interface ExpiredCardItem {
   limitUptime?: string;
   uptimeUsed?: string;
   comment?: string;
-  expireReason: 'traffic-limit' | 'uptime-limit' | 'session-expired' | 'manual';
+  expireReason: 'traffic-limit' | 'uptime-limit' | 'profile-expired' | 'comment-expired' | 'disabled-depleted' | 'session-expired';
+  expireReasonDesc: string;
+  statusBadgeClass: string;
+  percentUsed: number;
   lastSeen?: string;
 }
 
@@ -56,12 +59,13 @@ interface MikrotikExpiredCardsModalProps {
   isOpen: boolean;
   onClose: () => void;
   config: Partial<MikroTikConfig>;
-  sessions: MikrotikCallerSession[];
+  sessions?: MikrotikCallerSession[];
   categories?: CardCategory[];
   umContext?: {
     limitations?: UserManagerLimitation[];
     profiles?: UserManagerProfile[];
   };
+  initialUsers?: any[];
   onCardsDeleted?: () => void;
 }
 
@@ -77,16 +81,17 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
   isOpen,
   onClose,
   config,
-  sessions,
+  sessions = [],
   categories = [],
   umContext,
+  initialUsers = [],
   onCardsDeleted,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [expiredCards, setExpiredCards] = useState<ExpiredCardItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'hotspot' | 'user-manager'>('all');
-  const [reasonFilter, setReasonFilter] = useState<'all' | 'traffic' | 'uptime'>('all');
+  const [reasonFilter, setReasonFilter] = useState<'all' | 'traffic' | 'uptime' | 'profile' | 'comment' | 'disabled'>('all');
 
   // Deletion state
   const [cardToDelete, setCardToDelete] = useState<ExpiredCardItem | null>(null);
@@ -97,12 +102,54 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
   // Export state
   const [isExporting, setIsExporting] = useState(false);
 
-  // Load expired cards from Router users and caller sessions
+  // Helper to build ExpiredCardItem from evaluated user
+  const buildExpiredItem = (u: any, src: 'hotspot' | 'user-manager'): ExpiredCardItem => {
+    const status = evaluateCardExpirationStatus(u, categories, umContext);
+    let expireReason: ExpiredCardItem['expireReason'] = 'session-expired';
+    if (status.isQuotaExpired) expireReason = 'traffic-limit';
+    else if (status.isTimeExpired) expireReason = 'uptime-limit';
+    else if (status.isProfileExpired) expireReason = 'profile-expired';
+    else if (status.isCommentExpired) expireReason = 'comment-expired';
+    else if (status.isDisabledDepleted) expireReason = 'disabled-depleted';
+
+    return {
+      id: u.id || u.name,
+      name: u.name,
+      source: src,
+      profile: u.actualProfile || u.profile || u.customer,
+      totalLimitBytes: status.quotaLimitBytes || u.limitBytesTotal,
+      totalUsedBytes: status.totalBytesUsed,
+      downloadBytes: u.bytesOut || u.downloadUsed || 0,
+      uploadBytes: u.bytesIn || u.uploadUsed || 0,
+      limitUptime: u.limitUptime,
+      uptimeUsed: u.uptime || u.uptimeUsed,
+      comment: u.comment,
+      expireReason,
+      expireReasonDesc: status.expireReasonDesc || status.statusLabel,
+      statusBadgeClass: status.statusBadgeClass,
+      percentUsed: status.percentQuotaUsed,
+      lastSeen: u.lastSeen,
+    };
+  };
+
+  // Load expired cards from Router users, passed initial users, and caller sessions
   const loadExpiredCards = async () => {
     setIsLoading(true);
     setFeedbackMessage(null);
     try {
       const itemsMap = new Map<string, ExpiredCardItem>();
+
+      // 0. Immediately scan initialUsers if provided (instant response)
+      if (Array.isArray(initialUsers) && initialUsers.length > 0) {
+        for (const u of initialUsers) {
+          if (!u || !u.name) continue;
+          const status = evaluateCardExpirationStatus(u, categories, umContext);
+          if (status.isExpired) {
+            const src: 'hotspot' | 'user-manager' = u.source?.includes('user-manager') || u.customer ? 'user-manager' : 'hotspot';
+            itemsMap.set(`${src === 'user-manager' ? 'um' : 'hs'}-${u.name}`, buildExpiredItem(u, src));
+          }
+        }
+      }
 
       // 1. Check Configured Hotspot Users from /ip/hotspot/user
       try {
@@ -110,31 +157,8 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
         if (Array.isArray(hotspotUsers)) {
           for (const u of hotspotUsers) {
             const status = evaluateCardExpirationStatus(u, categories);
-
-            // A card is included ONLY if genuinely expired (quota, uptime, or comment expired)
-            // It is NEVER included if merely manually disabled!
             if (status.isExpired) {
-              const expireReason: 'traffic-limit' | 'uptime-limit' | 'session-expired' = status.isQuotaExpired
-                ? 'traffic-limit'
-                : status.isTimeExpired
-                ? 'uptime-limit'
-                : 'session-expired';
-
-              itemsMap.set(`hs-${u.name}`, {
-                id: u.id || u.name,
-                name: u.name,
-                source: 'hotspot',
-                profile: u.profile,
-                totalLimitBytes: status.quotaLimitBytes || u.limitBytesTotal,
-                totalUsedBytes: status.totalBytesUsed,
-                downloadBytes: u.bytesOut || 0,
-                uploadBytes: u.bytesIn || 0,
-                limitUptime: u.limitUptime,
-                uptimeUsed: u.uptime,
-                comment: u.comment,
-                expireReason,
-                lastSeen: undefined,
-              });
+              itemsMap.set(`hs-${u.name}`, buildExpiredItem(u, 'hotspot'));
             }
           }
         }
@@ -148,30 +172,8 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
         if (Array.isArray(umUsers)) {
           for (const u of umUsers) {
             const status = evaluateCardExpirationStatus(u, categories, umContext);
-
-            // Genuinely expired check - NO conflation with disabled cards
             if (status.isExpired) {
-              const expireReason: 'traffic-limit' | 'uptime-limit' | 'session-expired' = status.isQuotaExpired
-                ? 'traffic-limit'
-                : status.isTimeExpired
-                ? 'uptime-limit'
-                : 'session-expired';
-
-              itemsMap.set(`um-${u.name}`, {
-                id: u.id || u.name,
-                name: u.name,
-                source: 'user-manager',
-                profile: u.actualProfile || u.customer,
-                totalLimitBytes: status.quotaLimitBytes || u.limitBytesTotal,
-                totalUsedBytes: status.totalBytesUsed,
-                downloadBytes: u.downloadUsed || 0,
-                uploadBytes: u.uploadUsed || 0,
-                limitUptime: u.limitUptime,
-                uptimeUsed: u.uptimeUsed,
-                comment: u.comment,
-                expireReason,
-                lastSeen: u.lastSeen,
-              });
+              itemsMap.set(`um-${u.name}`, buildExpiredItem(u, 'user-manager'));
             }
           }
         }
@@ -204,6 +206,11 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
               uptimeUsed: s.uptime,
               comment: s.comment,
               expireReason: isTerminatedByQuota ? 'traffic-limit' : 'uptime-limit',
+              expireReasonDesc: isTerminatedByQuota ? 'فصلت الجلسة لنفاد حصة التحميل' : 'فصلت الجلسة لانتهاء وقت الاستخدام',
+              statusBadgeClass: isTerminatedByQuota
+                ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+                : 'bg-amber-500/15 text-amber-300 border border-amber-500/30',
+              percentUsed: 100,
               lastSeen: s.logoutTime || s.loginTime,
             });
           }
@@ -230,13 +237,17 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
       if (sourceFilter !== 'all' && card.source !== sourceFilter) return false;
       if (reasonFilter === 'traffic' && card.expireReason !== 'traffic-limit') return false;
       if (reasonFilter === 'uptime' && card.expireReason !== 'uptime-limit') return false;
+      if (reasonFilter === 'profile' && card.expireReason !== 'profile-expired') return false;
+      if (reasonFilter === 'comment' && card.expireReason !== 'comment-expired') return false;
+      if (reasonFilter === 'disabled' && card.expireReason !== 'disabled-depleted') return false;
 
       if (searchTerm && searchTerm.trim()) {
         const q = (searchTerm || '').toLowerCase();
         const matchesName = (card.name || '').toLowerCase().includes(q);
         const matchesProfile = (card.profile || '').toLowerCase().includes(q);
         const matchesComment = (card.comment || '').toLowerCase().includes(q);
-        return matchesName || matchesProfile || matchesComment;
+        const matchesReason = (card.expireReasonDesc || '').toLowerCase().includes(q);
+        return matchesName || matchesProfile || matchesComment || matchesReason;
       }
       return true;
     });
@@ -535,14 +546,14 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
               </div>
 
               {/* Reason filter */}
-              <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5">
+              <div className="flex flex-wrap items-center bg-white border border-slate-200 rounded-lg p-0.5 gap-0.5">
                 <button
                   onClick={() => setReasonFilter('all')}
                   className={`px-2 py-0.5 rounded-md font-medium ${
                     reasonFilter === 'all' ? 'bg-slate-800 text-white' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  كافة الأسباب
+                  كافة الأسباب ({expiredCards.length})
                 </button>
                 <button
                   onClick={() => setReasonFilter('traffic')}
@@ -550,7 +561,7 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
                     reasonFilter === 'traffic' ? 'bg-rose-600 text-white' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  نفاد الرصيد (Quota)
+                  نفاد الرصيد ({expiredCards.filter(c => c.expireReason === 'traffic-limit').length})
                 </button>
                 <button
                   onClick={() => setReasonFilter('uptime')}
@@ -558,7 +569,31 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
                     reasonFilter === 'uptime' ? 'bg-amber-600 text-white' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  انتهاء الوقت (Time)
+                  انتهاء الوقت ({expiredCards.filter(c => c.expireReason === 'uptime-limit').length})
+                </button>
+                <button
+                  onClick={() => setReasonFilter('profile')}
+                  className={`px-2 py-0.5 rounded-md font-medium ${
+                    reasonFilter === 'profile' ? 'bg-purple-600 text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  صلاحية الباقة ({expiredCards.filter(c => c.expireReason === 'profile-expired').length})
+                </button>
+                <button
+                  onClick={() => setReasonFilter('comment')}
+                  className={`px-2 py-0.5 rounded-md font-medium ${
+                    reasonFilter === 'comment' ? 'bg-rose-700 text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  معلم كمنتهي ({expiredCards.filter(c => c.expireReason === 'comment-expired').length})
+                </button>
+                <button
+                  onClick={() => setReasonFilter('disabled')}
+                  className={`px-2 py-0.5 rounded-md font-medium ${
+                    reasonFilter === 'disabled' ? 'bg-slate-700 text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  معطل مستهلك ({expiredCards.filter(c => c.expireReason === 'disabled-depleted').length})
                 </button>
               </div>
             </div>
@@ -618,27 +653,44 @@ export const MikrotikExpiredCardsModal: React.FC<MikrotikExpiredCardsModalProps>
                         </td>
 
                         <td className="p-3">
-                          {card.expireReason === 'traffic-limit' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-                              نفذ رصيد البيانات (Quota)
-                            </span>
-                          ) : card.expireReason === 'uptime-limit' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                              <Clock size={11} />
-                              انتهى وقت الصلاحية
-                            </span>
-                          ) : card.expireReason === 'session-expired' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-orange-100 text-orange-800 border border-orange-200">
-                              <ShieldAlert size={11} />
-                              منتهي تلقائياً (تجاوز الحد)
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
-                              <ShieldAlert size={11} />
-                              الكارت معطل (Disabled)
-                            </span>
-                          )}
+                          <div className="space-y-0.5">
+                            {card.expireReason === 'traffic-limit' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                                نفد رصيد البيانات (Quota)
+                              </span>
+                            ) : card.expireReason === 'uptime-limit' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                <Clock size={11} />
+                                انتهى وقت الاستخدام (Time)
+                              </span>
+                            ) : card.expireReason === 'profile-expired' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                                <ShieldAlert size={11} />
+                                انتهت صلاحية الباقة
+                              </span>
+                            ) : card.expireReason === 'comment-expired' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                                <ShieldAlert size={11} />
+                                معلم كمنتهي في الراوتر
+                              </span>
+                            ) : card.expireReason === 'disabled-depleted' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
+                                <ShieldAlert size={11} />
+                                معطل مستهلك
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-orange-100 text-orange-800 border border-orange-200">
+                                <ShieldAlert size={11} />
+                                منتهي تلقائياً
+                              </span>
+                            )}
+                            {card.expireReasonDesc && (
+                              <p className="text-[10px] text-slate-500 max-w-xs leading-tight">
+                                {card.expireReasonDesc}
+                              </p>
+                            )}
+                          </div>
                         </td>
 
                         <td className="p-3">

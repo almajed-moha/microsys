@@ -63,6 +63,7 @@ import {
   Menu,
   X,
   ChevronLeft,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -117,6 +118,7 @@ import { UserManagerView } from './UserManagerView';
 import { MikrotikMaintenanceView } from './MikrotikMaintenanceView';
 import { RemoteMikrotikWizardModal } from './RemoteMikrotikWizardModal';
 import { MikrotikFilesManagerView } from './MikrotikFilesManagerView';
+import { MikrotikExpiredCardsModal } from './MikrotikExpiredCardsModal';
 
 function isPrivateIp(host?: string): boolean {
   if (!host) return false;
@@ -318,6 +320,7 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
 
   // Profile Edit / Add Modal
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showExpiredModal, setShowExpiredModal] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Partial<HotspotUserProfile>>({
     name: '',
     rateLimit: '5M/2M',
@@ -2473,6 +2476,16 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
 
               {/* Action Buttons: Delete Expired & Delete Selected */}
               <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowExpiredModal(true)}
+                  className="px-3 py-1.5 rounded-lg bg-rose-950/50 hover:bg-rose-900/70 text-rose-300 border border-rose-500/40 text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                  title="فتح نافذة الفحص الشامل وحذف الكروت المنتهية وتصدير تقرير"
+                >
+                  <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                  <span>نافذة الكروت المنتهية ({configuredCardsSummary.expiredTotal})</span>
+                </button>
+
                 {configuredCardsSummary.expiredTotal > 0 && (
                   <button
                     onClick={() => setShowExpiredDeleteConfirm(true)}
@@ -4061,6 +4074,18 @@ export const MikrotikLiveView: React.FC<MikrotikLiveViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Dedicated Comprehensive Expired Cards Modal */}
+      <MikrotikExpiredCardsModal
+        isOpen={showExpiredModal}
+        onClose={() => setShowExpiredModal(false)}
+        config={config}
+        categories={categories}
+        initialUsers={configuredUsers}
+        onCardsDeleted={() => {
+          fetchAllLiveData(config);
+        }}
+      />
 
       {/* Sticky Quick-Switch Navigation Dock (شريط التنقل السريع المثبت لسهولة وسرعة التبديل) */}
       <div className="sticky bottom-3 z-30 mx-auto max-w-2xl px-2">

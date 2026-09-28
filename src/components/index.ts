@@ -47,3 +47,4 @@ export { TrialBalanceModal } from './TrialBalanceModal';
 export { DashboardCustomizerModal } from './DashboardCustomizerModal';
 export { MikrotikQuickLauncherModal } from './MikrotikQuickLauncherModal';
 export { MikrotikFloatingSpeedDial } from './MikrotikFloatingSpeedDial';
+export { AccountsView } from './AccountsView';

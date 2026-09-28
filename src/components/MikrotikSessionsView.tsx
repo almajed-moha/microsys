@@ -58,6 +58,7 @@ import { MikrotikExpiredCardsModal } from './MikrotikExpiredCardsModal';
 import { MikrotikDailyUsageModal } from './MikrotikDailyUsageModal';
 import { MikrotikSalesComparisonModal, parseQuotaToBytes } from './MikrotikSalesComparisonModal';
 import { CardUsageTrackerView } from './CardUsageTrackerView';
+import { isCommentMarkedExpired } from '../utils/cardExpiration';
 
 const formatBytes = (bytes: number) => {
   if (!bytes || bytes <= 0) return '0 B';
@@ -353,6 +354,28 @@ export const MikrotikSessionsView: React.FC<MikrotikSessionsViewProps> = ({
     });
   };
 
+  // Helper to determine if a session or card is expired
+  const isSessionExpired = (s: MikrotikCallerSession): boolean => {
+    if (s.isActive) return false;
+    const cause = (s.terminateCause || '').toLowerCase();
+    if (
+      cause.includes('traffic') ||
+      cause.includes('limit') ||
+      cause.includes('quota') ||
+      cause.includes('exhaust') ||
+      cause.includes('uptime') ||
+      cause.includes('timeout') ||
+      cause.includes('expired') ||
+      cause.includes('ended') ||
+      cause.includes('depleted')
+    ) {
+      return true;
+    }
+    if (s.sessionTimeLeft === '0s' || s.sessionTimeLeft === '0') return true;
+    if (isCommentMarkedExpired(s.comment, s.user)) return true;
+    return false;
+  };
+
   // Filtered sessions
   const filteredSessions = useMemo(() => {
     return sessions.filter((session) => {
@@ -360,15 +383,7 @@ export const MikrotikSessionsView: React.FC<MikrotikSessionsViewProps> = ({
       if (activeTab === 'active' && !session.isActive) return false;
       if (activeTab === 'history' && session.isActive) return false;
       if (activeTab === 'expired') {
-        if (session.isActive) return false;
-        const isTerminatedByQuota =
-          session.terminateCause?.includes('traffic') ||
-          session.terminateCause?.includes('limit') ||
-          session.terminateCause?.includes('quota') ||
-          session.terminateCause?.includes('exhausted');
-        const isTerminatedByUptime =
-          session.terminateCause?.includes('uptime') || session.terminateCause?.includes('session-timeout');
-        if (!isTerminatedByQuota && !isTerminatedByUptime) return false;
+        if (!isSessionExpired(session)) return false;
       }
 
       // Source filter
@@ -412,16 +427,7 @@ export const MikrotikSessionsView: React.FC<MikrotikSessionsViewProps> = ({
 
   // Expired cards / sessions count
   const expiredSessionsCount = useMemo(() => {
-    return sessions.filter((s) => {
-      if (s.isActive) return false;
-      const isQuota =
-        s.terminateCause?.includes('traffic') ||
-        s.terminateCause?.includes('limit') ||
-        s.terminateCause?.includes('quota') ||
-        s.terminateCause?.includes('exhausted');
-      const isUptime = s.terminateCause?.includes('uptime') || s.terminateCause?.includes('session-timeout');
-      return isQuota || isUptime;
-    }).length;
+    return sessions.filter((s) => isSessionExpired(s)).length;
   }, [sessions]);
 
   // Today's total internet bandwidth pull (Download + Upload)
@@ -1441,6 +1447,7 @@ export const MikrotikSessionsView: React.FC<MikrotikSessionsViewProps> = ({
         onClose={() => setIsExpiredModalOpen(false)}
         config={mikrotikConfig}
         sessions={sessions}
+        categories={categories}
         onCardsDeleted={() => loadSessions(false)}
       />
 

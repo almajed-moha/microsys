@@ -204,6 +204,7 @@ export const Header: React.FC<HeaderProps> = ({
   const viewTitles: Record<NavView, string> = {
     system_tenants: 'إدارة الشبكات المشتركة (SaaS Master)',
     dashboard: 'لوحة التحكم وصافي الأرباح والمؤشرات',
+    accounts: 'الحسابات وميزان المراجعة والمالية العامة',
     pos_portal: 'بوابة نقطة البيع لطلب الكروت ومتابعة الحساب',
     orders: 'إدارة طلبات الكروت الواردة من المحلات',
     invoices: 'إدارة الفواتير (مبيعات ومرتجع وتسليم الكروت)',

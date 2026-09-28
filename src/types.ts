@@ -624,6 +624,7 @@ export interface DhcpLease {
 
 export type TenantAllowedModule =
   | 'dashboard'
+  | 'accounts'
   | 'invoices'
   | 'orders'
   | 'expenses'
@@ -891,6 +892,19 @@ export interface SystemTenantsPermissions {
   manage: boolean;                // إضافة وتعديل الشبكات
 }
 
+export interface AccountsPermissions {
+  view: boolean;                  // عرض شاشة الحسابات والمالية العامة
+  viewTrialBalance: boolean;      // ميزان المراجعة والتدقيق
+  viewDebtsReport: boolean;       // تقرير مديونيات الموزعين والعملاء وأعمار الديون
+  viewInvoicesTab: boolean;       // تبويب الفواتير والمبيعات والمرتجع
+  viewPaymentsTab: boolean;       // تبويب سندات القبض والتحصيلات
+  viewExpensesTab: boolean;       // تبويب المصروفات والنفقات التشغيلية
+  viewIncomeStatementTab: boolean;// تبويب قائمة الدخل وصافي الأرباح
+  viewAccountStatementsTab: boolean;// تبويب كشوفات الحساب للموزعين والعملاء
+  viewCashFlowTab: boolean;       // تبويب حركة الصندوق والتدفق المالي
+  exportFinancialReports: boolean;// تصدير وطباعة التقارير المالية والإكسيل
+}
+
 export interface SettingsPermissions {
   view: boolean;                  // فتح نافذة الإعدادات
   editNetworkProfile: boolean;    // تعديل بيانات وشعار وأرقام الشبكة
@@ -902,6 +916,7 @@ export interface SettingsPermissions {
 // الهيكل الكامل لصلاحيات المستخدم
 export interface UserPermissions {
   dashboard: DashboardPermissions;
+  accounts?: AccountsPermissions;
   invoices: InvoicesPermissions;
   orders: OrdersPermissions;
   expenses: ExpensesPermissions;

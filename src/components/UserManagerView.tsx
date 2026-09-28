@@ -4444,6 +4444,7 @@ set [find] use-radius=yes radius-accounting=yes`}
         sessions={[]}
         categories={categories}
         umContext={umContext}
+        initialUsers={users}
         onCardsDeleted={() => {
           fetchAllUMData();
         }}

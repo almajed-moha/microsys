@@ -40,6 +40,7 @@ import {
   CustomersView,
   CardUsageTrackerView,
   MikrotikQuickLauncherModal,
+  AccountsView,
 } from './components';
 import {
   CardCategory,
@@ -3379,6 +3380,7 @@ export default function App() {
     const viewToModuleMap: Record<NavView, keyof UserPermissions> = {
       system_tenants: 'systemTenants',
       dashboard: 'dashboard',
+      accounts: 'accounts',
       pos_portal: 'orders',
       orders: 'orders',
       invoices: 'invoices',
@@ -3905,6 +3907,35 @@ export default function App() {
                   onOpenDebtsReport={() => setIsDebtsReportOpen(true)}
                   onOpenTrialBalance={() => setIsTrialBalanceOpen(true)}
                   canViewIncomeStatement={hasPermission(activeUser, 'dashboard', 'viewIncomeStatement', currentTenant)}
+                />
+              )}
+
+              {activeView === 'accounts' && (
+                <AccountsView
+                  invoices={scopedInvoices}
+                  expenses={scopedExpenses}
+                  expenseCategories={scopedExpenseCategories}
+                  posPoints={scopedPOSPoints}
+                  customers={scopedCustomers}
+                  categories={scopedCategories}
+                  payments={scopedPayments}
+                  sales={scopedSales}
+                  dispatches={scopedDispatches}
+                  settings={settings}
+                  activeUser={activeUser}
+                  activeTenant={currentTenant}
+                  onAddExpense={handleAddExpense}
+                  onUpdateExpense={handleUpdateExpense}
+                  onDeleteExpense={handleDeleteExpense}
+                  onAddPayment={handleAddPayment}
+                  onDeletePayment={handleDeletePayment}
+                  onSaveInvoice={handleAddInvoice}
+                  onDeleteInvoice={handleDeleteInvoice}
+                  onOpenPOSStatement={(posId) => {
+                    setStatementPaperMode('a4');
+                    setStatementPOSId(posId);
+                  }}
+                  onOpenCustomerStatement={() => {}}
                 />
               )}
 

@@ -1211,15 +1211,59 @@ export class MikroTikService {
           comment: 'كارت 500 ريال',
           isActive: true,
         },
+        {
+          id: '*4',
+          user: '663321',
+          address: '10.0.0.190',
+          macAddress: 'E4:5F:01:22:98:1A',
+          hostName: 'Huawei-Nova-9',
+          source: 'hotspot',
+          loginTime: new Date(now - 7200 * 1000).toISOString(),
+          logoutTime: new Date(now - 1800 * 1000).toISOString(),
+          uptime: '54m',
+          sessionTimeLeft: '0s',
+          downloadBytes: 524288000,
+          uploadBytes: 32000000,
+          packetsIn: 25000,
+          packetsOut: 480000,
+          loginBy: 'http-chap',
+          server: 'hotspot1',
+          comment: 'منتهي - نفذ رصيد الكارت بالكامل',
+          terminateCause: 'traffic-limit',
+          isActive: false,
+        },
+        {
+          id: '*5',
+          user: '441199',
+          address: '10.0.0.210',
+          macAddress: 'A0:B1:C2:D3:E4:F5',
+          hostName: 'Redmi-10',
+          source: 'hotspot',
+          loginTime: new Date(now - 14400 * 1000).toISOString(),
+          logoutTime: new Date(now - 3600 * 1000).toISOString(),
+          uptime: '2h 02m',
+          sessionTimeLeft: '0s',
+          downloadBytes: 1020000000,
+          uploadBytes: 71000000,
+          packetsIn: 55000,
+          packetsOut: 980000,
+          loginBy: 'http-chap',
+          server: 'hotspot1',
+          comment: 'منتهي - انتهى وقت الاستخدام',
+          terminateCause: 'uptime-limit',
+          isActive: false,
+        },
       ];
+
+      const activeOnlyList = demoList.filter(s => s.isActive);
 
       return {
         sessions: demoList,
-        activeCount: demoList.length,
+        activeCount: activeOnlyList.length,
         summary: {
           totalDownload: demoList.reduce((acc, s) => acc + s.downloadBytes, 0),
           totalUpload: demoList.reduce((acc, s) => acc + s.uploadBytes, 0),
-          activeNow: demoList.length,
+          activeNow: activeOnlyList.length,
           totalSessions: demoList.length,
         },
         routerIdentity: 'MikroTik-Demo',
@@ -1679,17 +1723,23 @@ public static async kickHotspotUser(options: MikroTikConnectionOptions, userIdOr
     return { success: createdCount > 0, createdCount, errors: errors.length > 0 ? errors : undefined };
   }
 
+  public static demoHotspotUsers: any[] = [
+    { id: '*u1', name: '849201', profile: 'Profile-200', limitUptime: '2h', limitBytesTotal: 1073741824, bytesIn: 45200000, bytesOut: 489000000, uptime: '1h 24m', disabled: false, comment: 'كارت 200 ريال' },
+    { id: '*u2', name: '772910', profile: 'Profile-100', limitUptime: '1h', limitBytesTotal: 524288000, bytesIn: 12500000, bytesOut: 182000000, uptime: '45m', disabled: false, comment: 'كارت 100 ريال' },
+    { id: '*u3', name: '993412', profile: 'Profile-500', limitUptime: '6h', limitBytesTotal: 2147483648, bytesIn: 180000000, bytesOut: 1650000000, uptime: '3h 10m', disabled: false, comment: 'كارت 500 ريال' },
+    { id: '*u4', name: '102948', profile: 'Profile-100', limitUptime: '1h', limitBytesTotal: 524288000, bytesIn: 8400000, bytesOut: 75000000, uptime: '12m', disabled: false, comment: 'كارت 100 ريال' },
+    { id: '*u5', name: '554433', profile: 'Profile-1000', limitUptime: '12h', limitBytesTotal: 5368709120, bytesIn: 0, bytesOut: 0, uptime: '0s', disabled: false, comment: 'كارت 1000 ريال - غير مستخدم' },
+    { id: '*u6', name: 'admin_wifi', profile: 'default', limitUptime: '', limitBytesTotal: 0, bytesIn: 890000000, bytesOut: 5400000000, uptime: '2d 08h', disabled: false, comment: 'إدارة الشبكة' },
+    // Expired cards
+    { id: '*u7', name: '663321', profile: 'Profile-100', limitUptime: '1h', limitBytesTotal: 524288000, bytesIn: 32000000, bytesOut: 524288000, uptime: '54m', disabled: true, comment: 'منتهي - نفذ رصيد الكارت بالكامل' },
+    { id: '*u8', name: '441199', profile: 'Profile-200', limitUptime: '2h', limitBytesTotal: 1073741824, bytesIn: 71000000, bytesOut: 1020000000, uptime: '2h 02m', disabled: false, comment: 'منتهي - انتهى وقت الاستخدام' },
+    { id: '*u9', name: '332211', profile: 'Profile-500', limitUptime: '6h', limitBytesTotal: 2147483648, bytesIn: 185000000, bytesOut: 2147483648, uptime: '4h 15m', disabled: true, comment: 'منتهي الصلاحية' },
+  ];
+
   // 8. Fetch Configured Hotspot Users (/ip/hotspot/user)
   public static async getConfiguredHotspotUsers(options: MikroTikConnectionOptions): Promise<any[]> {
     if (options.protocol === 'demo' || options.host === 'demo') {
-      return [
-        { id: '*u1', name: '849201', profile: 'Profile-200', limitUptime: '2h', limitBytesTotal: 1073741824, bytesIn: 45200000, bytesOut: 489000000, uptime: '1h 24m', disabled: false, comment: 'كارت 200 ريال' },
-        { id: '*u2', name: '772910', profile: 'Profile-100', limitUptime: '1h', limitBytesTotal: 524288000, bytesIn: 12500000, bytesOut: 182000000, uptime: '45m', disabled: false, comment: 'كارت 100 ريال' },
-        { id: '*u3', name: '993412', profile: 'Profile-500', limitUptime: '6h', limitBytesTotal: 2147483648, bytesIn: 180000000, bytesOut: 1650000000, uptime: '3h 10m', disabled: false, comment: 'كارت 500 ريال' },
-        { id: '*u4', name: '102948', profile: 'Profile-100', limitUptime: '1h', limitBytesTotal: 524288000, bytesIn: 8400000, bytesOut: 75000000, uptime: '12m', disabled: false, comment: 'كارت 100 ريال' },
-        { id: '*u5', name: '554433', profile: 'Profile-1000', limitUptime: '12h', limitBytesTotal: 5368709120, bytesIn: 0, bytesOut: 0, uptime: '0s', disabled: false, comment: 'كارت 1000 ريال - غير مستخدم' },
-        { id: '*u6', name: 'admin_wifi', profile: 'default', limitUptime: '', limitBytesTotal: 0, bytesIn: 890000000, bytesOut: 5400000000, uptime: '2d 08h', disabled: false, comment: 'إدارة الشبكة' },
-      ];
+      return [...MikroTikService.demoHotspotUsers];
     }
 
     const proto = options.protocol || 'auto';
@@ -1817,6 +1867,9 @@ public static async kickHotspotUser(options: MikroTikConnectionOptions, userIdOr
   // 10. Delete Configured Hotspot User (/ip/hotspot/user/remove)
   public static async deleteHotspotUser(options: MikroTikConnectionOptions, userIdOrName: string): Promise<boolean> {
     if (options.protocol === 'demo' || options.host === 'demo') {
+      MikroTikService.demoHotspotUsers = MikroTikService.demoHotspotUsers.filter(
+        u => u.id !== userIdOrName && u.name !== userIdOrName
+      );
       return true;
     }
 
@@ -1854,11 +1907,16 @@ public static async kickHotspotUser(options: MikroTikConnectionOptions, userIdOr
     options: MikroTikConnectionOptions,
     userIdsOrNames: string[]
   ): Promise<{ success: boolean; deletedCount: number; errors?: string[] }> {
-    if (options.protocol === 'demo' || options.host === 'demo') {
-      return { success: true, deletedCount: userIdsOrNames.length };
-    }
     if (!userIdsOrNames || userIdsOrNames.length === 0) {
       return { success: true, deletedCount: 0 };
+    }
+
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      const keys = new Set(userIdsOrNames);
+      MikroTikService.demoHotspotUsers = MikroTikService.demoHotspotUsers.filter(
+        u => !keys.has(u.id) && !keys.has(u.name)
+      );
+      return { success: true, deletedCount: userIdsOrNames.length };
     }
 
     let deletedCount = 0;

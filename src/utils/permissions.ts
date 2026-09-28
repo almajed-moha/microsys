@@ -139,6 +139,18 @@ export function createFullPermissions(): UserPermissions {
       viewRevenueCharts: true,
       exportReports: true,
     },
+    accounts: {
+      view: true,
+      viewTrialBalance: true,
+      viewDebtsReport: true,
+      viewInvoicesTab: true,
+      viewPaymentsTab: true,
+      viewExpensesTab: true,
+      viewIncomeStatementTab: true,
+      viewAccountStatementsTab: true,
+      viewCashFlowTab: true,
+      exportFinancialReports: true,
+    },
     invoices: {
       view: true,
       createSaleInvoice: true,
@@ -236,6 +248,18 @@ export function createEmptyPermissions(): UserPermissions {
       viewDebtsSummary: false,
       viewRevenueCharts: false,
       exportReports: false,
+    },
+    accounts: {
+      view: false,
+      viewTrialBalance: false,
+      viewDebtsReport: false,
+      viewInvoicesTab: false,
+      viewPaymentsTab: false,
+      viewExpensesTab: false,
+      viewIncomeStatementTab: false,
+      viewAccountStatementsTab: false,
+      viewCashFlowTab: false,
+      exportFinancialReports: false,
     },
     invoices: {
       view: false,
@@ -345,6 +369,18 @@ export function getRoleDefaultPermissions(role: UserRole): UserPermissions {
           viewRevenueCharts: true,
           exportReports: true,
         },
+        accounts: {
+          view: true,
+          viewTrialBalance: true,
+          viewDebtsReport: true,
+          viewInvoicesTab: true,
+          viewPaymentsTab: true,
+          viewExpensesTab: true,
+          viewIncomeStatementTab: true,
+          viewAccountStatementsTab: true,
+          viewCashFlowTab: true,
+          exportFinancialReports: true,
+        },
         invoices: {
           view: true,
           createSaleInvoice: true,
@@ -437,6 +473,18 @@ export function getRoleDefaultPermissions(role: UserRole): UserPermissions {
           viewDebtsSummary: true,
           viewRevenueCharts: false,
           exportReports: false,
+        },
+        accounts: {
+          view: true,
+          viewTrialBalance: false,
+          viewDebtsReport: true,
+          viewInvoicesTab: true,
+          viewPaymentsTab: true,
+          viewExpensesTab: false,
+          viewIncomeStatementTab: false,
+          viewAccountStatementsTab: true,
+          viewCashFlowTab: false,
+          exportFinancialReports: false,
         },
         invoices: {
           view: true,
@@ -531,6 +579,18 @@ export function getRoleDefaultPermissions(role: UserRole): UserPermissions {
           viewRevenueCharts: false,
           exportReports: false,
         },
+        accounts: {
+          view: false,
+          viewTrialBalance: false,
+          viewDebtsReport: false,
+          viewInvoicesTab: false,
+          viewPaymentsTab: false,
+          viewExpensesTab: false,
+          viewIncomeStatementTab: false,
+          viewAccountStatementsTab: false,
+          viewCashFlowTab: false,
+          exportFinancialReports: false,
+        },
         invoices: {
           view: false,
           createSaleInvoice: false,
@@ -623,6 +683,18 @@ export function getRoleDefaultPermissions(role: UserRole): UserPermissions {
           viewDebtsSummary: false,
           viewRevenueCharts: false,
           exportReports: false,
+        },
+        accounts: {
+          view: true,
+          viewTrialBalance: false,
+          viewDebtsReport: false,
+          viewInvoicesTab: true,
+          viewPaymentsTab: true,
+          viewExpensesTab: false,
+          viewIncomeStatementTab: false,
+          viewAccountStatementsTab: true,
+          viewCashFlowTab: true,
+          exportFinancialReports: false,
         },
         invoices: {
           view: true,
@@ -717,6 +789,18 @@ export function getRoleDefaultPermissions(role: UserRole): UserPermissions {
           viewRevenueCharts: true,
           exportReports: false,
         },
+        accounts: {
+          view: false,
+          viewTrialBalance: false,
+          viewDebtsReport: false,
+          viewInvoicesTab: false,
+          viewPaymentsTab: false,
+          viewExpensesTab: false,
+          viewIncomeStatementTab: false,
+          viewAccountStatementsTab: false,
+          viewCashFlowTab: false,
+          exportFinancialReports: false,
+        },
         invoices: {
           view: false,
           createSaleInvoice: false,
@@ -809,6 +893,18 @@ export function getRoleDefaultPermissions(role: UserRole): UserPermissions {
           viewDebtsSummary: true,
           viewRevenueCharts: true,
           exportReports: true,
+        },
+        accounts: {
+          view: true,
+          viewTrialBalance: true,
+          viewDebtsReport: true,
+          viewInvoicesTab: true,
+          viewPaymentsTab: true,
+          viewExpensesTab: true,
+          viewIncomeStatementTab: false,
+          viewAccountStatementsTab: true,
+          viewCashFlowTab: true,
+          exportFinancialReports: false,
         },
         invoices: {
           view: true,
@@ -934,6 +1030,25 @@ export const PERMISSION_MODULES_CONFIG: PermissionModuleMeta[] = [
       { key: 'viewDebtsSummary', label: 'عرض إجمالي مديونيات الموزعين', description: 'رؤية إجمالي الديون والمستحقات على نقاط التوزيع', actionType: 'read' },
       { key: 'viewRevenueCharts', label: 'استعراض الرسوم البيانية', description: 'عرض المنحنيات التحليلية للمبيعات والمصروفات', actionType: 'read' },
       { key: 'exportReports', label: 'تصدير التقارير المالية والإحصائية', description: 'تحميل التقارير بصيغة CSV و Excel', actionType: 'special' },
+    ],
+  },
+  {
+    moduleId: 'accounts',
+    title: 'الحسابات والتقارير المالية (Accounts & Financial Hub)',
+    description: 'ميزان المراجعة، تقارير المديونية، الفواتير، السندات، المصاريف، وقائمة الدخل.',
+    iconName: 'Scale',
+    color: 'text-indigo-400',
+    fields: [
+      { key: 'view', label: 'الوصول لشاشة الحسابات العامة', description: 'السماح للمستخدم بالدخول لمركز الحسابات الرئيسي', actionType: 'read' },
+      { key: 'viewTrialBalance', label: 'تبويب ميزان المراجعة والتدقيق', description: 'عرض ميزان المراجعة ومطابقة الأرصدة المدينة والدائنة', actionType: 'read' },
+      { key: 'viewDebtsReport', label: 'تبويب تقرير المديونية وأعمار الديون', description: 'استعراض مديونيات الموزعين والعملاء والشرائح العمرية', actionType: 'read' },
+      { key: 'viewInvoicesTab', label: 'تبويب الفواتير والمبيعات', description: 'إظهار تبويب فواتير المبيعات والمرتجع داخل نافذة الحسابات', actionType: 'read' },
+      { key: 'viewPaymentsTab', label: 'تبويب سندات القبض والتحصيلات', description: 'إظهار تبويب سندات القبض والدفعات النقدية داخل نافذة الحسابات', actionType: 'read' },
+      { key: 'viewExpensesTab', label: 'تبويب المصروفات والنفقات التشغيلية', description: 'إظهار تبويب تسجيل ومتابعة المصروفات داخل نافذة الحسابات', actionType: 'read' },
+      { key: 'viewIncomeStatementTab', label: 'تبويب قائمة الدخل وصافي الأرباح', description: 'استعراض الأرباح والمصاريف التشغيلية ومجمل الربح', isDanger: true, actionType: 'read' },
+      { key: 'viewAccountStatementsTab', label: 'تبويب كشوفات الحساب (موزعين وعملاء)', description: 'استعراض وطباعة كشف حساب تفصيلي لأي عميل أو موزع', actionType: 'read' },
+      { key: 'viewCashFlowTab', label: 'تبويب حركة الصندوق والتدفق المالي', description: 'متابعة حركة الصندوق اليومية والسيولة النقدية الداخلة والخارجة', actionType: 'read' },
+      { key: 'exportFinancialReports', label: 'تصدير وطباعة التقارير المالية (PDF / Excel)', description: 'تصدير كشوفات الحساب والميزان والمديونية', actionType: 'special' },
     ],
   },
   {
@@ -1098,6 +1213,7 @@ export interface TenantModuleMeta {
 
 export const ALL_TENANT_MODULES: TenantAllowedModule[] = [
   'dashboard',
+  'accounts',
   'invoices',
   'orders',
   'expenses',
@@ -1119,6 +1235,16 @@ export const TENANT_AVAILABLE_MODULES: TenantModuleMeta[] = [
     category: 'core',
     description: 'المؤشرات المالية، إجمالي المبيعات، صافي الأرباح، والرسم البياني',
     iconName: 'LayoutDashboard',
+    color: 'text-indigo-400',
+    bgLight: 'bg-indigo-500/10',
+    borderColor: 'border-indigo-500/30',
+  },
+  {
+    id: 'accounts',
+    title: 'الحسابات وميزان المراجعة والمديونية',
+    category: 'operations',
+    description: 'مركز الحسابات الشامل، ميزان المراجعة، تقارير المديونية، كشوفات الحساب، وقائمة الدخل',
+    iconName: 'Scale',
     color: 'text-indigo-400',
     bgLight: 'bg-indigo-500/10',
     borderColor: 'border-indigo-500/30',
@@ -1306,6 +1432,7 @@ export function buildPermissionsForAllowedModules(allowed: TenantAllowedModule[]
 
   const perms: UserPermissions = {
     dashboard: allowedSet.has('dashboard') ? { ...full.dashboard } : { ...empty.dashboard },
+    accounts: allowedSet.has('accounts') ? { ...(full.accounts || createFullPermissions().accounts!) } : { ...(empty.accounts || createEmptyPermissions().accounts!) },
     invoices: allowedSet.has('invoices') ? { ...full.invoices } : { ...empty.invoices },
     orders: allowedSet.has('orders') || allowedSet.has('pos_portal') ? { ...full.orders } : { ...empty.orders },
     expenses: allowedSet.has('expenses') ? { ...full.expenses } : { ...empty.expenses },
@@ -1385,7 +1512,15 @@ export function hasPermission(
     return true;
   }
 
-  if (!modulePerms) return false;
+  if (!modulePerms) {
+    const defaultRolePerms = getRoleDefaultPermissions(user.role);
+    const defModule = defaultRolePerms[module] as any;
+    if (defModule) {
+      if (!action) return Boolean(defModule.view);
+      return Boolean(defModule[action]);
+    }
+    return false;
+  }
   if (modulePerms.view === false) return false;
 
   if (!action) {
