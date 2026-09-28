@@ -48,6 +48,58 @@ export function parseMikrotikUptimeToSeconds(uptime?: string | number | null): n
 }
 
 /**
+ * Robustly parses MikroTik timestamp/date strings into Unix timestamp (milliseconds).
+ * Handles ISO strings, RouterOS date formats ("sep/20/2026 11:00:00", "2026-sep-20", etc.).
+ */
+export function parseMikrotikDateToTimestamp(dateStr?: string | number | null): number | null {
+  if (!dateStr) return null;
+  if (typeof dateStr === 'number') return isNaN(dateStr) || dateStr <= 0 ? null : dateStr;
+  const str = String(dateStr).trim();
+  if (!str) return null;
+
+  // Standard ISO/RFC format
+  const parsedStandard = Date.parse(str);
+  if (!isNaN(parsedStandard) && parsedStandard > 0) {
+    return parsedStandard;
+  }
+
+  const months: Record<string, number> = {
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+    jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+  };
+
+  // Format: "sep/20/2026 11:00:00" or "sep/20/2026"
+  const match1 = str.toLowerCase().match(/^([a-z]{3})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (match1) {
+    const month = months[match1[1]];
+    const day = parseInt(match1[2], 10);
+    const year = parseInt(match1[3], 10);
+    const hour = parseInt(match1[4] || '0', 10);
+    const min = parseInt(match1[5] || '0', 10);
+    const sec = parseInt(match1[6] || '0', 10);
+    if (month !== undefined) {
+      return new Date(year, month, day, hour, min, sec).getTime();
+    }
+  }
+
+  // Format: "2026-sep-20 11:00:00"
+  const match2 = str.toLowerCase().match(/^(\d{4})-([a-z]{3})-(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (match2) {
+    const year = parseInt(match2[1], 10);
+    const month = months[match2[2]];
+    const day = parseInt(match2[3], 10);
+    const hour = parseInt(match2[4] || '0', 10);
+    const min = parseInt(match2[5] || '0', 10);
+    const sec = parseInt(match2[6] || '0', 10);
+    if (month !== undefined) {
+      return new Date(year, month, day, hour, min, sec).getTime();
+    }
+  }
+
+  return null;
+}
+
+/**
  * Robustly parses MikroTik byte limits and sizes.
  * Handles numeric values, strings with K, M, G, T, P suffixes (e.g., "500M", "1G", "1024K", "2048MiB").
  */
@@ -85,7 +137,7 @@ export function parseMikrotikBytes(val: any): number {
 export function isCommentMarkedExpired(comment?: string | null): boolean {
   if (!comment) return false;
   const c = comment.trim().toLowerCase();
-  return /expired|منتهي|انتهى|\bexp\b|خالص|finished|time\s*out|quota\s*out|traffic\s*limit|over\s*quota|depleted/i.test(c);
+  return /expired|منتهي|منتهية|انتهى|انتهت|\bexp\b|خالص|خلص|مستنفذ|مستنفذة|نفذ|نفد|finished|time[\s_-]*out|quota[\s_-]*out|traffic[\s_-]*limit|over[\s_-]*quota|depleted|صفر\s*رصيد/i.test(c);
 }
 
 /**
@@ -135,10 +187,13 @@ export interface EvaluatedCardStatus {
  * Evaluates the precise expiration and active status of a card or hotspot user.
  * 
  * CRITICAL RULE:
- * - A card is "Expired" ONLY if its data quota ran out, its uptime ran out, its comment marks it expired,
- *   or its User Manager profiles/packages have all completed/expired.
- * - A card that was manually disabled by the admin (disabled=true) without meeting quota/uptime/comment criteria
- *   is STRICTLY classified as "Manually Disabled" (معطل يدوياً), NOT expired.
+ * - A card is "Expired" if:
+ *   1. Its total data quota or download quota ran out (quota exhausted / نفاد الرصيد).
+ *   2. Its uptime ran out (uptime limit exhausted).
+ *   3. Its validity date (endsAt) has elapsed, or all assigned profiles are finished/used.
+ *   4. Its comment marks it expired by script/admin.
+ * - A card that was manually disabled by the admin (disabled=true) without meeting any expiration criteria
+ *   is classified as "Manually Disabled" (معطل يدوياً).
  */
 export function evaluateCardExpirationStatus(
   user: {
@@ -160,12 +215,18 @@ export function evaluateCardExpirationStatus(
     disabled?: boolean;
     comment?: string;
     profilesCount?: { total?: number; waiting?: number; active?: number; used?: number };
-    assignedProfiles?: Array<{ state?: string }>;
+    assignedProfiles?: Array<{
+      state?: string;
+      startsAt?: string;
+      endsAt?: string;
+      validity?: string;
+      profile?: string;
+    }>;
   },
   categories?: CardCategory[],
   umContext?: {
     limitations?: Array<{ name: string; downloadLimit?: any; uploadLimit?: any; totalLimit?: any; uptimeLimit?: any }>;
-    profiles?: Array<{ name: string; limitations?: string[] }>;
+    profiles?: Array<{ name: string; limitations?: string[]; validity?: string }>;
   }
 ): EvaluatedCardStatus {
   const bytesIn = user.bytesIn ?? user.uploadUsed ?? 0;
@@ -182,16 +243,18 @@ export function evaluateCardExpirationStatus(
       (c.code && user.name && user.name.toLowerCase().startsWith(c.code.toLowerCase()))
   );
 
+  // Cross-reference parent profile
+  const parentProf = umContext?.profiles?.find((p) => p.name === profileName);
+
   // Cross-reference User Manager limitation if available
   const matchedLimitation = umContext?.limitations?.find((l) => {
     if (!profileName) return false;
     if (l.name === profileName || l.name === `Lim-${profileName}` || l.name === `UM-Lim-${profileName.replace(/^UM-Profile-/, '')}`) return true;
-    const parentProf = umContext.profiles?.find((p) => p.name === profileName);
     if (parentProf && parentProf.limitations && parentProf.limitations.includes(l.name)) return true;
     return false;
   });
 
-  // 1. Quota Limit Determination
+  // 1. Quota Limit Determination (Total and Download)
   let quotaLimitBytes = parseMikrotikBytes(user.limitBytesTotal);
   if (quotaLimitBytes === 0 && (user.limitBytesIn || user.limitBytesOut)) {
     quotaLimitBytes = parseMikrotikBytes(user.limitBytesIn) + parseMikrotikBytes(user.limitBytesOut);
@@ -200,11 +263,24 @@ export function evaluateCardExpirationStatus(
     quotaLimitBytes = parseMikrotikBytes(matchedCategory.quotaLimit);
   }
   if (quotaLimitBytes === 0 && matchedLimitation) {
-    quotaLimitBytes = parseMikrotikBytes(matchedLimitation.downloadLimit || matchedLimitation.totalLimit);
+    quotaLimitBytes = parseMikrotikBytes(matchedLimitation.totalLimit || matchedLimitation.downloadLimit);
   }
 
+  const downloadLimitBytes = parseMikrotikBytes(
+    user.limitBytesOut || (matchedLimitation ? matchedLimitation.downloadLimit : 0)
+  );
+
   const hasQuota = quotaLimitBytes > 0;
-  const isQuotaExpired = Boolean(hasQuota && totalBytesUsed >= quotaLimitBytes);
+  const hasDownloadLimit = downloadLimitBytes > 0;
+
+  // Quota is expired if total bytes used >= quota limit (or remaining <= 1KB),
+  // OR if download-only limit is reached
+  const isQuotaExpired = Boolean(
+    (hasQuota && totalBytesUsed >= quotaLimitBytes) ||
+    (hasQuota && (quotaLimitBytes - totalBytesUsed) <= 1024) ||
+    (hasDownloadLimit && bytesOut >= downloadLimitBytes)
+  );
+
   const percentQuotaUsed = hasQuota
     ? Math.min(100, Math.round((totalBytesUsed / quotaLimitBytes) * 100))
     : 0;
@@ -224,20 +300,53 @@ export function evaluateCardExpirationStatus(
   // 3. Comment Expiration (script/radius/winbox marked)
   const isCommentExpired = isCommentMarkedExpired(user.comment);
 
-  // 4. User Manager Profile Completion (v7 user-profile: all used, none waiting, none active)
+  // 4. User Manager Profile Completion & Validity Date (RouterOS v7 & v6)
+  // Check assigned profiles for endsAt timestamps and state
+  let isDateExpired = false;
+  if (user.assignedProfiles && Array.isArray(user.assignedProfiles) && user.assignedProfiles.length > 0) {
+    const hasActiveOrWaiting = user.assignedProfiles.some(
+      (p) => p.state === 'active' || p.state === 'waiting' || p.state === 'unused'
+    );
+
+    if (!hasActiveOrWaiting) {
+      // All profiles are finished/used/expired
+      const allFinished = user.assignedProfiles.every(
+        (p) => p.state === 'used' || p.state === 'expired'
+      );
+      if (allFinished) isDateExpired = true;
+    }
+
+    // Check if any active profile's endsAt has elapsed
+    const nowMs = Date.now();
+    for (const p of user.assignedProfiles) {
+      if (p.endsAt) {
+        const endTs = parseMikrotikDateToTimestamp(p.endsAt);
+        if (endTs && endTs <= nowMs) {
+          const hasWaiting = user.assignedProfiles.some((item) => item.state === 'waiting' || item.state === 'unused');
+          if (!hasWaiting) {
+            isDateExpired = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+
   const isProfileExpired = Boolean(
-    user.profilesCount &&
-    (user.profilesCount.total ?? 0) > 0 &&
-    (user.profilesCount.active ?? 0) === 0 &&
-    (user.profilesCount.waiting ?? 0) === 0 &&
-    (user.profilesCount.used ?? 0) > 0
+    isDateExpired ||
+    (user.profilesCount &&
+      (user.profilesCount.total ?? 0) > 0 &&
+      (user.profilesCount.active ?? 0) === 0 &&
+      (user.profilesCount.waiting ?? 0) === 0 &&
+      (user.profilesCount.used ?? 0) > 0)
   );
 
   // 5. Overall Expired Status
   const isExpired = isQuotaExpired || isTimeExpired || isCommentExpired || isProfileExpired;
 
   // 6. Manually Disabled vs Expired
-  // CRITICAL: A disabled card is ONLY "manually disabled" if it is NOT truly expired by quota/time/comment/profile.
+  // CRITICAL: A disabled card is ONLY "manually disabled" if it is NOT truly expired.
+  // If it ran out of quota or time, it is classified as EXPIRED!
   const isManuallyDisabled = Boolean(user.disabled && !isExpired);
 
   // Status classification
@@ -253,13 +362,13 @@ export function evaluateCardExpirationStatus(
     statusType = 'expired_uptime';
     statusLabel = 'منتهي (نفذ وقت الاستخدام)';
     statusBadgeClass = 'bg-amber-500/15 text-amber-300 border border-amber-500/30';
+  } else if (isProfileExpired || isDateExpired) {
+    statusType = 'expired_profile';
+    statusLabel = 'منتهي (انتهت مدة الصلاحية)';
+    statusBadgeClass = 'bg-rose-500/15 text-rose-300 border border-rose-500/30';
   } else if (isCommentExpired) {
     statusType = 'expired_comment';
     statusLabel = 'منتهي الصلاحية';
-    statusBadgeClass = 'bg-rose-500/15 text-rose-300 border border-rose-500/30';
-  } else if (isProfileExpired) {
-    statusType = 'expired_profile';
-    statusLabel = 'منتهي (انتهت باقة اليوزر مانجر)';
     statusBadgeClass = 'bg-rose-500/15 text-rose-300 border border-rose-500/30';
   } else if (isManuallyDisabled) {
     statusType = 'manually_disabled';

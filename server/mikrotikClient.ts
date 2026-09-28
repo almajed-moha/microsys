@@ -2056,9 +2056,11 @@ if (command === 'reboot') {
     { id: '*um4', name: 'UM-88404', password: '776', actualProfile: 'UM-Profile-1000', customer: 'admin', uptimeUsed: '0s', downloadUsed: 0, uploadUsed: 0, totalBytes: 0, limitUptime: '3d', limitBytesTotal: 50000000000, disabled: false, comment: 'فئة 1000 ريال - كارت جديد لم يُستخدم' },
     { id: '*um5', name: 'UM-88405', password: '601', actualProfile: 'UM-Profile-500', customer: 'admin', uptimeUsed: '1d', downloadUsed: 14000000000, uploadUsed: 1000000000, totalBytes: 15000000000, limitUptime: '1d', limitBytesTotal: 15000000000, disabled: true, comment: 'فئة 500 ريال - منتهي الصلاحية' },
     { id: '*um6', name: 'UM-88406', password: '319', actualProfile: 'UM-Profile-200', customer: 'admin', uptimeUsed: '3h 10m', downloadUsed: 4200000000, uploadUsed: 350000000, totalBytes: 4550000000, limitUptime: '1d', limitBytesTotal: 10000000000, disabled: false, comment: 'فئة 200 ريال - صيدلية الشفاء' },
+    { id: '*um7', name: 'UM-88407', password: '842', actualProfile: 'UM-Profile-100', customer: 'admin', uptimeUsed: '2h 50m', downloadUsed: 10000000000, uploadUsed: 800000000, totalBytes: 10800000000, limitUptime: '3h', limitBytesTotal: 10000000000, disabled: false, comment: 'نفذ رصيد البيانات بالكامل - انتهى الرصيد' },
+    { id: '*um8', name: 'UM-88408', password: '115', actualProfile: 'UM-Profile-200', customer: 'admin', uptimeUsed: '1d 02:00:00', downloadUsed: 6200000000, uploadUsed: 500000000, totalBytes: 6700000000, limitUptime: '1d', limitBytesTotal: 20000000000, disabled: false, comment: 'انتهت مدة الصلاحية والوقت' },
   ];
 
-    public static demoUMSessions: any[] = [];
+  public static demoUMSessions: any[] = [];
 
   public static demoUMAssignedProfiles: any[] = [
     { id: '*up1', user: 'UM-88401', profile: 'UM-Profile-200', state: 'used', startsAt: '2026-09-10 10:00:00', endsAt: '2026-09-11 10:00:00', validity: '1d' },
@@ -2076,6 +2078,8 @@ if (command === 'reboot') {
     { id: '*up13', user: 'UM-88405', profile: 'UM-Profile-500', state: 'used', startsAt: '2026-09-19 11:00:00', endsAt: '2026-09-20 11:00:00', validity: '1d' },
     { id: '*up14', user: 'UM-88406', profile: 'UM-Profile-200', state: 'active', startsAt: '2026-09-21 07:00:00', endsAt: '2026-09-22 07:00:00', validity: '1d' },
     { id: '*up15', user: 'UM-88406', profile: 'UM-Profile-100', state: 'waiting', startsAt: '', endsAt: '', validity: '3h' },
+    { id: '*up16', user: 'UM-88407', profile: 'UM-Profile-100', state: 'used', startsAt: '2026-09-20 10:00:00', endsAt: '2026-09-20 13:00:00', validity: '3h' },
+    { id: '*up17', user: 'UM-88408', profile: 'UM-Profile-200', state: 'used', startsAt: '2026-09-19 08:00:00', endsAt: '2026-09-20 08:00:00', validity: '1d' },
   ];
 
   // 13. Get User Manager Users / Vouchers (with full RouterOS v7 & v6 support + Hotspot fallback)
@@ -2163,6 +2167,23 @@ if (command === 'reboot') {
               limitations = Array.isArray(res) ? res : [res];
             } catch {}
 
+            let profileLimitations: any[] = [];
+            try {
+              const res = await fetchRestApi(restOpt, '/user-manager/profile-limitation');
+              profileLimitations = Array.isArray(res) ? res : [res];
+            } catch {}
+
+            const profToLimsMap = new Map<string, string[]>();
+            for (const pl of profileLimitations) {
+              const prof = pl?.profile || pl?.['profile'];
+              const lim = pl?.limitation || pl?.['limitation'];
+              if (prof && lim) {
+                const list = profToLimsMap.get(prof) || [];
+                list.push(lim);
+                profToLimsMap.set(prof, list);
+              }
+            }
+
             // Build profile map (username -> profileName) & all assigned profiles map
             const profileMap = new Map<string, string>();
             const userProfilesMap = new Map<string, any[]>();
@@ -2221,7 +2242,16 @@ if (command === 'reboot') {
               const totalBytes = totalDl + totalUl;
               const totalUptimeSec = usage.uptimeSec + actUptimeSec;
 
-              const lim = limMap.get(assignedProfile) || limMap.get(`Lim-${assignedProfile}`);
+              let lim = limMap.get(assignedProfile) || limMap.get(`Lim-${assignedProfile}`);
+              if (!lim) {
+                const limNames = profToLimsMap.get(assignedProfile) || [];
+                for (const ln of limNames) {
+                  if (limMap.has(ln)) {
+                    lim = limMap.get(ln);
+                    break;
+                  }
+                }
+              }
 
               const rawUps = userProfilesMap.get(username) || [];
               const normalizedUps = rawUps.map((item, idx) => {
@@ -2360,6 +2390,23 @@ if (command === 'reboot') {
           limitations = await client.sendSentence(['/user-manager/limitation/print']);
         } catch {}
 
+        // Fetch profile-limitation links
+        let profileLimitations: any[] = [];
+        try {
+          profileLimitations = await client.sendSentence(['/user-manager/profile-limitation/print']);
+        } catch {}
+
+        const profToLimsMap = new Map<string, string[]>();
+        for (const pl of profileLimitations) {
+          const prof = pl?.['profile'];
+          const lim = pl?.['limitation'];
+          if (prof && lim) {
+            const list = profToLimsMap.get(prof) || [];
+            list.push(lim);
+            profToLimsMap.set(prof, list);
+          }
+        }
+
         const profileMap = new Map<string, string>();
         const userProfilesMap = new Map<string, any[]>();
         for (const up of userProfiles) {
@@ -2412,7 +2459,16 @@ if (command === 'reboot') {
           const totalBytes = totalDl + totalUl;
           const totalUptimeSec = usage.uptimeSec + actUptimeSec;
 
-          const lim = limMap.get(assignedProfile) || limMap.get(`Lim-${assignedProfile}`);
+          let lim = limMap.get(assignedProfile) || limMap.get(`Lim-${assignedProfile}`);
+          if (!lim) {
+            const limNames = profToLimsMap.get(assignedProfile) || [];
+            for (const ln of limNames) {
+              if (limMap.has(ln)) {
+                lim = limMap.get(ln);
+                break;
+              }
+            }
+          }
 
           const rawUps = userProfilesMap.get(username) || [];
           const normalizedUps = rawUps.map((item, idx) => {
@@ -2568,10 +2624,10 @@ if (command === 'reboot') {
 
   // Mutable Demo Storage for User Manager Profiles & Limitations
   private static demoUMProfiles: any[] = [
-    { id: '*ump1', name: 'UM-Profile-100', nameForUsers: 'كارت 100 ريال (1 ساعة / 500 ميجا)', price: 100, validity: '1d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
-    { id: '*ump2', name: 'UM-Profile-200', nameForUsers: 'كارت 200 ريال (3 ساعات / 1.5 جيجا)', price: 200, validity: '2d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
-    { id: '*ump3', name: 'UM-Profile-500', nameForUsers: 'كارت 500 ريال (24 ساعة / 3.5 جيجا)', price: 500, validity: '3d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
-    { id: '*ump4', name: 'UM-Profile-1000', nameForUsers: 'كارت 1000 ريال (3 أيام / 8 جيجا)', price: 1000, validity: '5d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin' },
+    { id: '*ump1', name: 'UM-Profile-100', nameForUsers: 'كارت 100 ريال (1 ساعة / 500 ميجا)', price: 100, validity: '1d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin', limitations: ['UM-Lim-100'] },
+    { id: '*ump2', name: 'UM-Profile-200', nameForUsers: 'كارت 200 ريال (3 ساعات / 1.5 جيجا)', price: 200, validity: '2d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin', limitations: ['UM-Lim-200'] },
+    { id: '*ump3', name: 'UM-Profile-500', nameForUsers: 'كارت 500 ريال (24 ساعة / 3.5 جيجا)', price: 500, validity: '3d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin', limitations: ['UM-Lim-500'] },
+    { id: '*ump4', name: 'UM-Profile-1000', nameForUsers: 'كارت 1000 ريال (3 أيام / 8 جيجا)', price: 1000, validity: '5d', startsAt: 'logon', overrideSharedUsers: 1, owner: 'admin', limitations: ['UM-Lim-1000'] },
   ];
 
   private static demoUMLimitations: any[] = [
@@ -2596,8 +2652,13 @@ if (command === 'reboot') {
         const restOpt = { ...options, protocol: (isHttps ? 'rest_https' : 'rest_http') as any, port };
 
         let data: any = null;
+        let profileLimitations: any[] = [];
         try {
           data = await fetchRestApi(restOpt, '/user-manager/profile');
+          try {
+            const pl = await fetchRestApi(restOpt, '/user-manager/profile-limitation');
+            profileLimitations = Array.isArray(pl) ? pl : [pl];
+          } catch {}
         } catch {
           try {
             data = await fetchRestApi(restOpt, '/tool/user-manager/profile');
@@ -2606,6 +2667,17 @@ if (command === 'reboot') {
             try {
               data = await fetchRestApi(restOpt, '/ip/hotspot/user/profile');
             } catch {}
+          }
+        }
+
+        const profToLimsMap = new Map<string, string[]>();
+        for (const pl of profileLimitations) {
+          const prof = pl?.profile || pl?.['profile'];
+          const lim = pl?.limitation || pl?.['limitation'];
+          if (prof && lim) {
+            const list = profToLimsMap.get(prof) || [];
+            list.push(lim);
+            profToLimsMap.set(prof, list);
           }
         }
 
@@ -2620,6 +2692,7 @@ if (command === 'reboot') {
             startsAt: p['starts-at'] || p.startsAt || 'logon',
             overrideSharedUsers: p['override-shared-users'] || p.overrideSharedUsers || 1,
             owner: p.owner || 'admin',
+            limitations: profToLimsMap.get(p.name) || [],
           }));
         }
       } catch (err) {
@@ -2634,8 +2707,12 @@ if (command === 'reboot') {
     await client.login(options.username, options.password || '');
 
     let profiles: any[] = [];
+    let profileLimitations: any[] = [];
     try {
       profiles = await client.sendSentence(['/user-manager/profile/print']);
+      try {
+        profileLimitations = await client.sendSentence(['/user-manager/profile-limitation/print']);
+      } catch {}
     } catch {
       try {
         profiles = await client.sendSentence(['/tool/user-manager/profile/print']);
@@ -2648,6 +2725,17 @@ if (command === 'reboot') {
     }
     client.close();
 
+    const binProfToLimsMap = new Map<string, string[]>();
+    for (const pl of profileLimitations) {
+      const prof = pl?.['profile'];
+      const lim = pl?.['limitation'];
+      if (prof && lim) {
+        const list = binProfToLimsMap.get(prof) || [];
+        list.push(lim);
+        binProfToLimsMap.set(prof, list);
+      }
+    }
+
     return profiles.filter(p => p && p['name']).map(p => ({
       id: p['.id'] || p['name'],
       name: p['name'],
@@ -2657,6 +2745,7 @@ if (command === 'reboot') {
       startsAt: p['starts-at'] || 'logon',
       overrideSharedUsers: p['override-shared-users'] || 1,
       owner: p['owner'] || 'admin',
+      limitations: binProfToLimsMap.get(p['name']) || [],
     }));
   }
 

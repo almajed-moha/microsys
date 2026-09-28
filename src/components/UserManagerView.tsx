@@ -60,6 +60,7 @@ import {
   Ban,
   CheckSquare,
   ArrowDownCircle,
+  ExternalLink,
   X
 } from 'lucide-react';
 import {
@@ -1721,15 +1722,28 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
               onClick={() => setStatusFilter(statusFilter === 'expired_all' || statusFilter === 'expired' ? 'all' : 'expired_all')}
               className={`p-3.5 rounded-2xl border text-right transition flex items-center justify-between ${
                 statusFilter === 'expired_all' || statusFilter === 'expired'
-                  ? 'bg-red-950/60 border-red-500 shadow-lg shadow-red-950/50'
+                  ? 'bg-red-950/80 border-red-500 shadow-lg shadow-red-950/60 ring-2 ring-red-500/40'
+                  : allExpiredCards.length > 0
+                  ? 'bg-red-950/30 border-red-500/50 hover:bg-red-950/50 shadow-sm'
                   : 'bg-slate-900/90 border-slate-800 hover:border-red-500/40'
               }`}
             >
               <div>
                 <span className="text-slate-400 text-[11px] block">كافة المنتهية</span>
-                <span className="text-lg font-black text-red-400 font-mono">{allExpiredCards.length}</span>
+                <span className="text-lg font-black text-red-400 font-mono flex items-center gap-1.5">
+                  <span>{allExpiredCards.length}</span>
+                  {allExpiredCards.length > 0 && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
+                      بحاجة تنظيف
+                    </span>
+                  )}
+                </span>
               </div>
-              <div className="w-9 h-9 rounded-xl bg-red-600/20 border border-red-500/30 flex items-center justify-center text-red-400 shrink-0">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                allExpiredCards.length > 0
+                  ? 'bg-red-600 text-white shadow-md shadow-red-600/40 animate-pulse'
+                  : 'bg-red-600/20 border border-red-500/30 text-red-400'
+              }`}>
                 <Trash2 className="w-4 h-4" />
               </div>
             </button>
@@ -1918,14 +1932,29 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                 </select>
               </div>
 
-              <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
+              <div className="flex items-center gap-2 w-full lg:w-auto justify-end flex-wrap">
+                {allExpiredCards.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allKeys = new Set(allExpiredCards.map((i) => i.user.id || i.user.name));
+                      setSelectedCardKeys(allKeys);
+                      setShowBulkDeleteConfirm(true);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-rose-600/30 cursor-pointer animate-pulse"
+                    title="حذف جميع الكروت المنتهية الصلاحية والرصيد مباشرة من الراوتر"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>حذف كافة المنتهية ({allExpiredCards.length})</span>
+                  </button>
+                )}
                 <button
                   onClick={() => setShowExpiredCardsModal(true)}
                   className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-                  title="فتح نافذة الفحص الشامل وحذف الكروت المنتهية"
+                  title="فتح نافذة الفحص الشامل وحذف الكروت المنتهية وتصدير تقرير"
                 >
-                  <Trash2 className="w-4 h-4" />
-                  <span className="hidden sm:inline">الكروت المنتهية</span>
+                  <ExternalLink className="w-4 h-4" />
+                  <span className="hidden sm:inline">فحص المنتهية</span>
                   {allExpiredCards.length > 0 && (
                     <span className="px-1.5 py-0.2 rounded-full bg-rose-500/30 text-rose-300 text-[10px] font-mono">
                       {allExpiredCards.length}
@@ -2016,6 +2045,56 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
               >
                 تفعيل عرض 50 كارت بالصفحة ⚡
               </button>
+            </div>
+          )}
+
+          {/* Notice & Quick Action Banner when Expired Cards Exist (General View) */}
+          {allExpiredCards.length > 0 && statusFilter !== 'expired_all' && statusFilter !== 'expired_quota' && statusFilter !== 'expired_time' && statusFilter !== 'expired' && (
+            <div className="bg-gradient-to-r from-rose-950/80 via-slate-900 to-amber-950/70 border border-rose-500/40 p-4 rounded-2xl shadow-xl flex flex-wrap items-center justify-between gap-3 animate-in fade-in duration-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                  <AlertTriangle className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-bold text-white text-sm">
+                      يوجد {allExpiredCards.length} كارت منتهي الرصيد أو الصلاحية جاهزة للحذف والتنظيف
+                    </h4>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">
+                      تتطلب التنظيف
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-1">
+                    منتهية التحميل / الرصيد: <strong className="text-rose-400 font-mono font-bold">{expiredQuotaCards.length}</strong> كارت | 
+                    منتهية الوقت / الصلاحية: <strong className="text-amber-400 font-mono font-bold">{expiredTimeCards.length}</strong> كارت
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('expired_all')}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-300 border border-rose-500/30 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                  title="عرض الكروت المنتهية فقط في الجدول"
+                >
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>تصفية المنتهية فقط ({allExpiredCards.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allKeys = new Set(allExpiredCards.map((i) => i.user.id || i.user.name));
+                    setSelectedCardKeys(allKeys);
+                    setShowBulkDeleteConfirm(true);
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-lg shadow-rose-600/30 cursor-pointer"
+                  title="حذف جميع الكروت المنتهية دفعة واحدة من راوتر مايكروتك"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>حذف كافة المنتهية الآن ({allExpiredCards.length}) ⚡</span>
+                </button>
+              </div>
             </div>
           )}
 
