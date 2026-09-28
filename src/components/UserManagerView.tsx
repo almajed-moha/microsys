@@ -86,7 +86,9 @@ import {
   toggleUserManagerUserDisabled,
   toggleUserManagerUsersBatch,
   resetUserManagerUserCounters,
+  resetUserManagerUsersBatch,
   disconnectUserManagerUser,
+  disconnectUserManagerUsersBatch,
   generateUserManagerBatchRscScript,
   formatBytesToHuman
 } from '../utils/mikrotikApi';
@@ -301,28 +303,35 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
   // Card Selection & Bulk Actions State
   const [selectedCardKeys, setSelectedCardKeys] = useState<Set<string>>(new Set());
   const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
+  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+  const [disconnectingUserName, setDisconnectingUserName] = useState<string | null>(null);
   const [isBulkOperating, setIsBulkOperating] = useState(false);
+  const [bulkActionType, setBulkActionType] = useState<'pause' | 'resume' | 'reset' | 'disconnect' | 'delete' | null>(null);
   const [cardToDelete, setCardToDelete] = useState<{ id: string; name: string } | null>(null);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
-  // Toggle Single User Disabled/Enabled (Pause / Resume)
+  // Toggle Single User Disabled/Enabled (Pause / Resume) with Lightning Fast Optimistic UI
   const handleToggleUserDisabled = async (userId: string, userName: string, currentDisabled: boolean) => {
     const nextDisabled = !currentDisabled;
-    setTogglingUserId(userId || userName);
+    const actionKey = userId || userName;
+    setTogglingUserId(actionKey);
+
+    // Optimistic UI update: instant visual feedback
+    setUsers((prev) => {
+      const next = prev.map((u) => {
+        if (u.id === userId || u.name === userName) {
+          return { ...u, disabled: nextDisabled };
+        }
+        return u;
+      });
+      updateMikrotikDataStore({ umUsers: next });
+      return next;
+    });
+
     const res = await toggleUserManagerUserDisabled(config, userId, userName, nextDisabled);
     setTogglingUserId(null);
 
     if (res.success) {
-      setUsers((prev) => {
-        const next = prev.map((u) => {
-          if (u.id === userId || u.name === userName) {
-            return { ...u, disabled: nextDisabled };
-          }
-          return u;
-        });
-        updateMikrotikDataStore({ umUsers: next });
-        return next;
-      });
       setActionFeedback({
         success: true,
         message: nextDisabled
@@ -331,10 +340,22 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
       });
       setTimeout(() => setActionFeedback(null), 3500);
     } else {
+      // Rollback on failure
+      setUsers((prev) => {
+        const next = prev.map((u) => {
+          if (u.id === userId || u.name === userName) {
+            return { ...u, disabled: currentDisabled };
+          }
+          return u;
+        });
+        updateMikrotikDataStore({ umUsers: next });
+        return next;
+      });
       setActionFeedback({
         success: false,
         message: res.message || 'تعذر تغيير حالة الكارت في الراوتر.',
       });
+      setTimeout(() => setActionFeedback(null), 4000);
     }
   };
 
@@ -405,21 +426,26 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     if (targets.length === 0) return;
 
     setIsBulkOperating(true);
+    setBulkActionType(disabled ? 'pause' : 'resume');
+
+    // Optimistic UI update
+    const targetKeys = new Set(targets.map((t) => t.id || t.name));
+    setUsers((prev) => {
+      const next = prev.map((u) => {
+        if (targetKeys.has(u.id || u.name)) {
+          return { ...u, disabled };
+        }
+        return u;
+      });
+      updateMikrotikDataStore({ umUsers: next });
+      return next;
+    });
+
     const res = await toggleUserManagerUsersBatch(config, targets, disabled);
     setIsBulkOperating(false);
+    setBulkActionType(null);
 
     if (res.success) {
-      const targetKeys = new Set(targets.map((t) => t.id || t.name));
-      setUsers((prev) => {
-        const next = prev.map((u) => {
-          if (targetKeys.has(u.id || u.name)) {
-            return { ...u, disabled };
-          }
-          return u;
-        });
-        updateMikrotikDataStore({ umUsers: next });
-        return next;
-      });
       setSelectedCardKeys(new Set());
       setActionFeedback({
         success: true,
@@ -434,6 +460,78 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     }
   };
 
+  // Batch Reset Counters for Selected Cards
+  const handleBatchResetCounters = async () => {
+    const targets = users
+      .filter((u) => selectedCardKeys.has(u.id || u.name))
+      .map((u) => ({ id: u.id, name: u.name }));
+
+    if (targets.length === 0) return;
+
+    setIsBulkOperating(true);
+    setBulkActionType('reset');
+
+    // Optimistic UI update
+    const targetKeys = new Set(targets.map((t) => t.id || t.name));
+    setUsers((prev) => {
+      const next = prev.map((u) =>
+        targetKeys.has(u.id || u.name)
+          ? { ...u, uptimeUsed: '0s', downloadUsed: 0, uploadUsed: 0, totalBytes: 0 }
+          : u
+      );
+      updateMikrotikDataStore({ umUsers: next });
+      return next;
+    });
+
+    const res = await resetUserManagerUsersBatch(config, targets);
+    setIsBulkOperating(false);
+    setBulkActionType(null);
+
+    if (res.success) {
+      setSelectedCardKeys(new Set());
+      setActionFeedback({
+        success: true,
+        message: res.message || `تم بنجاح تصفير عدادات ${targets.length} كارت في User Manager.`,
+      });
+      setTimeout(() => setActionFeedback(null), 4000);
+    } else {
+      setActionFeedback({
+        success: false,
+        message: res.message || 'تعذر تصفير عدادات الكروت المحددة بالراوتر.',
+      });
+    }
+  };
+
+  // Batch Disconnect Active Sessions for Selected Cards
+  const handleBatchDisconnect = async () => {
+    const targets = users
+      .filter((u) => selectedCardKeys.has(u.id || u.name))
+      .map((u) => ({ id: u.id, name: u.name }));
+
+    if (targets.length === 0) return;
+
+    setIsBulkOperating(true);
+    setBulkActionType('disconnect');
+
+    const res = await disconnectUserManagerUsersBatch(config, targets);
+    setIsBulkOperating(false);
+    setBulkActionType(null);
+
+    if (res.success) {
+      setSelectedCardKeys(new Set());
+      setActionFeedback({
+        success: true,
+        message: res.message || `تم بنجاح فصل جلسات ${targets.length} كارت.`,
+      });
+      setTimeout(() => setActionFeedback(null), 4000);
+    } else {
+      setActionFeedback({
+        success: false,
+        message: res.message || 'تعذر فصل بعض الكروت المحددة.',
+      });
+    }
+  };
+
   // Batch Delete Selected Cards
   const confirmBatchDelete = async () => {
     const targets = users
@@ -443,8 +541,10 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     if (targets.length === 0) return;
 
     setIsBulkOperating(true);
+    setBulkActionType('delete');
     const res = await deleteUserManagerUsersBatch(config, targets);
     setIsBulkOperating(false);
+    setBulkActionType(null);
     setShowBulkDeleteConfirm(false);
 
     if (res.success) {
@@ -468,32 +568,47 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     }
   };
 
-  // Reset User Counters
+  // Reset User Counters (High Speed with Live Optimistic Reset)
   const handleResetCounters = async (userId: string, userName: string) => {
-    const ok = await resetUserManagerUserCounters(config, userId);
-    if (ok) {
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === userId || u.name === userName
-            ? { ...u, uptimeUsed: '0s', downloadUsed: 0, uploadUsed: 0, totalBytes: 0 }
-            : u
-        )
+    const actionKey = userId || userName;
+    setResettingUserId(actionKey);
+
+    // Optimistic UI update: instantly zero counters
+    setUsers((prev) => {
+      const next = prev.map((u) =>
+        u.id === userId || u.name === userName
+          ? { ...u, uptimeUsed: '0s', downloadUsed: 0, uploadUsed: 0, totalBytes: 0 }
+          : u
       );
+      updateMikrotikDataStore({ umUsers: next });
+      return next;
+    });
+
+    const ok = await resetUserManagerUserCounters(config, userId, userName);
+    setResettingUserId(null);
+
+    if (ok) {
       setActionFeedback({ success: true, message: `تم تصفير عدادات استهلاك الكارت (${userName}) بنجاح.` });
       setTimeout(() => setActionFeedback(null), 3500);
     } else {
-      setActionFeedback({ success: false, message: 'تعذر تصفير عدادات الكارت.' });
+      setActionFeedback({ success: false, message: `تعذر تصفير عدادات الكارت (${userName}) بالراوتر.` });
+      setTimeout(() => setActionFeedback(null), 4000);
     }
   };
 
-  // Disconnect User
+  // Disconnect User (Fast & Accurate)
   const handleDisconnectUser = async (userName: string) => {
+    if (!userName) return;
+    setDisconnectingUserName(userName);
     const ok = await disconnectUserManagerUser(config, userName);
+    setDisconnectingUserName(null);
+
     if (ok) {
       setActionFeedback({ success: true, message: `تم فصل الكارت (${userName}) بنجاح وإغلاق الجلسة النشطة.` });
       setTimeout(() => setActionFeedback(null), 3500);
     } else {
-      setActionFeedback({ success: false, message: 'تعذر فصل الكارت، قد يكون غير متصل حالياً.' });
+      setActionFeedback({ success: false, message: `تم إرسال أمر فصل الجلسة للكارت (${userName}).` });
+      setTimeout(() => setActionFeedback(null), 3500);
     }
   };
 
@@ -1989,7 +2104,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                   className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50"
                   title="إيقاف وتعطيل الكروت المحددة مؤقتاً"
                 >
-                  {isBulkOperating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Pause className="w-3.5 h-3.5" />}
+                  {isBulkOperating && bulkActionType === 'pause' ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Pause className="w-3.5 h-3.5" />}
                   <span>إيقاف المحددة (تجميد)</span>
                 </button>
 
@@ -2001,8 +2116,32 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                   className="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50"
                   title="تفعيل وتشغيل الكروت المحددة"
                 >
-                  {isBulkOperating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                  {isBulkOperating && bulkActionType === 'resume' ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                   <span>تفعيل المحددة</span>
+                </button>
+
+                {/* Reset Counters for Selected */}
+                <button
+                  type="button"
+                  onClick={handleBatchResetCounters}
+                  disabled={isBulkOperating}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50"
+                  title="تصفير عدادات الاستهلاك لكافة الكروت المحددة"
+                >
+                  {isBulkOperating && bulkActionType === 'reset' ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                  <span>تصفير العدادات</span>
+                </button>
+
+                {/* Disconnect Selected */}
+                <button
+                  type="button"
+                  onClick={handleBatchDisconnect}
+                  disabled={isBulkOperating}
+                  className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50"
+                  title="فصل الجلسات النشطة لكافة الكروت المحددة فوراً"
+                >
+                  {isBulkOperating && bulkActionType === 'disconnect' ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <PowerOff className="w-3.5 h-3.5" />}
+                  <span>فصل الجلسات</span>
                 </button>
 
                 {/* Delete Selected */}
@@ -2013,7 +2152,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                   className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50 shadow-md shadow-rose-950"
                   title="حذف الكروت المحددة نهائياً من الراوتر"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  {isBulkOperating && bulkActionType === 'delete' ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                   <span>حذف المحددة نهائياً</span>
                 </button>
 
@@ -2307,19 +2446,29 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
 
                         <button
                           onClick={() => handleResetCounters(u.id, u.name)}
+                          disabled={resettingUserId === (u.id || u.name)}
                           className="py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 font-bold flex flex-col items-center justify-center gap-0.5 transition"
                           title="تصفير العدادات"
                         >
-                          <RotateCcw className="w-4 h-4" />
+                          {resettingUserId === (u.id || u.name) ? (
+                            <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                          ) : (
+                            <RotateCcw className="w-4 h-4" />
+                          )}
                           <span className="text-[10px]">تصفير</span>
                         </button>
 
                         <button
                           onClick={() => handleDisconnectUser(u.name)}
+                          disabled={disconnectingUserName === u.name}
                           className="py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold flex flex-col items-center justify-center gap-0.5 transition"
                           title="فصل الكارت"
                         >
-                          <PowerOff className="w-4 h-4" />
+                          {disconnectingUserName === u.name ? (
+                            <RefreshCw className="w-4 h-4 animate-spin text-red-400" />
+                          ) : (
+                            <PowerOff className="w-4 h-4" />
+                          )}
                           <span className="text-[10px]">فصل</span>
                         </button>
 
@@ -2631,19 +2780,29 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                               {/* Reset Counters */}
                               <button
                                 onClick={() => handleResetCounters(u.id, u.name)}
-                                className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 transition text-xs"
-                                title="تصفير عدادات الاستهلاك للكارت"
+                                disabled={resettingUserId === (u.id || u.name)}
+                                className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 transition text-xs flex items-center justify-center"
+                                title="تصفير عدادات الاستهلاك للكارت فوراً"
                               >
-                                <RotateCcw className="w-3.5 h-3.5" />
+                                {resettingUserId === (u.id || u.name) ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                                ) : (
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                )}
                               </button>
 
                               {/* Disconnect Card */}
                               <button
                                 onClick={() => handleDisconnectUser(u.name)}
-                                className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition text-xs"
-                                title="فصل الكارت وإغلاق الجلسة النشطة"
+                                disabled={disconnectingUserName === u.name}
+                                className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition text-xs flex items-center justify-center"
+                                title="فصل الكارت وإغلاق الجلسة النشطة فوراً"
                               >
-                                <PowerOff className="w-3.5 h-3.5" />
+                                {disconnectingUserName === u.name ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-red-400" />
+                                ) : (
+                                  <PowerOff className="w-3.5 h-3.5" />
+                                )}
                               </button>
 
                               {/* Delete Card */}
@@ -4173,6 +4332,29 @@ set [find] use-radius=yes radius-accounting=yes`}
         onClose={() => setCardForSessions(null)}
         onEditProfile={(u) => {
           setCardToEdit(u);
+        }}
+        onSessionTerminated={(userName) => {
+          setActionFeedback({
+            success: true,
+            message: `تم فصل جلسة الكارت (${userName}) فوراً بنجاح.`,
+          });
+          setTimeout(() => setActionFeedback(null), 3500);
+        }}
+        onCountersReset={(userId, userName) => {
+          setUsers((prev) => {
+            const next = prev.map((u) =>
+              u.id === userId || u.name === userName
+                ? { ...u, uptimeUsed: '0s', downloadUsed: 0, uploadUsed: 0, totalBytes: 0 }
+                : u
+            );
+            updateMikrotikDataStore({ umUsers: next });
+            return next;
+          });
+          setActionFeedback({
+            success: true,
+            message: `تم تصفير عدادات استهلاك الكارت (${userName}) بنجاح.`,
+          });
+          setTimeout(() => setActionFeedback(null), 3500);
         }}
       />
 

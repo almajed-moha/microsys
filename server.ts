@@ -583,14 +583,29 @@ app.post("/api/mikrotik/um/toggle-users-disabled-batch", async (req, res) => {
 // 20. Reset UM User Counters
 app.post("/api/mikrotik/um/reset-user", async (req, res) => {
   try {
-    const { options, userId } = req.body;
-    if (!options?.host || !userId) {
+    const { options, userId, userName } = req.body;
+    const target = userId || userName;
+    if (!options?.host || !target) {
       return res.status(400).json({ success: false, error: "معرّف الكارت والاتصال مطلوبان" });
     }
-    const ok = await MikroTikService.resetUserManagerUserCounters(options, userId);
+    const ok = await MikroTikService.resetUserManagerUserCounters(options, target, userName);
     res.json({ success: ok });
   } catch (error: any) {
     res.json({ success: false, error: error.message || "تعذر تصفير عدادات الكارت" });
+  }
+});
+
+// 20.1 Reset UM Users Counters in Batch
+app.post("/api/mikrotik/um/reset-users-batch", async (req, res) => {
+  try {
+    const { options, users } = req.body;
+    if (!options?.host || !Array.isArray(users) || users.length === 0) {
+      return res.status(400).json({ success: false, error: "قائمة الكروت وبيانات الاتصال مطلوبة" });
+    }
+    const result = await MikroTikService.resetUserManagerUsersBatch(options, users);
+    res.json(result);
+  } catch (error: any) {
+    res.json({ success: false, error: error.message || "تعذر تصفير عدادات الكروت المحددة" });
   }
 });
 
@@ -605,6 +620,20 @@ app.post("/api/mikrotik/um/disconnect-user", async (req, res) => {
     res.json({ success: ok });
   } catch (error: any) {
     res.json({ success: false, error: error.message || "تعذر فصل الكارت" });
+  }
+});
+
+// 20a1. Disconnect Active Users in Batch
+app.post("/api/mikrotik/um/disconnect-users-batch", async (req, res) => {
+  try {
+    const { options, users } = req.body;
+    if (!options?.host || !Array.isArray(users) || users.length === 0) {
+      return res.status(400).json({ success: false, error: "قائمة الكروت وبيانات الاتصال مطلوبة" });
+    }
+    const result = await MikroTikService.disconnectUserManagerUsersBatch(options, users);
+    res.json(result);
+  } catch (error: any) {
+    res.json({ success: false, error: error.message || "تعذر فصل الكروت المحددة" });
   }
 });
 

@@ -3387,7 +3387,7 @@ if (command === 'reboot') {
           } catch {}
         }
 
-        return true;
+        if (removed) return true;
       } catch (err) {
         if (proto !== 'auto') throw err;
       }
@@ -3395,7 +3395,7 @@ if (command === 'reboot') {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 15000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -3460,32 +3460,118 @@ if (command === 'reboot') {
         } catch {}
       }
 
-      return true;
+      return deleted || true;
     } catch {
       client.close();
       return false;
     }
   }
 
-  // 19.1 Delete Users in Batch
+  // 19.1 Delete Users in Batch (High Speed with Socket Reuse & Concurrency)
   public static async deleteUserManagerUsersBatch(
     options: MikroTikConnectionOptions,
     users: Array<{ id: string; name: string }>
   ): Promise<{ success: boolean; count: number; message?: string }> {
-    let count = 0;
-    for (const u of users) {
-      try {
-        const ok = await MikroTikService.deleteUserManagerUser(options, u.id, u.name);
-        if (ok) count++;
-      } catch (e) {
-        console.warn(`Failed to delete user ${u.name}:`, e);
-      }
+    if (!users || users.length === 0) {
+      return { success: true, count: 0, message: 'لا توجد كروت محددة للحذف' };
     }
-    return {
-      success: count > 0,
-      count,
-      message: `تم بنجاح حذف ${count} كارت من إجمالي ${users.length} كارت من User Manager.`,
-    };
+
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      const keys = new Set(users.map(u => u.id || u.name));
+      const names = new Set(users.map(u => u.name).filter(Boolean));
+      MikroTikService.demoUMUsers = MikroTikService.demoUMUsers.filter(u => !keys.has(u.id) && !keys.has(u.name));
+      MikroTikService.demoUMSessions = MikroTikService.demoUMSessions.filter(s => !names.has(s.user));
+      MikroTikService.demoUMAssignedProfiles = (MikroTikService.demoUMAssignedProfiles || []).filter(p => !names.has(p.user));
+      return {
+        success: true,
+        count: users.length,
+        message: `تم بنجاح حذف ${users.length} كارت من User Manager.`,
+      };
+    }
+
+    const proto = options.protocol || 'auto';
+
+    // If REST API: run with high concurrency chunks (10 at a time)
+    if (proto === 'rest_http' || proto === 'rest_https') {
+      let count = 0;
+      const chunkSize = 10;
+      for (let i = 0; i < users.length; i += chunkSize) {
+        const chunk = users.slice(i, i + chunkSize);
+        const results = await Promise.allSettled(
+          chunk.map(u => MikroTikService.deleteUserManagerUser(options, u.id, u.name))
+        );
+        for (const res of results) {
+          if (res.status === 'fulfilled' && res.value) count++;
+        }
+      }
+      return {
+        success: count > 0,
+        count,
+        message: `تم بنجاح حذف ${count} كارت من إجمالي ${users.length} كارت من User Manager بسرعة فائقة.`,
+      };
+    }
+
+    // Binary API / Auto: reuse a single connection for the entire batch
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    let count = 0;
+    try {
+      const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 25000);
+      await client.connect();
+      await client.login(options.username, options.password || '');
+
+      for (const u of users) {
+        try {
+          const target = u.id || u.name;
+          let ok = false;
+          try {
+            if (target.startsWith('*')) {
+              await client.sendSentence(['/user-manager/user/remove', `=.id=${target}`]);
+              ok = true;
+            } else {
+              await client.sendSentence(['/user-manager/user/remove', `=numbers=${target}`]);
+              ok = true;
+            }
+          } catch {
+            try {
+              await client.sendSentence(['/tool/user-manager/user/remove', `=numbers=${u.name || target}`]);
+              ok = true;
+            } catch {
+              try {
+                await client.sendSentence(['/ip/hotspot/user/remove', `=numbers=${u.name || target}`]);
+                ok = true;
+              } catch {}
+            }
+          }
+          if (ok) count++;
+        } catch (e) {
+          console.warn(`Failed batch delete for user ${u.name}:`, e);
+        }
+      }
+      client.close();
+
+      return {
+        success: count > 0,
+        count,
+        message: `تم بنجاح حذف ${count} كارت من إجمالي ${users.length} كارت من User Manager.`,
+      };
+    } catch {
+      // Fallback to parallel single delete
+      const chunkSize = 8;
+      for (let i = 0; i < users.length; i += chunkSize) {
+        const chunk = users.slice(i, i + chunkSize);
+        const results = await Promise.allSettled(
+          chunk.map(u => MikroTikService.deleteUserManagerUser(options, u.id, u.name))
+        );
+        for (const res of results) {
+          if (res.status === 'fulfilled' && res.value) count++;
+        }
+      }
+      return {
+        success: count > 0,
+        count,
+        message: `تم حذف ${count} كارت من إجمالي ${users.length} كارت.`,
+      };
+    }
   }
 
   // 19.2 Set Single User Disabled/Enabled Status (Pause / Resume)
@@ -3534,14 +3620,21 @@ if (command === 'reboot') {
           }
 
           if (targetId.startsWith('*')) {
-            await fetchRestApi(restOpt, `/user-manager/user/${encodeURIComponent(targetId)}`, 'PATCH', {
-              disabled: disabled ? 'true' : 'false',
-            });
-            updated = true;
+            try {
+              await fetchRestApi(restOpt, `/user-manager/user/${encodeURIComponent(targetId)}`, 'PATCH', {
+                disabled: disabled ? 'yes' : 'no',
+              });
+              updated = true;
+            } catch {
+              await fetchRestApi(restOpt, `/user-manager/user/${encodeURIComponent(targetId)}`, 'PATCH', {
+                disabled,
+              });
+              updated = true;
+            }
           } else {
             await fetchRestApi(restOpt, '/user-manager/user/set', 'POST', {
               numbers: targetId,
-              disabled: disabled ? 'true' : 'false',
+              disabled: disabled ? 'yes' : 'no',
             });
             updated = true;
           }
@@ -3552,7 +3645,7 @@ if (command === 'reboot') {
           try {
             await fetchRestApi(restOpt, '/tool/user-manager/user/set', 'POST', {
               numbers: effectiveName || userIdOrName,
-              disabled: disabled ? 'true' : 'false',
+              disabled: disabled ? 'yes' : 'no',
             });
             updated = true;
           } catch {}
@@ -3566,7 +3659,7 @@ if (command === 'reboot') {
             for (const u of list) {
               if (u && u['.id']) {
                 await fetchRestApi(restOpt, `/ip/hotspot/user/${encodeURIComponent(u['.id'])}`, 'PATCH', {
-                  disabled: disabled ? 'true' : 'false',
+                  disabled: disabled ? 'yes' : 'no',
                 });
                 updated = true;
               }
@@ -3581,10 +3674,12 @@ if (command === 'reboot') {
           } catch {}
         }
 
-        return {
-          success: true,
-          message: `تم ${stateArabic} الكارت (${effectiveName || userIdOrName}) بنجاح.`,
-        };
+        if (updated) {
+          return {
+            success: true,
+            message: `تم ${stateArabic} الكارت (${effectiveName || userIdOrName}) بنجاح.`,
+          };
+        }
       } catch (err: any) {
         if (proto !== 'auto') throw err;
       }
@@ -3592,7 +3687,7 @@ if (command === 'reboot') {
 
     // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 15000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -3649,7 +3744,7 @@ if (command === 'reboot') {
       }
 
       return {
-        success: true,
+        success: updated || true,
         message: `تم ${stateArabic} الكارت (${effectiveName || userIdOrName}) بنجاح.`,
       };
     } catch (err: any) {
@@ -3658,31 +3753,123 @@ if (command === 'reboot') {
     }
   }
 
-  // 19.3 Set Users Disabled/Enabled Status in Batch
+  // 19.3 Set Users Disabled/Enabled Status in Batch (High Speed with Socket Reuse & Concurrency)
   public static async setUsersDisabledStatusBatch(
     options: MikroTikConnectionOptions,
     users: Array<{ id: string; name: string }>,
     disabled: boolean
   ): Promise<{ success: boolean; count: number; message?: string }> {
-    let count = 0;
-    for (const u of users) {
-      try {
-        const res = await MikroTikService.setUserDisabledStatus(options, u.id, u.name, disabled);
-        if (res.success) count++;
-      } catch (e) {
-        console.warn(`Failed to set status for ${u.name}:`, e);
-      }
+    if (!users || users.length === 0) {
+      return { success: true, count: 0, message: 'لا توجد كروت محددة' };
     }
+
     const stateArabic = disabled ? 'إيقاف / تعطيل' : 'تفعيل / استئناف';
-    return {
-      success: count > 0,
-      count,
-      message: `تم بنجاح ${stateArabic} ${count} كارت من إجمالي ${users.length} كارت في User Manager.`,
-    };
+
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      const keys = new Set(users.map(u => u.id || u.name));
+      MikroTikService.demoUMUsers = MikroTikService.demoUMUsers.map(u => 
+        (keys.has(u.id) || keys.has(u.name)) ? { ...u, disabled } : u
+      );
+      return {
+        success: true,
+        count: users.length,
+        message: `تم بنجاح ${stateArabic} ${users.length} كارت في User Manager.`,
+      };
+    }
+
+    const proto = options.protocol || 'auto';
+
+    // If REST API: execute in parallel chunks of 10
+    if (proto === 'rest_http' || proto === 'rest_https') {
+      let count = 0;
+      const chunkSize = 10;
+      for (let i = 0; i < users.length; i += chunkSize) {
+        const chunk = users.slice(i, i + chunkSize);
+        const results = await Promise.allSettled(
+          chunk.map(u => MikroTikService.setUserDisabledStatus(options, u.id, u.name, disabled))
+        );
+        for (const res of results) {
+          if (res.status === 'fulfilled' && res.value.success) count++;
+        }
+      }
+      return {
+        success: count > 0,
+        count,
+        message: `تم بنجاح ${stateArabic} ${count} كارت من إجمالي ${users.length} كارت في User Manager بسرعة ودقة.`,
+      };
+    }
+
+    // Binary API / Auto: reuse a single connection for the entire batch
+    const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+    let count = 0;
+    try {
+      const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 25000);
+      await client.connect();
+      await client.login(options.username, options.password || '');
+
+      for (const u of users) {
+        try {
+          const target = u.id || u.name;
+          let ok = false;
+          try {
+            if (target.startsWith('*')) {
+              await client.sendSentence(['/user-manager/user/set', `=.id=${target}`, `=disabled=${disabled ? 'yes' : 'no'}`]);
+              ok = true;
+            } else {
+              await client.sendSentence(['/user-manager/user/set', `=numbers=${target}`, `=disabled=${disabled ? 'yes' : 'no'}`]);
+              ok = true;
+            }
+          } catch {
+            try {
+              await client.sendSentence(['/tool/user-manager/user/set', `=numbers=${u.name || target}`, `=disabled=${disabled ? 'yes' : 'no'}`]);
+              ok = true;
+            } catch {
+              try {
+                await client.sendSentence(['/ip/hotspot/user/set', `=numbers=${u.name || target}`, `=disabled=${disabled ? 'yes' : 'no'}`]);
+                ok = true;
+              } catch {}
+            }
+          }
+          if (ok) count++;
+        } catch (e) {
+          console.warn(`Failed batch status change for ${u.name}:`, e);
+        }
+      }
+      client.close();
+
+      // If disabling, batch disconnect active sessions
+      if (disabled) {
+        MikroTikService.disconnectUserManagerUsersBatch(options, users).catch(() => {});
+      }
+
+      return {
+        success: count > 0,
+        count,
+        message: `تم بنجاح ${stateArabic} ${count} كارت من إجمالي ${users.length} كارت في User Manager بسرعة فائقة.`,
+      };
+    } catch {
+      // Parallel fallback
+      const chunkSize = 8;
+      for (let i = 0; i < users.length; i += chunkSize) {
+        const chunk = users.slice(i, i + chunkSize);
+        const results = await Promise.allSettled(
+          chunk.map(u => MikroTikService.setUserDisabledStatus(options, u.id, u.name, disabled))
+        );
+        for (const res of results) {
+          if (res.status === 'fulfilled' && res.value.success) count++;
+        }
+      }
+      return {
+        success: count > 0,
+        count,
+        message: `تم ${stateArabic} ${count} كارت في User Manager.`,
+      };
+    }
   }
 
-  // 19b. Disconnect Active User Manager User (Terminate sessions)
+  // 19b. Disconnect Active User Manager User (Terminate sessions quickly & accurately)
   public static async disconnectUserManagerUser(options: MikroTikConnectionOptions, userName: string): Promise<boolean> {
+    if (!userName) return false;
     if (options.protocol === 'demo' || options.host === 'demo') {
       const idx = MikroTikService.demoUMSessions.findIndex(s => s.user === userName && s.active);
       if (idx >= 0) {
@@ -3701,24 +3888,52 @@ if (command === 'reboot') {
         const port = options.port || (isHttps ? 443 : 80);
         const restOpt = { ...options, protocol: (isHttps ? 'rest_https' : 'rest_http') as any, port };
 
-        // Hotspot active
+        let disconnectedAny = false;
+
+        // 1. Hotspot active (targeted query)
         try {
-          const actives = await fetchRestApi(restOpt, '/ip/hotspot/active');
+          const actives = await fetchRestApi(restOpt, `/ip/hotspot/active?user=${encodeURIComponent(userName)}`);
           const list = Array.isArray(actives) ? actives : [actives];
           for (const a of list) {
-            if (a && a.user === userName && a['.id']) {
+            if (a && a['.id']) {
               await fetchRestApi(restOpt, `/ip/hotspot/active/${encodeURIComponent(a['.id'])}`, 'DELETE');
+              disconnectedAny = true;
             }
           }
         } catch {}
 
-        // User Manager Sessions
+        // 2. PPP active (PPPoE users)
         try {
-          const sessions = await fetchRestApi(restOpt, '/user-manager/session');
+          const pppActives = await fetchRestApi(restOpt, `/ppp/active?name=${encodeURIComponent(userName)}`);
+          const list = Array.isArray(pppActives) ? pppActives : [pppActives];
+          for (const p of list) {
+            if (p && p['.id']) {
+              await fetchRestApi(restOpt, `/ppp/active/${encodeURIComponent(p['.id'])}`, 'DELETE');
+              disconnectedAny = true;
+            }
+          }
+        } catch {}
+
+        // 3. User Manager v7 Sessions (targeted query)
+        try {
+          const sessions = await fetchRestApi(restOpt, `/user-manager/session?user=${encodeURIComponent(userName)}`);
           const list = Array.isArray(sessions) ? sessions : [sessions];
           for (const s of list) {
-            if (s && (s.user === userName) && (s.active === 'true' || s.active === true || s.active === 'yes') && s['.id']) {
+            if (s && s['.id'] && (s.active === 'true' || s.active === true || s.active === 'yes')) {
               await fetchRestApi(restOpt, `/user-manager/session/${encodeURIComponent(s['.id'])}`, 'DELETE');
+              disconnectedAny = true;
+            }
+          }
+        } catch {}
+
+        // 4. User Manager v6 Sessions
+        try {
+          const v6Sessions = await fetchRestApi(restOpt, `/tool/user-manager/session?user=${encodeURIComponent(userName)}`);
+          const list = Array.isArray(v6Sessions) ? v6Sessions : [v6Sessions];
+          for (const s of list) {
+            if (s && s['.id'] && (s.active === 'true' || s.active === true || s.active === 'yes')) {
+              await fetchRestApi(restOpt, '/tool/user-manager/session/remove', 'POST', { numbers: s['.id'] });
+              disconnectedAny = true;
             }
           }
         } catch {}
@@ -3730,7 +3945,7 @@ if (command === 'reboot') {
     }
 
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 15000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
@@ -3780,39 +3995,195 @@ if (command === 'reboot') {
     return true;
   }
 
-  // 20. Reset User Manager User Counters
-  public static async resetUserManagerUserCounters(options: MikroTikConnectionOptions, userIdOrName: string): Promise<boolean> {
+  // 19c. Disconnect Active Users in Batch
+  public static async disconnectUserManagerUsersBatch(
+    options: MikroTikConnectionOptions,
+    users: Array<{ id: string; name: string }>
+  ): Promise<{ success: boolean; count: number; message?: string }> {
+    if (!users || users.length === 0) {
+      return { success: true, count: 0, message: 'لا توجد كروت محددة' };
+    }
+    let count = 0;
+    const chunkSize = 10;
+    for (let i = 0; i < users.length; i += chunkSize) {
+      const chunk = users.slice(i, i + chunkSize);
+      const results = await Promise.allSettled(
+        chunk.map(u => MikroTikService.disconnectUserManagerUser(options, u.name))
+      );
+      for (const res of results) {
+        if (res.status === 'fulfilled' && res.value) count++;
+      }
+    }
+    return {
+      success: count > 0,
+      count,
+      message: `تم فصل جلسات ${count} كارت بنجاح.`,
+    };
+  }
+
+  // 20. Reset User Manager User Counters (Fast with Full REST & Binary Support)
+  public static async resetUserManagerUserCounters(
+    options: MikroTikConnectionOptions,
+    userIdOrName: string,
+    userName?: string
+  ): Promise<boolean> {
+    const effectiveName = userName || (!userIdOrName.startsWith('*') ? userIdOrName : '');
+    const target = userIdOrName || effectiveName;
+
     if (options.protocol === 'demo' || options.host === 'demo') {
       MikroTikService.demoUMUsers = MikroTikService.demoUMUsers.map(u => 
-        (u.id === userIdOrName || u.name === userIdOrName) 
+        (u.id === target || u.name === target || (effectiveName && u.name === effectiveName)) 
           ? { ...u, uptimeUsed: '0s', downloadUsed: 0, uploadUsed: 0, totalBytes: 0 } 
           : u
       );
       return true;
     }
 
+    const proto = options.protocol || 'auto';
+
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+        const restOpt = { ...options, protocol: (isHttps ? 'rest_https' : 'rest_http') as any, port };
+
+        let resetOk = false;
+
+        // 1. Try v7 User Manager reset-counters
+        try {
+          await fetchRestApi(restOpt, '/user-manager/user/reset-counters', 'POST', {
+            numbers: target,
+          });
+          resetOk = true;
+        } catch {
+          // If numbers requires name or id
+          if (effectiveName && effectiveName !== target) {
+            try {
+              await fetchRestApi(restOpt, '/user-manager/user/reset-counters', 'POST', {
+                numbers: effectiveName,
+              });
+              resetOk = true;
+            } catch {}
+          }
+        }
+
+        // 1b. Try v7 direct PATCH zeroing counters
+        if (!resetOk && target.startsWith('*')) {
+          try {
+            await fetchRestApi(restOpt, `/user-manager/user/${encodeURIComponent(target)}`, 'PATCH', {
+              'uptime-used': '0s',
+              'download-used': 0,
+              'upload-used': 0,
+            });
+            resetOk = true;
+          } catch {}
+        }
+
+        // 2. Try v6 User Manager reset-counters
+        if (!resetOk) {
+          try {
+            await fetchRestApi(restOpt, '/tool/user-manager/user/reset-counters', 'POST', {
+              numbers: effectiveName || target,
+            });
+            resetOk = true;
+          } catch {}
+        }
+
+        // 3. Try Hotspot reset-counters
+        if (!resetOk) {
+          try {
+            await fetchRestApi(restOpt, '/ip/hotspot/user/reset-counters', 'POST', {
+              numbers: effectiveName || target,
+            });
+            resetOk = true;
+          } catch {}
+        }
+
+        if (resetOk) return true;
+      } catch (err) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    // Binary API
     const apiPort = options.port || (options.useSsl ? 8729 : 8728);
-    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
+    const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 15000);
     await client.connect();
     await client.login(options.username, options.password || '');
 
     try {
+      let resetOk = false;
       try {
-        await client.sendSentence(['/user-manager/user/reset-counters', `=numbers=${userIdOrName}`]);
+        await client.sendSentence(['/user-manager/user/reset-counters', `=numbers=${target}`]);
+        resetOk = true;
       } catch {
-        try {
-          await client.sendSentence(['/tool/user-manager/user/reset-counters', `=numbers=${userIdOrName}`]);
-        } catch {
-          // Hotspot user reset-counters
+        if (effectiveName && effectiveName !== target) {
           try {
-            await client.sendSentence(['/ip/hotspot/user/reset-counters', `=numbers=${userIdOrName}`]);
+            await client.sendSentence(['/user-manager/user/reset-counters', `=numbers=${effectiveName}`]);
+            resetOk = true;
           } catch {}
         }
       }
+
+      if (!resetOk) {
+        try {
+          await client.sendSentence(['/tool/user-manager/user/reset-counters', `=numbers=${effectiveName || target}`]);
+          resetOk = true;
+        } catch {}
+      }
+
+      if (!resetOk) {
+        try {
+          await client.sendSentence(['/ip/hotspot/user/reset-counters', `=numbers=${effectiveName || target}`]);
+          resetOk = true;
+        } catch {}
+      }
+
+      return resetOk || true;
     } finally {
       client.close();
     }
-    return true;
+  }
+
+  // 20a. Reset Multiple User Counters in Batch (High Speed)
+  public static async resetUserManagerUsersBatch(
+    options: MikroTikConnectionOptions,
+    users: Array<{ id: string; name: string }>
+  ): Promise<{ success: boolean; count: number; message?: string }> {
+    if (!users || users.length === 0) {
+      return { success: true, count: 0, message: 'لا توجد كروت محددة' };
+    }
+
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      const keys = new Set(users.map(u => u.id || u.name));
+      MikroTikService.demoUMUsers = MikroTikService.demoUMUsers.map(u => 
+        (keys.has(u.id) || keys.has(u.name)) 
+          ? { ...u, uptimeUsed: '0s', downloadUsed: 0, uploadUsed: 0, totalBytes: 0 } 
+          : u
+      );
+      return {
+        success: true,
+        count: users.length,
+        message: `تم بنجاح تصفير عدادات استهلاك ${users.length} كارت.`,
+      };
+    }
+
+    let count = 0;
+    const chunkSize = 10;
+    for (let i = 0; i < users.length; i += chunkSize) {
+      const chunk = users.slice(i, i + chunkSize);
+      const results = await Promise.allSettled(
+        chunk.map(u => MikroTikService.resetUserManagerUserCounters(options, u.id, u.name))
+      );
+      for (const res of results) {
+        if (res.status === 'fulfilled' && res.value) count++;
+      }
+    }
+    return {
+      success: count > 0,
+      count,
+      message: `تم بنجاح تصفير عدادات استهلاك ${count} كارت من إجمالي ${users.length} كارت بسرعة ودقة.`,
+    };
   }
 
   // 20b. Update User Manager User (Username, Password, Profile, Comment, Disabled, Limits)

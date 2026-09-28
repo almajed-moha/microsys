@@ -136,11 +136,6 @@ export const UserManagerCardEditModal: React.FC<UserManagerCardEditModalProps> =
   const handleAssignProfile = async () => {
     if (!user || !actualProfile) return;
     const hasActive = profilesSummary.active > 0;
-    const confirmMessage = hasActive
-      ? `الكارت (${user.name}) لديه باقة نشطة حالياً. هل تريد إضافة باقة (${actualProfile}) كباقة قيد الانتظار (Waiting Queue)؟ ستتفعّل تلقائياً فور انتهاء الباقة النشطة.`
-      : `هل أنت متأكد من إضافة وتفعيل الباقة (${actualProfile}) للكارت (${user.name})؟`;
-
-    if (!confirm(confirmMessage)) return;
 
     setIsAssigning(true);
     setFeedback(null);
@@ -164,9 +159,6 @@ export const UserManagerCardEditModal: React.FC<UserManagerCardEditModalProps> =
 
   const handleRemoveWaitingProfile = async (profileId: string, profileName: string) => {
     if (!user) return;
-    if (!confirm(`هل أنت متأكد من إلغاء وحذف الباقة (${profileName}) من قائمة انتظار الكارت (${user.name})؟`)) {
-      return;
-    }
 
     setIsRemovingProfileId(profileId);
     const ok = await removeUserAssignedProfile(config, profileId);
@@ -175,7 +167,7 @@ export const UserManagerCardEditModal: React.FC<UserManagerCardEditModalProps> =
     if (ok) {
       setFeedback({
         success: true,
-        message: `تم إلغاء الباقة (${profileName}) من قائمة الانتظار بنجاح.`,
+        message: `تم إلغاء وحذف الباقة (${profileName}) من قائمة الانتظار بنجاح.`,
       });
       loadAssignedProfiles(user.name);
     } else {
@@ -229,10 +221,9 @@ export const UserManagerCardEditModal: React.FC<UserManagerCardEditModalProps> =
 
   const handleReset = async () => {
     if (!user) return;
-    if (!confirm(`هل أنت متأكد من تصفير عدادات استهلاك الكارت (${user.name})؟`)) return;
 
     setIsResetting(true);
-    const ok = await resetUserManagerUserCounters(config, user.id || user.name);
+    const ok = await resetUserManagerUserCounters(config, user.id, user.name);
     setIsResetting(false);
 
     if (ok) {
@@ -240,7 +231,7 @@ export const UserManagerCardEditModal: React.FC<UserManagerCardEditModalProps> =
       user.uploadUsed = 0;
       user.totalBytes = 0;
       user.uptimeUsed = '0s';
-      setFeedback({ success: true, message: 'تم تصفير عدادات الاستهلاك للكارت بنجاح.' });
+      setFeedback({ success: true, message: `تم تصفير عدادات استهلاك الكارت (${user.name}) بنجاح.` });
       if (onResetCounters) {
         onResetCounters(user.id, user.name);
       }

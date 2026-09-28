@@ -687,12 +687,16 @@ export async function toggleUserManagerUsersBatch(
 }
 
 // 21. Reset User Manager User Counters
-export async function resetUserManagerUserCounters(config: Partial<MikroTikConfig>, userId: string): Promise<boolean> {
+export async function resetUserManagerUserCounters(
+  config: Partial<MikroTikConfig>,
+  userId: string,
+  userName?: string
+): Promise<boolean> {
   try {
     const res = await fetch('/api/mikrotik/um/reset-user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ options: config, userId }),
+      body: JSON.stringify({ options: config, userId, userName }),
     });
     const data = await parseJsonResponse(res);
     return Boolean(data.success);
@@ -702,7 +706,30 @@ export async function resetUserManagerUserCounters(config: Partial<MikroTikConfi
   }
 }
 
-// 21a. Disconnect User Manager User
+// 21a. Reset Multiple User Counters in Batch
+export async function resetUserManagerUsersBatch(
+  config: Partial<MikroTikConfig>,
+  users: Array<{ id: string; name: string }>
+): Promise<{ success: boolean; count: number; message?: string }> {
+  try {
+    const res = await fetch('/api/mikrotik/um/reset-users-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, users }),
+    });
+    const data = await parseJsonResponse(res);
+    return {
+      success: Boolean(data.success),
+      count: data.count || 0,
+      message: data.message,
+    };
+  } catch (error: any) {
+    console.warn('resetUserManagerUsersBatch notice:', error);
+    return { success: false, count: 0, message: error?.message || 'تعذر تصفير عدادات الكروت المحددة' };
+  }
+}
+
+// 21b. Disconnect User Manager User
 export async function disconnectUserManagerUser(config: Partial<MikroTikConfig>, userName: string): Promise<boolean> {
   try {
     const res = await fetch('/api/mikrotik/um/disconnect-user', {
@@ -715,6 +742,29 @@ export async function disconnectUserManagerUser(config: Partial<MikroTikConfig>,
   } catch (error) {
     console.warn('disconnectUserManagerUser notice:', error);
     return false;
+  }
+}
+
+// 21c. Disconnect Multiple Users in Batch
+export async function disconnectUserManagerUsersBatch(
+  config: Partial<MikroTikConfig>,
+  users: Array<{ id: string; name: string }>
+): Promise<{ success: boolean; count: number; message?: string }> {
+  try {
+    const res = await fetch('/api/mikrotik/um/disconnect-users-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, users }),
+    });
+    const data = await parseJsonResponse(res);
+    return {
+      success: Boolean(data.success),
+      count: data.count || 0,
+      message: data.message,
+    };
+  } catch (error: any) {
+    console.warn('disconnectUserManagerUsersBatch notice:', error);
+    return { success: false, count: 0, message: error?.message || 'تعذر فصل الكروت المحددة' };
   }
 }
 

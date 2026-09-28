@@ -14,7 +14,9 @@ import {
   AlertCircle,
   CheckCircle2,
   Cpu,
-  Layers
+  Layers,
+  PowerOff,
+  RotateCcw
 } from 'lucide-react';
 import {
   UserManagerUser,
@@ -23,6 +25,8 @@ import {
 } from '../types';
 import {
   fetchUserManagerSessions,
+  disconnectUserManagerUser,
+  resetUserManagerUserCounters,
   formatBytesToHuman
 } from '../utils/mikrotikApi';
 
@@ -32,6 +36,8 @@ interface UserManagerCardSessionsModalProps {
   config: Partial<MikroTikConfig>;
   onClose: () => void;
   onEditProfile?: (user: UserManagerUser) => void;
+  onSessionTerminated?: (userName: string) => void;
+  onCountersReset?: (userId: string, userName: string) => void;
 }
 
 export const UserManagerCardSessionsModal: React.FC<UserManagerCardSessionsModalProps> = ({
@@ -39,12 +45,17 @@ export const UserManagerCardSessionsModal: React.FC<UserManagerCardSessionsModal
   user,
   config,
   onClose,
-  onEditProfile
+  onEditProfile,
+  onSessionTerminated,
+  onCountersReset
 }) => {
   const [sessions, setSessions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [lastRefreshed, setLastRefreshed] = useState<string | null>(null);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
   const loadSessions = async () => {
     if (!user) return;
@@ -105,6 +116,41 @@ export const UserManagerCardSessionsModal: React.FC<UserManagerCardSessionsModal
     URL.revokeObjectURL(url);
   };
 
+  const handleDisconnectActiveSession = async () => {
+    if (!user) return;
+    setIsDisconnecting(true);
+    setActionFeedback(null);
+    const ok = await disconnectUserManagerUser(config, user.name);
+    setIsDisconnecting(false);
+    if (ok) {
+      setActionFeedback({ success: true, message: `تم فصل الجلسة النشطة للكارت (${user.name}) بنجاح.` });
+      setTimeout(() => setActionFeedback(null), 3500);
+      loadSessions();
+      if (onSessionTerminated) onSessionTerminated(user.name);
+    } else {
+      setActionFeedback({ success: false, message: 'تعذر فصل الجلسة، قد تكون أغلقت بالفعل.' });
+    }
+  };
+
+  const handleResetCountersDirect = async () => {
+    if (!user) return;
+    setIsResetting(true);
+    setActionFeedback(null);
+    const ok = await resetUserManagerUserCounters(config, user.id, user.name);
+    setIsResetting(false);
+    if (ok) {
+      user.downloadUsed = 0;
+      user.uploadUsed = 0;
+      user.totalBytes = 0;
+      user.uptimeUsed = '0s';
+      setActionFeedback({ success: true, message: `تم تصفير كافة عدادات استهلاك الكارت (${user.name}) بنجاح.` });
+      setTimeout(() => setActionFeedback(null), 3500);
+      if (onCountersReset) onCountersReset(user.id, user.name);
+    } else {
+      setActionFeedback({ success: false, message: 'تعذر تصفير عدادات الكارت.' });
+    }
+  };
+
   if (!isOpen || !user) return null;
 
   return (
@@ -162,6 +208,31 @@ export const UserManagerCardSessionsModal: React.FC<UserManagerCardSessionsModal
         </div>
 
         {/* Top Lifetime Stats Bar */}
+        {actionFeedback && (
+          <div
+            className={`p-3 mx-4 mt-3 rounded-2xl text-xs flex items-center justify-between border shadow-sm ${
+              actionFeedback.success
+                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {actionFeedback.success ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              )}
+              <span>{actionFeedback.message}</span>
+            </div>
+            <button
+              onClick={() => setActionFeedback(null)}
+              className="text-slate-400 hover:text-white p-1"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         <div className="p-4 bg-slate-950/60 border-b border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
           <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800">
             <div className="flex items-center gap-2 text-slate-400 mb-1">
@@ -239,7 +310,31 @@ export const UserManagerCardSessionsModal: React.FC<UserManagerCardSessionsModal
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+            {activeSession && (
+              <button
+                type="button"
+                onClick={handleDisconnectActiveSession}
+                disabled={isDisconnecting}
+                className="px-3 py-2 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30 text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50"
+                title="فصل الجلسة النشطة الحالية فوراً وإخراج المشترك"
+              >
+                {isDisconnecting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <PowerOff className="w-3.5 h-3.5" />}
+                <span>فصل الجلسة النشطة</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleResetCountersDirect}
+              disabled={isResetting}
+              className="px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50"
+              title="تصفير عدادات التحميل والرفع والوقت لهذا الكارت"
+            >
+              {isResetting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+              <span>تصفير العدادات</span>
+            </button>
+
             <button
               onClick={handleExportCsv}
               disabled={sessions.length === 0}
