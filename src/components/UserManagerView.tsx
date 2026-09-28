@@ -1,6 +1,6 @@
 import { PrintableCard } from "./PrintableCard";
 import { CardTemplatesManager } from "./CardTemplatesManager";
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useDeferredValue } from 'react';
 import {
   Server,
   Users,
@@ -43,6 +43,9 @@ import {
   LayoutTemplate,
   ChevronRight,
   ChevronLeft,
+  ChevronsRight,
+  ChevronsLeft,
+  ArrowUpDown,
   Scissors,
   Type,
   Palette,
@@ -176,6 +179,9 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     'all' | 'expired_all' | 'expired_quota' | 'expired_time' | 'active_now' | 'has_usage' | 'unused' | 'disabled' | 'expired'
   >('all');
   const [userSortBy, setUserSortBy] = useState<'name' | 'usage_desc' | 'uptime_desc'>('usage_desc');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(50);
+  const [pageJumpInput, setPageJumpInput] = useState<string>('');
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -919,12 +925,18 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     profiles,
   }), [limitations, profiles]);
 
-  // Analyzed cards status for all users with full limitations and profile mappings
+  // Analyzed cards status for all users with full limitations, profile mappings, and pre-indexed search
   const analyzedUsers = useMemo(() => {
-    return users.map((u) => ({
-      user: u,
-      status: evaluateCardExpirationStatus(u, categories, umContext),
-    }));
+    return users.map((u) => {
+      const status = evaluateCardExpirationStatus(u, categories, umContext);
+      // Pre-compute lowercased normalized string once per card for instant sub-millisecond filtering
+      const searchNormalized = `${u.name || ''} ${u.comment || ''} ${u.actualProfile || ''} ${u.customer || ''} ${u.password || ''}`.toLowerCase();
+      return {
+        user: u,
+        status,
+        searchNormalized,
+      };
+    });
   }, [users, categories, umContext]);
 
   // Expired cards categorization
@@ -950,16 +962,26 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     return map;
   }, [analyzedUsers]);
 
-  // Filtered Users
+  // Non-blocking deferred search value for 0ms typing response
+  const deferredUserSearch = useDeferredValue(userSearch);
+
+  // Automatically reset to page 1 whenever search, profile filter, status filter, or sorting changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [deferredUserSearch, profileFilter, statusFilter, userSortBy, pageSize]);
+
+  // Filtered Users with precomputed search index & deferred value for instant response
   const filteredUsers = useMemo(() => {
+    const q = (deferredUserSearch || '').trim().toLowerCase();
+    const hasSearch = q.length > 0;
+
     let list = analyzedUsers
-      .filter(({ user: u, status: cardStatus }) => {
-        const q = (userSearch || '').toLowerCase();
-        const matchesSearch =
-          (u.name || '').toLowerCase().includes(q) ||
-          (u.comment && (u.comment || '').toLowerCase().includes(q)) ||
-          (u.actualProfile && (u.actualProfile || '').toLowerCase().includes(q));
+      .filter(({ user: u, status: cardStatus, searchNormalized }) => {
+        if (hasSearch && !searchNormalized.includes(q)) {
+          return false;
+        }
         const matchesProfile = profileFilter === 'all' || u.actualProfile === profileFilter;
+        if (!matchesProfile) return false;
 
         let matchesStatus = true;
         if (statusFilter === 'disabled') {
@@ -978,7 +1000,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
           matchesStatus = !cardStatus.isManuallyDisabled && !cardStatus.isExpired && (cardStatus.totalBytesUsed > 0 || cardStatus.usedUptimeSec > 0);
         }
 
-        return matchesSearch && matchesProfile && matchesStatus;
+        return matchesStatus;
       })
       .map((item) => item.user);
 
@@ -991,7 +1013,212 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
     }
 
     return list;
-  }, [analyzedUsers, userSearch, profileFilter, statusFilter, userSortBy]);
+  }, [analyzedUsers, deferredUserSearch, profileFilter, statusFilter, userSortBy]);
+
+  // Safe pagination calculations
+  const effectivePageSize = typeof pageSize === 'number' ? pageSize : filteredUsers.length || 1;
+  const totalUserPages = Math.max(1, Math.ceil(filteredUsers.length / effectivePageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalUserPages);
+
+  // Paginated users subset (renders in ~2ms instead of freezing the tab)
+  const paginatedUsers = useMemo(() => {
+    if (pageSize === 'all') return filteredUsers;
+    const start = (safeCurrentPage - 1) * pageSize;
+    return filteredUsers.slice(start, start + pageSize);
+  }, [filteredUsers, safeCurrentPage, pageSize]);
+
+  const pageStartIndex = filteredUsers.length === 0 ? 0 : (safeCurrentPage - 1) * effectivePageSize + 1;
+  const pageEndIndex = filteredUsers.length === 0 ? 0 : Math.min(safeCurrentPage * effectivePageSize, filteredUsers.length);
+
+  // Selection states for current page
+  const isAllCurrentPageSelected = paginatedUsers.length > 0 && paginatedUsers.every((u) => selectedCardKeys.has(u.id || u.name));
+  const selectedOnCurrentPageCount = paginatedUsers.filter((u) => selectedCardKeys.has(u.id || u.name)).length;
+
+  const handleToggleSelectCurrentPage = () => {
+    if (isAllCurrentPageSelected) {
+      setSelectedCardKeys((prev) => {
+        const next = new Set(prev);
+        for (const u of paginatedUsers) {
+          next.delete(u.id || u.name);
+        }
+        return next;
+      });
+    } else {
+      setSelectedCardKeys((prev) => {
+        const next = new Set(prev);
+        for (const u of paginatedUsers) {
+          next.add(u.id || u.name);
+        }
+        return next;
+      });
+    }
+  };
+
+  const handleJumpToPage = (e: React.FormEvent) => {
+    e.preventDefault();
+    const p = parseInt(pageJumpInput, 10);
+    if (!isNaN(p) && p >= 1 && p <= totalUserPages) {
+      setCurrentPage(p);
+      setPageJumpInput('');
+    }
+  };
+
+  const getPaginationItems = (current: number, total: number): (number | string)[] => {
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    if (current <= 4) {
+      return [1, 2, 3, 4, 5, '...', total];
+    }
+    if (current >= total - 3) {
+      return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+    }
+    return [1, '...', current - 1, current, current + 1, '...', total];
+  };
+
+  const renderPaginationBar = (position: 'top' | 'bottom') => {
+    if (filteredUsers.length === 0) return null;
+
+    return (
+      <div className={`flex flex-col md:flex-row items-center justify-between gap-3 p-3 bg-slate-900/90 rounded-2xl border border-slate-800 text-xs ${
+        position === 'top' ? 'mb-3.5 shadow-sm' : 'mt-3.5 shadow-sm'
+      }`}>
+        {/* Left: Page size & Results info */}
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400 font-medium">عرض بالصفحة:</span>
+            <select
+              value={String(pageSize)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setPageSize(val === 'all' ? 'all' : Number(val));
+              }}
+              className="bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-1.5 text-white font-mono font-bold focus:outline-none focus:border-purple-500 cursor-pointer text-xs"
+            >
+              <option value="25">25 كارت</option>
+              <option value="50">50 كارت (سرعة فائقة ⚡)</option>
+              <option value="100">100 كارت</option>
+              <option value="250">250 كارت</option>
+              <option value="500">500 كارت</option>
+              <option value="all">عرض الكل ({filteredUsers.length})</option>
+            </select>
+          </div>
+
+          <div className="text-slate-300 font-mono text-xs flex items-center gap-1.5 bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800">
+            <span>عرض</span>
+            <strong className="text-purple-300">{pageStartIndex.toLocaleString()} - {pageEndIndex.toLocaleString()}</strong>
+            <span>من إجمالي</span>
+            <strong className="text-white">{filteredUsers.length.toLocaleString()}</strong>
+            <span>كارت</span>
+            {pageSize !== 'all' && totalUserPages > 1 && (
+              <span className="text-slate-500 mr-1">(صفحة {safeCurrentPage} من {totalUserPages})</span>
+            )}
+          </div>
+        </div>
+
+        {/* Center / Right: Page navigation */}
+        {pageSize !== 'all' && totalUserPages > 1 && (
+          <div className="flex flex-wrap items-center gap-1.5 justify-center">
+            {/* First Page */}
+            <button
+              type="button"
+              disabled={safeCurrentPage === 1}
+              onClick={() => setCurrentPage(1)}
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+              title="الصفحة الأولى"
+            >
+              <ChevronsRight className="w-4 h-4" />
+            </button>
+
+            {/* Prev Page */}
+            <button
+              type="button"
+              disabled={safeCurrentPage === 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold disabled:opacity-30 disabled:pointer-events-none transition flex items-center gap-1 cursor-pointer"
+              title="الصفحة السابقة"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">السابق</span>
+            </button>
+
+            {/* Number buttons */}
+            <div className="flex items-center gap-1">
+              {getPaginationItems(safeCurrentPage, totalUserPages).map((item, idx) => {
+                if (item === '...') {
+                  return (
+                    <span key={`ellipsis-${position}-${idx}`} className="px-1.5 py-1 text-slate-500 font-mono text-xs">
+                      ...
+                    </span>
+                  );
+                }
+                const pageNum = Number(item);
+                const isActive = pageNum === safeCurrentPage;
+                return (
+                  <button
+                    key={`page-btn-${position}-${pageNum}`}
+                    type="button"
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`min-w-[30px] h-7 px-2 rounded-lg text-xs font-bold transition font-mono cursor-pointer ${
+                      isActive
+                        ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 ring-1 ring-purple-400 font-black'
+                        : 'bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Next Page */}
+            <button
+              type="button"
+              disabled={safeCurrentPage === totalUserPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalUserPages, p + 1))}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold disabled:opacity-30 disabled:pointer-events-none transition flex items-center gap-1 cursor-pointer"
+              title="الصفحة التالية"
+            >
+              <span className="hidden sm:inline">التالي</span>
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Last Page */}
+            <button
+              type="button"
+              disabled={safeCurrentPage === totalUserPages}
+              onClick={() => setCurrentPage(totalUserPages)}
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+              title="الصفحة الأخيرة"
+            >
+              <ChevronsLeft className="w-4 h-4" />
+            </button>
+
+            {/* Direct Jump */}
+            {totalUserPages > 3 && (
+              <form onSubmit={handleJumpToPage} className="flex items-center gap-1 mr-2 border-r border-slate-800 pr-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={totalUserPages}
+                  value={pageJumpInput}
+                  onChange={(e) => setPageJumpInput(e.target.value)}
+                  placeholder={String(safeCurrentPage)}
+                  className="w-12 bg-slate-950 border border-slate-700 rounded-lg px-1.5 py-1 text-xs text-white text-center font-mono focus:outline-none focus:border-purple-500"
+                />
+                <button
+                  type="submit"
+                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-purple-600 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-bold transition cursor-pointer"
+                >
+                  انتقال
+                </button>
+              </form>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // Aggregate stats
   const totalUMBytesUsed = users.reduce((acc, u) => acc + (u.totalBytes || 0), 0);
@@ -1509,85 +1736,173 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
           </div>
 
           {/* Filter / Search Bar */}
-          <div className="flex flex-col lg:flex-row items-center justify-between gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
-            <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto flex-1">
-              {/* Search */}
-              <div className="relative flex-1 min-w-[200px] max-w-sm">
-                <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
-                  placeholder="بحث باسم الكارت، البروفايل، أو الملاحظة..."
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl pr-10 pl-4 py-2 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                />
+          <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-800 space-y-3">
+            <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto flex-1">
+                {/* Search */}
+                <div className="relative flex-1 min-w-[220px] max-w-sm">
+                  <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    placeholder="بحث سريع باسم الكارت، كلمة المرور، أو الملاحظة..."
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl pr-10 pl-9 py-2 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition font-medium"
+                  />
+                  {userSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setUserSearch('')}
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition cursor-pointer"
+                      title="مسح البحث"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Profile Filter */}
+                <select
+                  value={profileFilter}
+                  onChange={(e) => setProfileFilter(e.target.value)}
+                  className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-purple-500 cursor-pointer"
+                >
+                  <option key="all-profiles-opt" value="all">كافة البروفايلات</option>
+                  {profiles.map((p, idx) => (
+                    <option key={`filter-prof-${p.id || p.name || idx}`} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Status Filter */}
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as any)}
+                  className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-purple-500 font-medium cursor-pointer"
+                >
+                  <option value="all">كافة الحالات ({users.length})</option>
+                  <option value="expired_quota">منتهية التحميل / نفذ الرصيد ({expiredQuotaCards.length})</option>
+                  <option value="expired_time">منتهية الوقت / نفذت المدة ({expiredTimeCards.length})</option>
+                  <option value="expired_all">كافة الكروت المنتهية ({allExpiredCards.length})</option>
+                  <option value="active_now">نشطة وغير معطلة</option>
+                  <option value="has_usage">كروت سحبت بيانات ({totalCardsWithUsage})</option>
+                  <option value="unused">كروت جديدة لم تُستخدم</option>
+                  <option value="disabled">كروت معطلة يدوياً ({totalDisabledCards})</option>
+                </select>
+
+                {/* Sort By */}
+                <select
+                  value={userSortBy}
+                  onChange={(e) => setUserSortBy(e.target.value as any)}
+                  className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-purple-500 font-mono cursor-pointer"
+                >
+                  <option value="usage_desc">ترتيب: الأكثر استهلاكاً</option>
+                  <option value="uptime_desc">ترتيب: أطول مدة اتصال</option>
+                  <option value="name">ترتيب: أبجدياً بالاسم</option>
+                </select>
               </div>
 
-              {/* Profile Filter */}
-              <select
-                value={profileFilter}
-                onChange={(e) => setProfileFilter(e.target.value)}
-                className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-purple-500"
-              >
-                <option key="all-profiles-opt" value="all">كافة البروفايلات</option>
-                {profiles.map((p, idx) => (
-                  <option key={`filter-prof-${p.id || p.name || idx}`} value={p.name}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-
-              {/* Status Filter */}
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
-                className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-purple-500 font-medium"
-              >
-                <option value="all">كافة الحالات ({users.length})</option>
-                <option value="expired_quota">منتهية التحميل / نفذ الرصيد ({expiredQuotaCards.length})</option>
-                <option value="expired_time">منتهية الوقت / نفذت المدة ({expiredTimeCards.length})</option>
-                <option value="expired_all">كافة الكروت المنتهية ({allExpiredCards.length})</option>
-                <option value="active_now">نشطة وغير معطلة</option>
-                <option value="has_usage">كروت سحبت بيانات ({totalCardsWithUsage})</option>
-                <option value="unused">كروت جديدة لم تُستخدم</option>
-                <option value="disabled">كروت معطلة يدوياً ({totalDisabledCards})</option>
-              </select>
-
-              {/* Sort By */}
-              <select
-                value={userSortBy}
-                onChange={(e) => setUserSortBy(e.target.value as any)}
-                className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-purple-500 font-mono"
-              >
-                <option value="usage_desc">ترتيب: الأكثر استهلاكاً</option>
-                <option value="uptime_desc">ترتيب: أطول مدة اتصال</option>
-                <option value="name">ترتيب: أبجدياً بالاسم</option>
-              </select>
+              <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
+                <button
+                  onClick={() => setShowExpiredCardsModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                  title="فتح نافذة الفحص الشامل وحذف الكروت المنتهية"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span className="hidden sm:inline">الكروت المنتهية</span>
+                  {allExpiredCards.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-rose-500/30 text-rose-300 text-[10px] font-mono">
+                      {allExpiredCards.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab('batch')}
+                  className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-purple-600/20 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>توليد كروت جديدة</span>
+                </button>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
-              <button
-                onClick={() => setShowExpiredCardsModal(true)}
-                className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold transition flex items-center gap-1.5"
-                title="فتح نافذة الفحص الشامل وحذف الكروت المنتهية"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span className="hidden sm:inline">الكروت المنتهية</span>
-                {allExpiredCards.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-rose-500/30 text-rose-300 text-[10px] font-mono">
-                    {allExpiredCards.length}
+            {/* Active Filters Summary Chips */}
+            {(userSearch.trim() || profileFilter !== 'all' || statusFilter !== 'all') && (
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80 text-xs">
+                <span className="text-slate-400 font-medium">عوامل التصفية النشطة:</span>
+                {userSearch.trim() && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/40 font-mono font-bold">
+                    <span>بحث: "{userSearch.trim()}"</span>
+                    <button
+                      type="button"
+                      onClick={() => setUserSearch('')}
+                      className="hover:text-white transition cursor-pointer p-0.5"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
                   </span>
                 )}
-              </button>
+                {profileFilter !== 'all' && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono font-bold">
+                    <span>بروفايل: {profileFilter}</span>
+                    <button
+                      type="button"
+                      onClick={() => setProfileFilter('all')}
+                      className="hover:text-white transition cursor-pointer p-0.5"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {statusFilter !== 'all' && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+                    <span>حالة: {statusFilter}</span>
+                    <button
+                      type="button"
+                      onClick={() => setStatusFilter('all')}
+                      className="hover:text-white transition cursor-pointer p-0.5"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                <span className="text-slate-400 font-mono text-[11px] mr-auto">
+                  تم العثور على <strong className="text-white">{filteredUsers.length.toLocaleString()}</strong> كارت
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserSearch('');
+                    setProfileFilter('all');
+                    setStatusFilter('all');
+                  }}
+                  className="text-xs text-rose-400 hover:text-rose-300 underline font-bold transition mr-1 cursor-pointer"
+                >
+                  إلغاء كافة الفلاتر
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Performance warning if viewing 'all' with huge dataset */}
+          {pageSize === 'all' && filteredUsers.length > 500 && (
+            <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex flex-wrap items-center justify-between gap-2 shadow-sm">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>
+                  تنبيه أداء: يتم حالياً عرض كافة الكروت ({filteredUsers.length.toLocaleString()}) في نفس الصفحة. يُفضل تفعيل الصفحات (50 أو 100 كارت) لمنع ثقل المتصفح وسرعة التصفح الفائقة.
+                </span>
+              </div>
               <button
-                onClick={() => setActiveTab('batch')}
-                className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-purple-600/20"
+                type="button"
+                onClick={() => setPageSize(50)}
+                className="px-3 py-1 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 font-bold transition cursor-pointer shrink-0"
               >
-                <Plus className="w-4 h-4" />
-                <span>توليد كروت جديدة</span>
+                تفعيل عرض 50 كارت بالصفحة ⚡
               </button>
             </div>
-          </div>
+          )}
 
           {/* Dedicated Expired Cards Action Banner */}
           {(statusFilter === 'expired_all' || statusFilter === 'expired_quota' || statusFilter === 'expired_time' || statusFilter === 'expired') && (
@@ -1716,6 +2031,29 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
             </div>
           )}
 
+          {/* Top Pagination Controls */}
+          {renderPaginationBar('top')}
+
+          {/* Cross-page selection banner */}
+          {selectedOnCurrentPageCount > 0 && filteredUsers.length > paginatedUsers.length && selectedCardKeys.size < filteredUsers.length && (
+            <div className="bg-purple-950/40 border border-purple-500/30 px-4 py-2.5 rounded-2xl text-xs flex flex-wrap items-center justify-between gap-2 text-purple-200 shadow-sm animate-in fade-in duration-150">
+              <div className="flex items-center gap-2">
+                <CheckSquare className="w-4 h-4 text-purple-400 shrink-0" />
+                <span>
+                  تم تحديد <strong>{selectedCardKeys.size}</strong> كارت في هذه الصفحة ({paginatedUsers.length} كارت معروض حالياً).
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleSelectAllFiltered}
+                className="px-3 py-1 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 hover:text-white border border-purple-500/40 font-bold transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>تحديد كافة النتائج المطابقة في كل الصفحات ({filteredUsers.length.toLocaleString()} كارت)</span>
+              </button>
+            </div>
+          )}
+
           {/* Users Table & Mobile Touch Cards */}
           <div className="bg-slate-900/90 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
             {/* Mobile Touch Cards View (md:hidden) */}
@@ -1736,7 +2074,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                   )}
                 </div>
               ) : (
-                filteredUsers.map((u, idx) => {
+                paginatedUsers.map((u, idx) => {
                   const cardStatus = cardStatusMap.get(u.id || u.name) || evaluateCardExpirationStatus(u, categories, umContext);
                   const totalBytes = cardStatus.totalBytesUsed;
                   const hasLimit = cardStatus.hasQuota;
@@ -2009,17 +2347,20 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                     <th className="p-3.5 w-10 text-center">
                       <button
                         type="button"
-                        onClick={handleSelectAllFiltered}
-                        className={`w-4 h-4 rounded border flex items-center justify-center transition mx-auto ${
-                          selectedCardKeys.size > 0 && selectedCardKeys.size >= filteredUsers.length && filteredUsers.length > 0
+                        onClick={handleToggleSelectCurrentPage}
+                        className={`w-4 h-4 rounded border flex items-center justify-center transition mx-auto cursor-pointer ${
+                          isAllCurrentPageSelected
                             ? 'bg-purple-600 border-purple-500 text-white'
-                            : selectedCardKeys.size > 0
+                            : selectedOnCurrentPageCount > 0
                             ? 'bg-purple-600/40 border-purple-400 text-white'
                             : 'border-slate-700 bg-slate-900 hover:border-purple-400'
                         }`}
-                        title="تحديد أو إلغاء تحديد كافة الكروت"
+                        title={isAllCurrentPageSelected ? 'إلغاء تحديد كروت هذه الصفحة' : 'تحديد كافة كروت هذه الصفحة'}
                       >
-                        {selectedCardKeys.size > 0 && <Check className="w-3 h-3" />}
+                        {isAllCurrentPageSelected && <Check className="w-3 h-3" />}
+                        {!isAllCurrentPageSelected && selectedOnCurrentPageCount > 0 && (
+                          <span className="w-2 h-0.5 bg-white rounded-full" />
+                        )}
                       </button>
                     </th>
                     <th className="p-3.5">اسم الكارت (Username)</th>
@@ -2047,7 +2388,7 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    filteredUsers.map((u, idx) => {
+                    paginatedUsers.map((u, idx) => {
                       const cardStatus = cardStatusMap.get(u.id || u.name) || evaluateCardExpirationStatus(u, categories, umContext);
                       const totalBytes = cardStatus.totalBytesUsed;
                       const hasLimit = cardStatus.hasQuota;
@@ -2328,6 +2669,9 @@ export const UserManagerView: React.FC<UserManagerViewProps> = ({
               </table>
             </div>
           </div>
+
+          {/* Bottom Pagination Controls */}
+          {renderPaginationBar('bottom')}
         </div>
       )}
 

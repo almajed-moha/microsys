@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   AlertTriangle,
   Trash2,
@@ -14,6 +14,11 @@ import {
   RotateCcw,
   CheckCircle2,
   Info,
+  XCircle,
+  FileCheck,
+  Check,
+  Copy,
+  Sparkles,
 } from 'lucide-react';
 import {
   InvoiceRecord,
@@ -31,6 +36,8 @@ interface InvoiceDeleteConfirmModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirmDelete: (invoice: InvoiceRecord) => void;
+  onConfirmCancel?: (invoice: InvoiceRecord, reason?: string) => void;
+  onConfirmRestore?: (invoice: InvoiceRecord) => void;
   invoice: InvoiceRecord | null;
   posPoints: POSPoint[];
   customers: Customer[];
@@ -46,6 +53,8 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
   isOpen,
   onClose,
   onConfirmDelete,
+  onConfirmCancel,
+  onConfirmRestore,
   invoice,
   posPoints,
   customers,
@@ -56,19 +65,31 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
   allInvoices = [],
   settings,
 }) => {
+  // Modes: 'cancel' (Recommended Accounting Void) | 'delete' (Permanent Removal)
+  const [activeActionTab, setActiveActionTab] = useState<'cancel' | 'delete'>('cancel');
+  const [cancelReason, setCancelReason] = useState('');
   const [typedConfirmation, setTypedConfirmation] = useState('');
   const [acknowledgeImpact, setAcknowledgeImpact] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
 
-  // Reset confirmation state when modal opens/changes invoice
-  React.useEffect(() => {
+  const isCancelled = invoice?.status === 'cancelled';
+
+  // Set default active tab based on status
+  useEffect(() => {
+    if (isCancelled) {
+      setActiveActionTab('delete');
+    } else {
+      setActiveActionTab('cancel');
+    }
     setTypedConfirmation('');
+    setCancelReason('');
     setAcknowledgeImpact(false);
-  }, [invoice?.id, isOpen]);
+    setIsCopied(false);
+  }, [invoice?.id, isOpen, isCancelled]);
 
   const currency = settings?.currencySymbol || 'ر.ي';
   const isReturn = invoice?.type === 'return';
   const totalAmount = invoice?.totalWholesaleAmount ?? 0;
-  const isCancelled = invoice?.status === 'cancelled';
 
   // Find linked POS point or Customer
   const targetPOS = useMemo(() => {
@@ -104,7 +125,7 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
       );
       const currentDebt = currentPosCalc.currentDebt;
 
-      // Simulated invoices excluding the deleting invoice
+      // Simulated invoices excluding or cancelling this invoice
       const simulatedInvoices = allInvoices.filter((inv) => inv.id !== invoice.id);
       const simulatedPosCalc = calculatePOSBalance(
         targetPOS.id,
@@ -124,8 +145,10 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
         maxDebtLimit: targetPOS.maxDebtLimit || 0,
       };
     } else if (targetCustomer) {
-      // Customer balance calculation: totalPurchases - totalReturns - totalPayments
-      const custInvoices = allInvoices.filter((inv) => inv.customerId === targetCustomer.id);
+      // Customer balance calculation
+      const custInvoices = allInvoices.filter(
+        (inv) => inv.customerId === targetCustomer.id && inv.status !== 'cancelled'
+      );
       const custPayments = payments.filter((p) => p.customerId === targetCustomer.id);
 
       let currentPurchases = 0;
@@ -166,8 +189,8 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
     return (invoice.items || []).map((item) => {
       const category = categories.find((c) => c.id === item.categoryId);
       const currentStock = category ? category.warehouseStock : 0;
-      // If sale: deleting invoice returns cards back to warehouse (+quantity)
-      // If return: deleting return invoice deducts cards from warehouse (-quantity)
+      // If sale: cancelling/deleting invoice returns cards back to warehouse (+quantity)
+      // If return: cancelling/deleting return invoice deducts cards from warehouse (-quantity)
       const quantityDelta = isReturn ? -item.quantity : item.quantity;
       const newStock = isCancelled ? currentStock : Math.max(0, currentStock + quantityDelta);
 
@@ -189,39 +212,76 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
   const requiredConfirmWord = invoice.invoiceNumber;
   const isConfirmInputValid =
     typedConfirmation.trim().toLowerCase() === requiredConfirmWord.trim().toLowerCase();
-  const canSubmit = isConfirmInputValid && acknowledgeImpact;
+  
+  // Either user acknowledged the checkbox OR typed the invoice number
+  const canSubmitDelete = acknowledgeImpact || isConfirmInputValid;
+
+  const handleCopyInvoiceNumber = () => {
+    setTypedConfirmation(requiredConfirmWord);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  const quickReasonChips = [
+    'خطأ في الكمية أو السعر',
+    'بناء على طلب العميل',
+    'فاتورة مكررة بالخطأ',
+    'تسوية محاسبية معتمدة',
+    'إلغاء الاتفاقية',
+  ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-slate-900 border border-rose-500/50 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-auto text-right">
-        {/* Header with High-Visibility Danger Banner */}
-        <div className="p-4 sm:p-5 border-b border-rose-500/30 bg-gradient-to-r from-rose-950/80 via-slate-900 to-rose-950/80 flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3 text-rose-400">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center shrink-0">
-              <ShieldAlert className="w-5 h-5 sm:w-6 sm:h-6 text-rose-400" />
+      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-auto text-right">
+        
+        {/* Header with Smart Accounting Badge */}
+        <div className="p-4 sm:p-5 border-b border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border ${
+              isCancelled
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                : activeActionTab === 'cancel'
+                ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400'
+                : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+            }`}>
+              {isCancelled ? (
+                <RotateCcw className="w-5 h-5 text-amber-400" />
+              ) : activeActionTab === 'cancel' ? (
+                <FileCheck className="w-5 h-5 text-indigo-400" />
+              ) : (
+                <Trash2 className="w-5 h-5 text-rose-400" />
+              )}
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                  إجراء محاسبي لا يمكن التراجع عنه
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-indigo-400" />
+                  تسوية محاسبية ذكية ومطابقة سليمة
                 </span>
+                {isCancelled && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                    ملغاة محاسبياً بالفعل
+                  </span>
+                )}
                 {isReturn && (
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                     مردودات مبيعات
                   </span>
                 )}
               </div>
+
               <h3 className="text-base sm:text-lg font-black text-white mt-1">
-                تأكيد حذف الفاتورة رقم{' '}
-                <span className="font-mono text-rose-300 underline underline-offset-4">
+                إدارة وحذف الفاتورة رقم{' '}
+                <span className="font-mono text-indigo-300 underline underline-offset-4">
                   {invoice.invoiceNumber}
                 </span>
               </h3>
-              <p className="text-xs text-rose-200/80 mt-0.5">
-                يرجى مراجعة الآثار المالية والمخزنية المترتبة على الحذف بعناية قبل المتابعة.
+              <p className="text-xs text-slate-400 mt-0.5">
+                حلول محاسبية متطابقة تضمن سلامة الأرصدة والمخزون ومطابقة الحسابات 100%.
               </p>
             </div>
           </div>
+
           <button
             type="button"
             onClick={onClose}
@@ -233,12 +293,44 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
 
         {/* Modal Body */}
         <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 text-xs max-h-[75vh] overflow-y-auto">
+          
+          {/* Action Mode Selector Tabs (Accounting Void vs Permanent Delete) */}
+          {!isCancelled && (
+            <div className="bg-slate-950 p-1.5 rounded-xl border border-slate-800 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveActionTab('cancel')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  activeActionTab === 'cancel'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                }`}
+              >
+                <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+                <span>1. إلغاء محاسبي (الخيار الموصى به)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveActionTab('delete')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  activeActionTab === 'delete'
+                    ? 'bg-rose-600 text-white shadow-md shadow-rose-900/40'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                }`}
+              >
+                <Trash2 className="w-4 h-4 text-rose-300" />
+                <span>2. حذف نهائي من السجل</span>
+              </button>
+            </div>
+          )}
+
           {/* Section 1: Detailed Invoice Summary Card */}
-          <div className="bg-slate-800/60 rounded-xl p-4 border border-slate-700/80 space-y-3">
-            <div className="flex items-center justify-between pb-2.5 border-b border-slate-700/60 text-slate-300">
+          <div className="bg-slate-800/60 rounded-xl p-3.5 border border-slate-700/80 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-700/60 text-slate-300">
               <span className="font-bold text-white flex items-center gap-1.5">
                 <Package className="w-4 h-4 text-indigo-400" />
-                <span>ملخص بيانات الفاتورة المراد حذفها</span>
+                <span>بيانات الفاتورة المراد التعامل معها</span>
               </span>
               <span className="font-mono text-slate-400 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-slate-500" />
@@ -297,11 +389,11 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
             </div>
 
             {/* Items Breakdown Table */}
-            <div className="mt-2 pt-2 border-t border-slate-700/60">
-              <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">
+            <div className="pt-2 border-t border-slate-700/60">
+              <span className="text-[11px] font-semibold text-slate-400 block mb-1">
                 الأصناف والفئات المضمنة ({invoice.items?.length || 0}):
               </span>
-              <div className="overflow-x-auto max-h-36 overflow-y-auto pr-1">
+              <div className="overflow-x-auto max-h-32 overflow-y-auto pr-1">
                 <table className="w-full text-right text-[11px]">
                   <thead>
                     <tr className="text-slate-400 border-b border-slate-700/60">
@@ -319,10 +411,10 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
                           {item.quantity}
                         </td>
                         <td className="py-1 px-1.5 text-center font-mono text-slate-400">
-                          {item.unitWholesalePrice.toLocaleString()}
+                          {(item.unitWholesalePrice ?? 0).toLocaleString()}
                         </td>
                         <td className="py-1 px-1.5 text-left font-mono font-bold text-white">
-                          {item.totalWholesalePrice.toLocaleString()} {currency}
+                          {(item.totalWholesalePrice ?? 0).toLocaleString()} {currency}
                         </td>
                       </tr>
                     ))}
@@ -332,14 +424,14 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
             </div>
           </div>
 
-          {/* Section 2: Financial Impact on POS / Customer Balance (Crucial) */}
-          <div className="bg-gradient-to-br from-amber-950/30 to-slate-900 border border-amber-500/40 rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-amber-500/20 text-amber-300">
+          {/* Section 2: Financial Impact & Reconciliation Forensics */}
+          <div className="bg-gradient-to-br from-indigo-950/40 via-slate-900 to-slate-900 border border-indigo-500/30 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-indigo-500/20 text-indigo-300">
               <span className="font-bold flex items-center gap-1.5 text-sm">
-                <AlertTriangle className="w-4 h-4 text-amber-400" />
-                <span>الأثر المالي المباشر على رصيد {partyType}</span>
+                <AlertTriangle className="w-4 h-4 text-indigo-400" />
+                <span>أثر التسوية المحاسبية على مطابقة رصيد {partyType}</span>
               </span>
-              <span className="text-[11px] text-amber-400/90 font-mono">
+              <span className="text-[11px] text-indigo-300 font-mono">
                 {partyName}
               </span>
             </div>
@@ -348,48 +440,63 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {/* 1. Current Balance */}
                 <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-800">
-                  <span className="text-slate-400 text-[11px] block mb-1">الرصيد/المديونية الحالية:</span>
+                  <span className="text-slate-400 text-[11px] block mb-1">الرصيد / المديونية الحالية:</span>
                   <div className="font-mono text-base font-black text-slate-200">
                     {(balanceForensics.currentDebt ?? 0).toLocaleString()} <span className="text-xs text-slate-500 font-sans">{currency}</span>
                   </div>
-                  <span className="text-[10px] text-slate-500 block mt-1">قبل تنفيذ أمر الحذف</span>
+                  <span className="text-[10px] text-slate-500 block mt-1">
+                    {isCancelled ? 'الفاتورة ملغاة حالياً' : 'قبل تنفيذ أمر التسوية'}
+                  </span>
                 </div>
 
                 {/* 2. Balance Change (Delta) */}
                 <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-800">
-                  <span className="text-slate-400 text-[11px] block mb-1">قيمة التعديل على الحساب:</span>
+                  <span className="text-slate-400 text-[11px] block mb-1">قيمة التسوية على الحساب:</span>
                   <div
                     className={`font-mono text-base font-black flex items-center gap-1 ${
-                      balanceForensics.debtDifference < 0 ? 'text-emerald-400' : 'text-rose-400'
+                      isCancelled
+                        ? 'text-slate-400'
+                        : balanceForensics.debtDifference < 0
+                        ? 'text-emerald-400'
+                        : 'text-rose-400'
                     }`}
                   >
-                    {balanceForensics.debtDifference < 0 ? (
-                      <ArrowDownLeft className="w-4 h-4" />
+                    {isCancelled ? (
+                      <span>0 {currency}</span>
                     ) : (
-                      <ArrowUpRight className="w-4 h-4" />
+                      <>
+                        {balanceForensics.debtDifference < 0 ? (
+                          <ArrowDownLeft className="w-4 h-4" />
+                        ) : (
+                          <ArrowUpRight className="w-4 h-4" />
+                        )}
+                        <span>
+                          {Math.abs(balanceForensics.debtDifference).toLocaleString()}{' '}
+                          <span className="text-xs font-sans">{currency}</span>
+                        </span>
+                      </>
                     )}
-                    <span>
-                      {Math.abs(balanceForensics.debtDifference).toLocaleString()}{' '}
-                      <span className="text-xs font-sans">{currency}</span>
-                    </span>
                   </div>
                   <span className="text-[10px] text-slate-400 block mt-1">
-                    {isReturn
-                      ? 'زيادة في مديونية الحساب (إلغاء خصم المرتجع)'
-                      : 'خصم من مديونية الحساب (إلغاء قيمة المبيعات)'}
+                    {isCancelled
+                      ? 'تمت التسوية مسبقاً (لا أثر إضافي)'
+                      : isReturn
+                      ? 'إلغاء خصم المرتجع من المديونية'
+                      : 'خصم قيمة الفاتورة من مديونية الحساب'}
                   </span>
                 </div>
 
-                {/* 3. New Balance After Delete */}
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-800 bg-amber-500/5">
-                  <span className="text-amber-300 text-[11px] font-bold block mb-1">
-                    الرصيد/المديونية بعد الحذف:
+                {/* 3. New Balance After Settlement */}
+                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-800 bg-indigo-500/5">
+                  <span className="text-indigo-300 text-[11px] font-bold block mb-1">
+                    الرصيد المعتمد بعد العملية:
                   </span>
-                  <div className="font-mono text-base font-black text-amber-400">
+                  <div className="font-mono text-base font-black text-indigo-300">
                     {(balanceForensics.newDebt ?? 0).toLocaleString()} <span className="text-xs text-slate-500 font-sans">{currency}</span>
                   </div>
-                  <span className="text-[10px] text-amber-300/80 block mt-1">
-                    سيصبح هذا الرصيد المعتمد فوراً
+                  <span className="text-[10px] text-emerald-400 block mt-1 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    مطابقة كشف الحساب 100%
                   </span>
                 </div>
               </div>
@@ -398,31 +505,21 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
                 الفاتورة مسجلة كمبيعات مباشرة، لن يتم تغيير رصيد أي نقطة بيع أو عميل محدد.
               </div>
             )}
-
-            {/* Debt Limit Warning if target is POS */}
-            {balanceForensics?.type === 'pos' && balanceForensics.maxDebtLimit > 0 && (
-              <div className="text-[11px] text-slate-300 bg-black/30 p-2.5 rounded-lg flex items-center justify-between">
-                <span>سقف الدين المسموح لنقطة البيع:</span>
-                <span className="font-mono font-bold text-white">
-                  {balanceForensics.maxDebtLimit.toLocaleString()} {currency}
-                </span>
-              </div>
-            )}
           </div>
 
           {/* Section 3: Inventory Impact on Warehouse Stock */}
-          <div className="bg-slate-800/60 border border-slate-700/80 rounded-xl p-4 space-y-2.5">
+          <div className="bg-slate-800/60 border border-slate-700/80 rounded-xl p-3.5 space-y-2.5">
             <div className="flex items-center justify-between text-slate-300">
               <span className="font-bold text-white flex items-center gap-1.5">
                 <RotateCcw className="w-4 h-4 text-emerald-400" />
-                <span>أثر الحذف على مخزون كروت المستودع</span>
+                <span>أثر العملية على مخزون كروت المستودع</span>
               </span>
-              <span className="text-[11px] text-emerald-400">
+              <span className="text-[11px] text-emerald-400 font-bold">
                 {isCancelled
-                  ? 'الفاتورة ملغاة سابقاً (لن يتم تغيير المخزون)'
+                  ? 'تم استرجاع الكروت للمستودع سابقاً'
                   : isReturn
                   ? 'سيتم خصم كمية المرتجع من المستودع'
-                  : 'سيتم استرجاع الكروت إلى مخزون المستودع'}
+                  : 'سيتم استرجاع الكروت تلقائياً إلى المستودع'}
               </span>
             </div>
 
@@ -442,10 +539,12 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
                         item.quantityDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'
                       }`}
                     >
-                      {item.quantityDelta >= 0 ? `+${item.quantityDelta}` : item.quantityDelta} كارت
+                      {isCancelled
+                        ? '0 (تم مسبقاً)'
+                        : `${item.quantityDelta >= 0 ? `+${item.quantityDelta}` : item.quantityDelta} كارت`}
                     </span>
                     <span className="text-indigo-300 font-bold bg-indigo-950/40 px-2 py-0.5 rounded border border-indigo-500/20">
-                      الجديد: {item.newStock} كارت
+                      المخزون المعتمد: {item.newStock} كارت
                     </span>
                   </div>
                 </div>
@@ -453,82 +552,160 @@ export const InvoiceDeleteConfirmModal: React.FC<InvoiceDeleteConfirmModalProps>
             </div>
           </div>
 
-          {/* Section 4: Safety Checkbox and Typing Confirmation */}
-          <div className="bg-rose-950/30 border border-rose-500/40 rounded-xl p-4 space-y-3">
-            <div className="flex items-start gap-2.5">
-              <input
-                id="ack-invoice-delete-impact"
-                type="checkbox"
-                checked={acknowledgeImpact}
-                onChange={(e) => setAcknowledgeImpact(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded text-rose-600 bg-slate-900 border-slate-700 focus:ring-rose-500 cursor-pointer"
-              />
-              <label
-                htmlFor="ack-invoice-delete-impact"
-                className="text-xs text-rose-200 font-medium cursor-pointer leading-relaxed"
-              >
-                أقر بأنني راجعت الأثر المالي على رصيد ({partyName}) والتعديل على مخزون المستودع،
-                وأتحمل مسؤولية حذف هذه الفاتورة المالية نهائياً.
-              </label>
-            </div>
+          {/* Section 4: Dynamic Action Details based on Selected Tab */}
+          {activeActionTab === 'cancel' && !isCancelled && (
+            <div className="bg-emerald-950/30 border border-emerald-500/40 rounded-xl p-4 space-y-3">
+              <div className="flex items-start gap-2.5">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-white text-xs">
+                    مزايا الإلغاء المحاسبي (Void Invoice) - المعيار المالي الموصى به:
+                  </h4>
+                  <ul className="list-disc list-inside text-[11px] text-emerald-200/90 mt-1 space-y-0.5 leading-relaxed">
+                    <li>لا يترك فجوات رقمية في تسلسل الفواتير (يحفظ الترقيم القانوني للمطابقة).</li>
+                    <li>يصفر أثر الفاتورة المالي فوراً (0 تأثير على مديونية الحساب، ولا تدخل في الأرباح).</li>
+                    <li>يسترجع كميات الكروت تلقائياً إلى مخزون المستودع.</li>
+                    <li>تظهر في كشف الحساب وميزان المراجعة كحركة ملغاة ومطابقة 100%.</li>
+                  </ul>
+                </div>
+              </div>
 
-            <div className="pt-2 border-t border-rose-500/20">
-              <label
-                htmlFor="input-confirm-invoice-number"
-                className="block text-[11px] text-slate-300 font-semibold mb-1"
-              >
-                للتأكيد الحتمي، يرجى كتابة رقم الفاتورة بالضبط{' '}
-                <span className="font-mono font-bold text-rose-300 select-all bg-black/40 px-1.5 py-0.5 rounded">
-                  {requiredConfirmWord}
-                </span>{' '}
-                في الحقل أدناه:
-              </label>
-              <input
-                id="input-confirm-invoice-number"
-                type="text"
-                dir="ltr"
-                placeholder={requiredConfirmWord}
-                value={typedConfirmation}
-                onChange={(e) => setTypedConfirmation(e.target.value)}
-                className={`w-full bg-slate-900 border px-3.5 py-2 rounded-xl text-center font-mono text-sm tracking-wider outline-hidden transition ${
-                  isConfirmInputValid
-                    ? 'border-emerald-500 text-emerald-400 bg-emerald-950/20'
-                    : 'border-slate-700 text-white focus:border-rose-500'
-                }`}
-              />
-              {typedConfirmation && !isConfirmInputValid && (
-                <p className="text-[10px] text-rose-400 mt-1">
-                  رقم الفاتورة المدخل غير متطابق.
-                </p>
-              )}
+              <div>
+                <label className="block text-[11px] text-slate-300 font-semibold mb-1">
+                  سبب الإلغاء المحاسبي (اختياري - يوثق في كشف الحساب وسجل التدقيق):
+                </label>
+                <input
+                  type="text"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="مثال: خطأ في إدخال الكمية، تسوية محاسبية، طلب العميل..."
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:border-emerald-500 outline-none"
+                />
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  <span className="text-[10px] text-slate-400 self-center">اقتراحات سريعة:</span>
+                  {quickReasonChips.map((chip, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setCancelReason(chip)}
+                      className="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer"
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+
+          {activeActionTab === 'delete' && (
+            <div className="bg-rose-950/30 border border-rose-500/40 rounded-xl p-4 space-y-3">
+              <div className="flex items-start gap-2.5">
+                <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-white text-xs">
+                    تنبيه الحذف النهائي من النظام (Permanent Delete):
+                  </h4>
+                  <p className="text-[11px] text-rose-200/90 mt-0.5 leading-relaxed">
+                    سيتم مسح سجل الفاتورة نهائياً من قاعدة البيانات، مع إجراء تسوية تلقائية لمديونية الطرف
+                    وإعادة كميات الكروت للمستودع وحفظ لقطة موثقة في سجل التدقيق.
+                  </p>
+                </div>
+              </div>
+
+              {/* Fast & Easy Confirmation Checkbox */}
+              <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-2.5">
+                <div className="flex items-start gap-2.5">
+                  <input
+                    id="ack-invoice-delete-impact"
+                    type="checkbox"
+                    checked={acknowledgeImpact}
+                    onChange={(e) => setAcknowledgeImpact(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded text-rose-600 bg-slate-900 border-slate-700 focus:ring-rose-500 cursor-pointer"
+                  />
+                  <label
+                    htmlFor="ack-invoice-delete-impact"
+                    className="text-xs text-rose-200 font-medium cursor-pointer leading-relaxed"
+                  >
+                    أقر بأنني راجعت الأثر المالي على رصيد ({partyName}) والتعديل على مخزون المستودع،
+                    وأتحمل مسؤولية حذف هذه الفاتورة المالية نهائياً.
+                  </label>
+                </div>
+
+                <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+                  <span>أو قم بنسخ رقم الفاتورة للتأكيد الفوري:</span>
+                  <button
+                    type="button"
+                    onClick={handleCopyInvoiceNumber}
+                    className="flex items-center gap-1 font-mono text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 px-2 py-1 rounded border border-indigo-500/20 cursor-pointer"
+                  >
+                    {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{requiredConfirmWord}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isCancelled && onConfirmRestore && (
+            <div className="bg-amber-950/20 border border-amber-500/30 rounded-xl p-3.5 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-amber-300 text-xs">
+                <Info className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>هل تريد إعادة تفعيل الفاتورة الملغاة وتطبيق أثرها المالي والمخزني مجدداً؟</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onConfirmRestore(invoice)}
+                className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>استعادة وتفعيل الفاتورة</span>
+              </button>
+            </div>
+          )}
+
         </div>
 
         {/* Modal Footer Actions */}
-        <div className="p-4 sm:p-5 bg-slate-900/90 border-t border-slate-800 flex items-center justify-between gap-3">
+        <div className="p-4 sm:p-5 bg-slate-900/90 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
           <button
             type="button"
             onClick={onClose}
             className="px-4 sm:px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer"
           >
-            تراجع وإلغاء
+            تراجع وإغلاق
           </button>
 
-          <button
-            type="button"
-            disabled={!canSubmit}
-            onClick={() => onConfirmDelete(invoice)}
-            className={`px-5 sm:px-6 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-lg ${
-              canSubmit
-                ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
-                : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/60'
-            }`}
-          >
-            <Trash2 className="w-4 h-4" />
-            <span>تأكيد الحذف النهائي وتحديث الأرصدة</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {activeActionTab === 'cancel' && !isCancelled && onConfirmCancel && (
+              <button
+                type="button"
+                onClick={() => onConfirmCancel(invoice, cancelReason)}
+                className="px-5 sm:px-6 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>تأكيد الإلغاء المحاسبي (الموصى به)</span>
+              </button>
+            )}
+
+            {activeActionTab === 'delete' && (
+              <button
+                type="button"
+                disabled={!canSubmitDelete}
+                onClick={() => onConfirmDelete(invoice)}
+                className={`px-5 sm:px-6 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-lg ${
+                  canSubmitDelete
+                    ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
+                    : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/60'
+                }`}
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>تأكيد الحذف النهائي وتحديث الأرصدة</span>
+              </button>
+            )}
+          </div>
         </div>
+
       </div>
     </div>
   );

@@ -29,7 +29,10 @@ import {
   Share2,
   FileDown,
   Loader2,
-  Scale
+  Scale,
+  XCircle,
+  CheckCircle2,
+  ShieldAlert,
 } from 'lucide-react';
 import { InvoiceRecord, InvoiceItem, CardCategory, POSPoint, NetworkSettings, ExpenseRecord, SalesRecord, PaymentRecord, Customer } from '../types';
 import { exportToCSV, downloadFile, generateNextInvoiceNumber } from '../utils/storage';
@@ -56,6 +59,9 @@ interface InvoicesViewProps {
   onAddInvoice: (invoice: Omit<InvoiceRecord, 'id' | 'timestamp'>) => void;
   onUpdateInvoice: (invoice: InvoiceRecord) => void;
   onDeleteInvoice: (invoiceId: string) => void;
+  onCancelInvoice?: (invoiceId: string, reason?: string) => void;
+  onRestoreInvoice?: (invoiceId: string) => void;
+  onViewReceipt?: (invoice: InvoiceRecord) => void;
   onOpenFinancialExport?: () => void;
   onOpenTrialBalance?: () => void;
   onOpenDebtsReport?: () => void;
@@ -74,6 +80,9 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
   onAddInvoice,
   onUpdateInvoice,
   onDeleteInvoice,
+  onCancelInvoice,
+  onRestoreInvoice,
+  onViewReceipt,
   onOpenFinancialExport,
   onOpenTrialBalance,
   onOpenDebtsReport,
@@ -81,7 +90,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
   const currency = settings?.currencySymbol || 'ر.ي';
 
   // Navigation Subtabs
-  const [activeTab, setActiveTab] = useState<'all' | 'sales' | 'returns'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'sales' | 'returns' | 'cancelled'>('all');
 
   // Search & Advanced Filters State
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilterState>({
@@ -459,7 +468,23 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     const invNum = deletingInvoice.invoiceNumber;
     onDeleteInvoice(deletingInvoice.id);
     setDeletingInvoice(null);
-    showFeedback(`تم حذف الفاتورة رقم ${invNum} والتراجع عن أثرها المالي والمخزني ✅`);
+    showFeedback(`تم حذف الفاتورة رقم ${invNum} نهائياً والتسوية المحاسبية للأرصدة والمخزون بنجاح ✅`);
+  };
+
+  const handleConfirmCancelInvoice = (inv: InvoiceRecord, reason?: string) => {
+    if (onCancelInvoice) {
+      onCancelInvoice(inv.id, reason);
+    }
+    setDeletingInvoice(null);
+    showFeedback(`تم الإلغاء المحاسبي للفاتورة رقم ${inv.invoiceNumber} واسترجاع المخزون وتصفير المديونية بنجاح ✅`);
+  };
+
+  const handleConfirmRestoreInvoice = (inv: InvoiceRecord) => {
+    if (onRestoreInvoice) {
+      onRestoreInvoice(inv.id);
+    }
+    setDeletingInvoice(null);
+    showFeedback(`تمت استعادة وتفعيل الفاتورة رقم ${inv.invoiceNumber} وإعادة قيد المديونية بنجاح ✅`);
   };
 
   // Base filtered invoices matching global criteria (date, POS, payment, search, amount)
@@ -546,8 +571,9 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
   // Tab-specific filtered invoices
   const filteredInvoices = useMemo(() => {
     return baseInvoices.filter((inv) => {
-      if (activeTab === 'sales' && inv.type !== 'sale') return false;
-      if (activeTab === 'returns' && inv.type !== 'return') return false;
+      if (activeTab === 'sales' && (inv.type !== 'sale' || inv.status === 'cancelled')) return false;
+      if (activeTab === 'returns' && (inv.type !== 'return' || inv.status === 'cancelled')) return false;
+      if (activeTab === 'cancelled' && inv.status !== 'cancelled') return false;
       return true;
     }).sort((a, b) => (b.timestamp || b.date || '').localeCompare(a.timestamp || a.date || ''));
   }, [baseInvoices, activeTab]);
@@ -560,10 +586,17 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     let returnsCount = 0;
     let returnsWholesaleTotal = 0;
     let returnsCardsTotal = 0;
+    let cancelledCount = 0;
+    let cancelledWholesaleTotal = 0;
 
     baseInvoices.forEach((inv) => {
       const wholesale = Number(inv.totalWholesaleAmount || 0);
       const qty = Number(inv.totalQuantity || 0);
+      if (inv.status === 'cancelled') {
+        cancelledCount++;
+        cancelledWholesaleTotal += wholesale;
+        return;
+      }
       if (inv.type === 'sale') {
         salesCount++;
         salesWholesaleTotal += wholesale;
@@ -586,6 +619,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
       returnsCount,
       returnsWholesaleTotal,
       returnsCardsTotal,
+      cancelledCount,
+      cancelledWholesaleTotal,
       netWholesaleAmount,
       netCardsQuantity,
     };
@@ -734,8 +769,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
         </div>
       )}
 
-      {/* Navigation Subtabs (All, Sales, Returns) - Squarish Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2.5 bg-slate-900/90 p-2 sm:p-2.5 rounded-2xl border border-slate-800 shadow-md">
+      {/* Navigation Subtabs (All, Sales, Returns, Cancelled) - Squarish Cards Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5 bg-slate-900/90 p-2 sm:p-2.5 rounded-2xl border border-slate-800 shadow-md">
         <button
           type="button"
           onClick={() => setActiveTab('all')}
@@ -751,12 +786,12 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
             }`}>
               <Layers className="w-4 h-4" />
             </div>
-            <span className="text-xs sm:text-sm font-bold">كافة الفواتير والسندات</span>
+            <span className="text-xs sm:text-sm font-bold">كافة الفواتير</span>
           </div>
           <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-black ${
             activeTab === 'all' ? 'bg-black/30 text-white' : 'bg-slate-800 text-indigo-300'
           }`}>
-            {invoices.length} فاتورة وسند
+            {invoices.length} سجل
           </span>
         </button>
 
@@ -775,12 +810,12 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
             }`}>
               <ArrowUpRight className="w-4 h-4" />
             </div>
-            <span className="text-xs sm:text-sm font-bold">فواتير المبيعات والتسليم</span>
+            <span className="text-xs sm:text-sm font-bold">فواتير المبيعات</span>
           </div>
           <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-black ${
             activeTab === 'sales' ? 'bg-black/30 text-white' : 'bg-slate-800 text-emerald-300'
           }`}>
-            {invoices.filter((i) => i.type === 'sale').length} فاتورة مبيعات
+            {invoices.filter((i) => i.type === 'sale' && i.status !== 'cancelled').length} سارية
           </span>
         </button>
 
@@ -789,22 +824,46 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
           onClick={() => setActiveTab('returns')}
           className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all duration-150 min-h-[76px] sm:min-h-[84px] cursor-pointer active:scale-95 shadow-xs ${
             activeTab === 'returns'
+              ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30 border-amber-400 ring-2 ring-amber-400/40'
+              : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+              activeTab === 'returns' ? 'bg-white/20 text-white' : 'bg-amber-500/10 text-amber-400'
+            }`}>
+              <RotateCcw className="w-4 h-4" />
+            </div>
+            <span className="text-xs sm:text-sm font-bold">سندات المرتجع</span>
+          </div>
+          <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-black ${
+            activeTab === 'returns' ? 'bg-black/30 text-white' : 'bg-slate-800 text-amber-300'
+          }`}>
+            {invoices.filter((i) => i.type === 'return' && i.status !== 'cancelled').length} سند
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('cancelled')}
+          className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all duration-150 min-h-[76px] sm:min-h-[84px] cursor-pointer active:scale-95 shadow-xs ${
+            activeTab === 'cancelled'
               ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30 border-rose-400 ring-2 ring-rose-400/40'
               : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-800 hover:border-slate-700'
           }`}
         >
           <div className="flex items-center gap-2 mb-1">
             <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-              activeTab === 'returns' ? 'bg-white/20 text-white' : 'bg-rose-500/10 text-rose-400'
+              activeTab === 'cancelled' ? 'bg-white/20 text-white' : 'bg-rose-500/10 text-rose-400'
             }`}>
-              <RotateCcw className="w-4 h-4" />
+              <XCircle className="w-4 h-4" />
             </div>
-            <span className="text-xs sm:text-sm font-bold">سندات المرتجع (إشعار دائن)</span>
+            <span className="text-xs sm:text-sm font-bold">الملغاة محاسبياً</span>
           </div>
           <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-black ${
-            activeTab === 'returns' ? 'bg-black/30 text-white' : 'bg-slate-800 text-rose-300'
+            activeTab === 'cancelled' ? 'bg-black/30 text-white' : 'bg-slate-800 text-rose-300'
           }`}>
-            {invoices.filter((i) => i.type === 'return').length} سند مرتجع
+            {invoices.filter((i) => i.status === 'cancelled').length} ملغاة (0 رصيد)
           </span>
         </button>
       </div>
@@ -939,11 +998,26 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
               <tbody className="divide-y divide-slate-800/60">
                 {filteredInvoices.map((inv) => {
                   const isReturn = inv.type === 'return';
+                  const isCancelled = inv.status === 'cancelled';
                   return (
-                    <tr key={inv.id} className="hover:bg-slate-800/40 transition">
+                    <tr
+                      key={inv.id}
+                      className={`transition ${
+                        isCancelled
+                          ? 'bg-rose-950/20 hover:bg-rose-950/30 border-r-4 border-r-rose-500'
+                          : 'hover:bg-slate-800/40'
+                      }`}
+                    >
                       <td className="py-3 px-4">
-                        <div className="font-mono font-bold text-indigo-400">
-                          {inv.invoiceNumber}
+                        <div className="flex items-center gap-1.5">
+                          <span className={`font-mono font-bold ${isCancelled ? 'text-slate-400 line-through' : 'text-indigo-400'}`}>
+                            {inv.invoiceNumber}
+                          </span>
+                          {isCancelled && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 shrink-0">
+                              ملغاة
+                            </span>
+                          )}
                         </div>
                         <div className="mt-1">
                           <RecordAuditInfo
@@ -956,11 +1030,13 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                       </td>
                       <td className="py-3 px-4">
                         <span className={`inline-block px-2.5 py-1 rounded-lg text-[10px] font-bold ${
-                          isReturn
+                          isCancelled
+                            ? 'bg-slate-800 text-slate-400 border border-slate-700'
+                            : isReturn
                             ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                             : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
                         }`}>
-                          {isReturn ? 'سند مرتجع' : 'مبيعات وتسليم'}
+                          {isCancelled ? 'ملغاة محاسبياً' : isReturn ? 'سند مرتجع' : 'مبيعات وتسليم'}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-slate-300 font-mono">
@@ -1013,42 +1089,86 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                         {inv.totalQuantity}
                       </td>
                       <td className="py-3 px-4 text-center font-bold font-mono text-sm">
-                        <span className={isReturn ? 'text-rose-400' : 'text-indigo-300'}>
-                          {isReturn ? '-' : ''}{(inv.totalWholesaleAmount ?? 0).toLocaleString()}{' '}
-                        </span>
-                        <span className="text-[10px] text-slate-500 font-sans">{currency}</span>
+                        {isCancelled ? (
+                          <div>
+                            <span className="line-through text-slate-500 text-xs">
+                              {(inv.totalWholesaleAmount ?? 0).toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-rose-400 block font-sans">
+                              0 {currency} (ملغاة)
+                            </span>
+                          </div>
+                        ) : (
+                          <div>
+                            <span className={isReturn ? 'text-rose-400' : 'text-indigo-300'}>
+                              {isReturn ? '-' : ''}{(inv.totalWholesaleAmount ?? 0).toLocaleString()}{' '}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-sans">{currency}</span>
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-center">
                         <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                          isReturn
+                          isCancelled
+                            ? 'bg-rose-500/10 text-rose-300'
+                            : isReturn
                             ? 'bg-rose-500/10 text-rose-300'
                             : inv.paymentType === 'cash'
                             ? 'bg-emerald-500/10 text-emerald-400'
                             : 'bg-amber-500/10 text-amber-400'
                         }`}>
-                          {isReturn ? 'خصم مديونية' : inv.paymentType === 'cash' ? 'نقداً' : 'آجل'}
+                          {isCancelled
+                            ? 'ملغاة (0 رصيد)'
+                            : isReturn
+                            ? 'خصم مديونية'
+                            : inv.paymentType === 'cash'
+                            ? 'نقداً'
+                            : 'آجل'}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-center no-print">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
-                            onClick={() => setViewingInvoice(inv)}
+                            onClick={() => {
+                              if (onViewReceipt) onViewReceipt(inv);
+                              else setViewingInvoice(inv);
+                            }}
                             className="p-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 transition cursor-pointer"
                             title="عرض وطباعة الفاتورة"
                           >
                             <Printer className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={() => handleOpenEditModal(inv)}
-                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
-                            title="تعديل الفاتورة"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
+                          {!isCancelled && (
+                            <button
+                              onClick={() => handleOpenEditModal(inv)}
+                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
+                              title="تعديل الفاتورة"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {!isCancelled && (
+                            <button
+                              onClick={() => setDeletingInvoice(inv)}
+                              className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 transition cursor-pointer"
+                              title="إلغاء محاسبي للفاتورة (تصفير المديونية واسترجاع الكروت)"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {isCancelled && onRestoreInvoice && (
+                            <button
+                              onClick={() => handleConfirmRestoreInvoice(inv)}
+                              className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 transition cursor-pointer"
+                              title="استعادة وتفعيل الفاتورة الملغاة"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             onClick={() => setDeletingInvoice(inv)}
                             className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition cursor-pointer"
-                            title="حذف الفاتورة"
+                            title={isCancelled ? 'حذف السجل نهائياً' : 'حذف أو تسوية الفاتورة'}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1064,12 +1184,14 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
       </div>
 
       {/* ========================================================
-          DELETE INVOICE CONFIRMATION MODAL (Smart Forensics Dialog)
+          DELETE & ACCOUNTING SETTLEMENT MODAL (Smart Forensics Dialog)
           ======================================================== */}
       <InvoiceDeleteConfirmModal
         isOpen={Boolean(deletingInvoice)}
         onClose={() => setDeletingInvoice(null)}
         onConfirmDelete={handleConfirmDeleteInvoice}
+        onConfirmCancel={handleConfirmCancelInvoice}
+        onConfirmRestore={handleConfirmRestoreInvoice}
         invoice={deletingInvoice}
         posPoints={posPoints}
         customers={customers}

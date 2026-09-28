@@ -624,7 +624,7 @@ export default function App() {
 
       return safeCustomers.map((customer) => {
         if (!customer) return customer;
-        const custInvoices = safeInvoices.filter(inv => inv.customerId === customer.id);
+        const custInvoices = safeInvoices.filter(inv => inv.customerId === customer.id && inv.status !== 'cancelled');
         const custPayments = safePayments.filter(p => p.customerId === customer.id);
         
         let totalPurchases = 0;
@@ -1984,7 +1984,7 @@ export default function App() {
     const targetPosName = posPoints.find((p) => p.id === toDelete.posPointId)?.name || toDelete.posPointId || 'مباشر';
     const totalAmount = toDelete.totalWholesaleAmount ?? toDelete.finalAmount ?? 0;
     const itemsSummary = (toDelete.items || [])
-      .map((i) => `${i.categoryName || i.categoryId}: ${i.quantity} كرت بسعر ${i.wholesalePrice}`)
+      .map((i) => `${i.categoryName || i.categoryId}: ${i.quantity} كرت بسعر ${i.unitWholesalePrice ?? i.wholesalePrice ?? 0}`)
       .join('، ');
 
     // Audit Log with comprehensive deletion forensics
@@ -2005,7 +2005,7 @@ export default function App() {
     );
   };
 
-  const handleCancelInvoice = (invoiceId: string) => {
+  const handleCancelInvoice = (invoiceId: string, reason?: string) => {
     const target = invoices.find((inv) => inv.id === invoiceId);
     if (!target || target.status === 'cancelled') return;
 
@@ -2026,7 +2026,13 @@ export default function App() {
       return nextCats;
     });
 
-    const cancelledInvoice = { ...target, status: 'cancelled' as const };
+    const cancelledInvoice: InvoiceRecord = {
+      ...target,
+      status: 'cancelled',
+      notes: reason
+        ? `${target.notes ? target.notes + ' | ' : ''}سبب الإلغاء المحاسبي: ${reason}`
+        : target.notes,
+    };
     const nextInvoices = invoices.map((inv) =>
       inv.id === invoiceId ? cancelledInvoice : inv
     );
@@ -2048,12 +2054,64 @@ export default function App() {
 
     // Audit Log
     logUserActivity(
-      'إلغاء فاتورة',
+      'إلغاء فاتورة محاسبياً',
       'invoices',
       'الفواتير والمبيعات',
-      `إلغاء الفاتورة رقم ${target.invoiceNumber}`,
-      `تم إلغاء الفاتورة بقيمة ${(target.totalWholesaleAmount ?? 0).toLocaleString()} ${settings.currencySymbol}`,
+      `إلغاء الفاتورة رقم ${target.invoiceNumber}${reason ? ` (${reason})` : ''}`,
+      `تم إلغاء أثر الفاتورة المالي بقيمة ${(target.totalWholesaleAmount ?? 0).toLocaleString()} ${settings.currencySymbol} مع استرجاع المخزون`,
       'delete'
+    );
+  };
+
+  const handleRestoreInvoice = (invoiceId: string) => {
+    const target = invoices.find((inv) => inv.id === invoiceId);
+    if (!target || target.status !== 'cancelled') return;
+
+    // Deduct warehouse stock (re-apply stock reduction for sales, or re-add for returns)
+    setCategories((prev) => {
+      const nextCats = prev.map((cat) => {
+        const matchingItems = target.items.filter((i) => i.categoryId === cat.id);
+        if (matchingItems.length === 0) return cat;
+        const totalQty = matchingItems.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
+        const forwardStock = target.type === 'sale' ? -totalQty : totalQty;
+        return {
+          ...cat,
+          warehouseStock: Math.max(0, cat.warehouseStock + forwardStock),
+        };
+      });
+      saveData(STORAGE_KEYS.CATEGORIES, nextCats);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CATEGORIES, nextCats);
+      return nextCats;
+    });
+
+    const activeInvoice: InvoiceRecord = { ...target, status: 'completed' };
+    const nextInvoices = invoices.map((inv) =>
+      inv.id === invoiceId ? activeInvoice : inv
+    );
+    setInvoices(nextInvoices);
+    saveData(STORAGE_KEYS.INVOICES, nextInvoices);
+    saveDocumentToFirestore(STORAGE_KEYS.INVOICES, activeInvoice);
+    setPosPoints((prev) => {
+      const next = refreshPOSBalances(prev, nextInvoices, sales, payments);
+      saveData(STORAGE_KEYS.POS_POINTS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.POS_POINTS, next);
+      return next;
+    });
+    setCustomers((prev) => {
+      const next = refreshCustomerBalances(prev, nextInvoices, payments);
+      saveData(STORAGE_KEYS.CUSTOMERS, next);
+      debouncedSyncArrayToFirestore(STORAGE_KEYS.CUSTOMERS, next);
+      return next;
+    });
+
+    // Audit Log
+    logUserActivity(
+      'استعادة فاتورة ملغاة',
+      'invoices',
+      'الفواتير والمبيعات',
+      `استعادة وتفعيل الفاتورة رقم ${target.invoiceNumber}`,
+      `تمت إعادة تفعيل الفاتورة بقيمة ${(target.totalWholesaleAmount ?? 0).toLocaleString()} ${settings.currencySymbol}`,
+      'update'
     );
   };
 
@@ -3897,6 +3955,7 @@ export default function App() {
                   onUpdateInvoice={handleUpdateInvoice}
                   onDeleteInvoice={handleDeleteInvoice}
                   onCancelInvoice={handleCancelInvoice}
+                  onRestoreInvoice={handleRestoreInvoice}
                   customers={scopedCustomers}
                   onViewReceipt={(inv) => setSelectedInvoiceForReceipt(inv)}
                   onOpenFinancialExport={() => setIsFinancialExportModalOpen(true)}
