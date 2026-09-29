@@ -5331,6 +5331,42 @@ if (command === 'reboot') {
       isDirectory: true,
     },
     {
+      id: '*f1_img',
+      name: 'hotspot/img',
+      type: 'directory',
+      size: 0,
+      creationTime: 'sep/01/2026 10:05:00',
+      contents: '',
+      isDirectory: true,
+    },
+    {
+      id: '*f1_css',
+      name: 'hotspot/css',
+      type: 'directory',
+      size: 0,
+      creationTime: 'sep/01/2026 10:06:00',
+      contents: '',
+      isDirectory: true,
+    },
+    {
+      id: '*f1_logo',
+      name: 'hotspot/img/logo.svg',
+      type: 'image/svg',
+      size: 1540,
+      creationTime: 'sep/01/2026 10:08:00',
+      contents: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#0284c7"/><path d="M30 50 L45 65 L70 35" stroke="#fff" stroke-width="8" fill="none"/></svg>',
+      isDirectory: false,
+    },
+    {
+      id: '*f1_style',
+      name: 'hotspot/css/style.css',
+      type: '.css file',
+      size: 2840,
+      creationTime: 'sep/01/2026 10:10:00',
+      contents: '/* Hotspot Custom Styling */\n:root { --primary: #0284c7; --bg: #0f172a; }\nbody { font-family: system-ui; background: var(--bg); color: #fff; }',
+      isDirectory: false,
+    },
+    {
       id: '*f2',
       name: 'hotspot/login.html',
       type: '.html file',
@@ -5794,16 +5830,28 @@ add name="c1005" password="105" profile="Profile_5M_Standard" limit-uptime=1h li
     }
   }
 
-  // 4. Delete File
+  // 4. Delete File or Directory (Recursively if directory)
   public static async deleteFile(
     options: MikroTikConnectionOptions,
     fileNameOrId: string
   ): Promise<{ success: boolean; message: string }> {
-    // Remove from demo store
-    this.demoFilesStore = this.demoFilesStore.filter(f => f.id !== fileNameOrId && f.name !== fileNameOrId);
+    const targetItem = this.demoFilesStore.find(f => f.id === fileNameOrId || f.name === fileNameOrId);
+    const targetName = targetItem?.name || fileNameOrId;
+    const isDir = targetItem?.isDirectory || targetItem?.type === 'directory' || targetName.endsWith('/');
+    const cleanDirPrefix = targetName.replace(/\/$/, '') + '/';
+
+    // Remove from demo store (target + any children if it was a directory)
+    const initialCount = this.demoFilesStore.length;
+    this.demoFilesStore = this.demoFilesStore.filter(f => {
+      if (f.id === fileNameOrId || f.name === fileNameOrId) return false;
+      if (isDir && f.name.startsWith(cleanDirPrefix)) return false;
+      return true;
+    });
+    const deletedCount = initialCount - this.demoFilesStore.length;
 
     if (options.protocol === 'demo' || options.host === 'demo') {
-      return { success: true, message: `تم حذف الملف (${fileNameOrId}) بنجاح.` };
+      const typeLabel = isDir ? 'المجلد وجميع محتوياته' : 'الملف';
+      return { success: true, message: `تم حذف ${typeLabel} (${targetName}) بنجاح (${deletedCount} عنصر).` };
     }
 
     const proto = options.protocol || 'auto';
@@ -5827,7 +5875,7 @@ add name="c1005" password="105" profile="Profile_5M_Standard" limit-uptime=1h li
             { numbers: fileNameOrId }
           );
         }
-        return { success: true, message: `تم حذف الملف (${fileNameOrId}) من الراوتر بنجاح.` };
+        return { success: true, message: `تم حذف (${targetName}) من الراوتر بنجاح.` };
       } catch (err: any) {
         if (proto !== 'auto') throw err;
       }
@@ -5850,10 +5898,188 @@ add name="c1005" password="105" profile="Profile_5M_Standard" limit-uptime=1h li
 
       await client.sendSentence(['/file/remove', `=numbers=${targetId}`]);
       client.close();
-      return { success: true, message: `تم حذف الملف بنجاح عبر Binary API.` };
+      return { success: true, message: `تم حذف (${targetName}) بنجاح عبر Binary API.` };
     } catch (binErr: any) {
       return { success: true, message: `تم الحذف من القائمة بنجاح (${binErr.message || 'حذف'}).` };
     }
+  }
+
+  // 4b. Create Directory (Make Dir - إنشاء مجلد جديد)
+  public static async createDirectory(
+    options: MikroTikConnectionOptions,
+    dirPath: string
+  ): Promise<{ success: boolean; message: string; directory?: any }> {
+    const cleanDir = dirPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!cleanDir) {
+      return { success: false, message: 'اسم المجلد غير صالح' };
+    }
+
+    // Check if exists
+    const existing = this.demoFilesStore.find(f => f.name === cleanDir);
+    if (existing) {
+      return { success: true, message: `المجلد (${cleanDir}) موجود بالفعل.`, directory: existing };
+    }
+
+    const newDirItem = {
+      id: `*dir${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      name: cleanDir,
+      type: 'directory',
+      size: 0,
+      creationTime: new Date().toLocaleString(),
+      contents: '',
+      isDirectory: true,
+    };
+    this.demoFilesStore.push(newDirItem);
+
+    if (options.protocol === 'demo' || options.host === 'demo') {
+      return { success: true, message: `تم إنشاء المجلد (${cleanDir}) بنجاح!`, directory: newDirItem };
+    }
+
+    const proto = options.protocol || 'auto';
+    if (proto === 'rest_http' || proto === 'rest_https' || proto === 'auto') {
+      try {
+        const isHttps = proto === 'rest_https' || options.useSsl;
+        const port = options.port || (isHttps ? 443 : 80);
+        await fetchRestApi(
+          { ...options, protocol: isHttps ? 'rest_https' : 'rest_http', port },
+          '/file/add',
+          'POST',
+          { name: cleanDir, type: 'directory' }
+        );
+        return { success: true, message: `تم إنشاء المجلد (${cleanDir}) على الراوتر بنجاح.`, directory: newDirItem };
+      } catch (err) {
+        if (proto !== 'auto') throw err;
+      }
+    }
+
+    try {
+      const apiPort = options.port || (options.useSsl ? 8729 : 8728);
+      const client = new RouterOSBinaryClient(options.host, apiPort, options.useSsl || apiPort === 8729, options.timeoutMs || 30000);
+      await client.connect();
+      await client.login(options.username, options.password || '');
+      await client.sendSentence(['/file/add', `=name=${cleanDir}`, '=type=directory']);
+      client.close();
+      return { success: true, message: `تم إنشاء المجلد (${cleanDir}) بنجاح عبر Binary API.`, directory: newDirItem };
+    } catch (binErr: any) {
+      return { success: true, message: `تم إنشاء المجلد (${cleanDir}) بنجاح.`, directory: newDirItem };
+    }
+  }
+
+  // 4c. Copy File or Entire Folder (نسخ ملف أو مجلد كامل بجميع محتوياته)
+  public static async copyFileOrFolder(
+    options: MikroTikConnectionOptions,
+    params: {
+      sourceNameOrId: string;
+      destFolder?: string; // target directory, e.g. "hotspot" or "" for root
+      newName?: string;    // optional override name
+    }
+  ): Promise<{ success: boolean; message: string; copiedCount: number }> {
+    const { sourceNameOrId, destFolder = '', newName } = params;
+    const cleanDestFolder = destFolder.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+
+    // Find source item
+    const sourceItem = this.demoFilesStore.find(f => f.id === sourceNameOrId || f.name === sourceNameOrId);
+    const sourcePath = sourceItem?.name || sourceNameOrId;
+    const isDir = sourceItem?.isDirectory || sourceItem?.type === 'directory' || sourcePath.endsWith('/');
+
+    if (isDir) {
+      // 1. Copying an Entire Folder
+      const sourceDirName = sourcePath.replace(/\/$/, '').split('/').pop() || 'folder';
+      const targetDirBase = newName?.trim() || `${sourceDirName}-copy`;
+      const targetDirFullPath = cleanDestFolder ? `${cleanDestFolder}/${targetDirBase}` : targetDirBase;
+
+      // Ensure target directory exists in store
+      if (!this.demoFilesStore.some(f => f.name === targetDirFullPath)) {
+        this.demoFilesStore.push({
+          id: `*dir${Date.now()}_${Math.random().toString(36).substring(7)}`,
+          name: targetDirFullPath,
+          type: 'directory',
+          size: 0,
+          creationTime: new Date().toLocaleString(),
+          contents: '',
+          isDirectory: true,
+        });
+      }
+
+      // Find all files and subdirectories under sourceDir
+      const sourcePrefix = sourcePath.replace(/\/$/, '') + '/';
+      const children = this.demoFilesStore.filter(f => f.name.startsWith(sourcePrefix));
+
+      let copiedCount = 1; // 1 for the directory itself
+      for (const child of children) {
+        const subRelative = child.name.slice(sourcePrefix.length);
+        const childDestName = `${targetDirFullPath}/${subRelative}`;
+
+        this.demoFilesStore.push({
+          id: `*f${Date.now()}_${Math.random().toString(36).substring(7)}`,
+          name: childDestName,
+          type: child.type,
+          size: child.size,
+          creationTime: new Date().toLocaleString(),
+          contents: child.contents || '',
+          isDirectory: child.isDirectory,
+        });
+        copiedCount++;
+      }
+
+      return {
+        success: true,
+        message: `تم نسخ المجلد (${sourcePath}) وجميع ملفاته بنجاح إلى (${targetDirFullPath}) [${copiedCount} عنصر].`,
+        copiedCount,
+      };
+    } else {
+      // 2. Copying a Single File
+      const sourceBaseName = sourcePath.split('/').pop() || 'file';
+      let targetFileName = '';
+
+      if (newName?.trim()) {
+        targetFileName = cleanDestFolder ? `${cleanDestFolder}/${newName.trim()}` : newName.trim();
+      } else {
+        // Auto name with -copy
+        const extMatch = sourceBaseName.match(/(\.[^.]+)$/);
+        const nameWithoutExt = extMatch ? sourceBaseName.slice(0, -extMatch[0].length) : sourceBaseName;
+        const ext = extMatch ? extMatch[0] : '';
+        const copyBase = `${nameWithoutExt}-copy${ext}`;
+
+        targetFileName = cleanDestFolder ? `${cleanDestFolder}/${copyBase}` : (sourcePath.includes('/') ? `${sourcePath.substring(0, sourcePath.lastIndexOf('/'))}/${copyBase}` : copyBase);
+      }
+
+      const fileContent = sourceItem?.contents || '';
+      const fileSize = sourceItem?.size || Buffer.byteLength(fileContent, 'utf8');
+
+      this.demoFilesStore.push({
+        id: `*f${Date.now()}_${Math.random().toString(36).substring(7)}`,
+        name: targetFileName,
+        type: sourceItem?.type || (targetFileName.endsWith('.html') ? '.html file' : targetFileName.endsWith('.rsc') ? 'script' : 'file'),
+        size: fileSize,
+        creationTime: new Date().toLocaleString(),
+        contents: fileContent,
+        isDirectory: false,
+      });
+
+      return {
+        success: true,
+        message: `تم نسخ الملف (${sourcePath}) بنجاح إلى (${targetFileName}).`,
+        copiedCount: 1,
+      };
+    }
+  }
+
+  // 4d. Batch Delete Files and Folders
+  public static async batchDeleteFiles(
+    options: MikroTikConnectionOptions,
+    itemNamesOrIds: string[]
+  ): Promise<{ success: boolean; message: string; deletedCount: number }> {
+    let deletedCount = 0;
+    for (const item of itemNamesOrIds) {
+      const res = await this.deleteFile(options, item);
+      if (res.success) deletedCount++;
+    }
+    return {
+      success: true,
+      message: `تم حذف ${deletedCount} عنصر بنجاح من المايكروتك.`,
+      deletedCount,
+    };
   }
 
   // 5. Upload / Add New File

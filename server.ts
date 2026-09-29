@@ -830,7 +830,7 @@ app.post("/api/mikrotik/files/save", async (req, res) => {
   }
 });
 
-// 23d. Delete File
+// 23d. Delete File or Directory
 app.post("/api/mikrotik/files/delete", async (req, res) => {
   try {
     const { options, fileNameOrId } = req.body;
@@ -843,6 +843,57 @@ app.post("/api/mikrotik/files/delete", async (req, res) => {
     res.json({
       success: false,
       error: error.message || "تعذر حذف الملف من الراوتر",
+    });
+  }
+});
+
+// 23d2. Batch Delete Files or Directories
+app.post("/api/mikrotik/files/batch-delete", async (req, res) => {
+  try {
+    const { options, itemNamesOrIds } = req.body;
+    if (!options?.host || !Array.isArray(itemNamesOrIds) || itemNamesOrIds.length === 0) {
+      return res.status(400).json({ success: false, error: "يرجى تحديد العناصر المراد حذفها" });
+    }
+    const result = await MikroTikService.batchDeleteFiles(options, itemNamesOrIds);
+    res.json(result);
+  } catch (error: any) {
+    res.json({
+      success: false,
+      error: error.message || "تعذر حذف العناصر المحددة",
+    });
+  }
+});
+
+// 23d3. Create Directory (Make Dir)
+app.post("/api/mikrotik/files/mkdir", async (req, res) => {
+  try {
+    const { options, dirPath } = req.body;
+    if (!options?.host || !dirPath) {
+      return res.status(400).json({ success: false, error: "اسم ومسار المجلد مطلوب" });
+    }
+    const result = await MikroTikService.createDirectory(options, dirPath);
+    res.json(result);
+  } catch (error: any) {
+    res.json({
+      success: false,
+      error: error.message || "تعذر إنشاء المجلد",
+    });
+  }
+});
+
+// 23d4. Copy File or Entire Directory
+app.post("/api/mikrotik/files/copy", async (req, res) => {
+  try {
+    const { options, sourceNameOrId, destFolder, newName } = req.body;
+    if (!options?.host || !sourceNameOrId) {
+      return res.status(400).json({ success: false, error: "عنصر المصدر مطلوب للنسخ" });
+    }
+    const result = await MikroTikService.copyFileOrFolder(options, { sourceNameOrId, destFolder, newName });
+    res.json(result);
+  } catch (error: any) {
+    res.json({
+      success: false,
+      error: error.message || "تعذر نسخ الملف أو المجلد",
     });
   }
 });

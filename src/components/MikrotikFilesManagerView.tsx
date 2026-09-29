@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Folder,
+  FolderPlus,
+  FolderTree,
+  FolderOpen,
   FileCode,
   Archive,
   Terminal,
@@ -34,8 +37,17 @@ import {
   ArrowRight,
   ExternalLink,
   ChevronRight,
+  ChevronLeft,
   ShieldCheck,
-  FileSpreadsheet
+  FileSpreadsheet,
+  CornerUpLeft,
+  ClipboardPaste,
+  CheckSquare,
+  Square,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Files
 } from 'lucide-react';
 import { MikroTikConfig, MikrotikFileItem, MikrotikFileCategory } from '../types';
 import {
@@ -43,6 +55,9 @@ import {
   fetchMikrotikFileContent,
   saveMikrotikFile,
   deleteMikrotikFile,
+  batchDeleteMikrotikFiles,
+  createMikrotikDirectory,
+  copyMikrotikItem,
   uploadMikrotikFile,
   createMikrotikBackup,
   exportMikrotikConfig,
@@ -66,12 +81,42 @@ export const MikrotikFilesManagerView: React.FC<MikrotikFilesManagerViewProps> =
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // Winbox Directory & Breadcrumb Navigation State
+  const [currentPath, setCurrentPath] = useState<string>(''); // '' = root
+  const [browseMode, setBrowseMode] = useState<'folders' | 'flat'>('folders'); // 'folders' = hierarchical drill-down, 'flat' = all files
+
+  // Winbox Clipboard State (Fast Copy & Paste for files or entire folders)
+  const [clipboardItem, setClipboardItem] = useState<{
+    item: MikrotikFileItem;
+    isDirectory: boolean;
+    childCount: number;
+    sourcePath: string;
+  } | null>(null);
+  const [isCopying, setIsCopying] = useState(false);
+
+  // Multi-Selection State (Batch Delete & Batch Actions)
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false);
+
   // Search, Filter & Sort
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<MikrotikFileCategory>('all');
-  const [sortBy, setSortBy] = useState<'name' | 'size' | 'date'>('date');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [sortBy, setSortBy] = useState<'name' | 'size' | 'date' | 'type'>('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+
+  // Make Directory (Make Dir) Modal State
+  const [showMakeDirModal, setShowMakeDirModal] = useState(false);
+  const [newDirName, setNewDirName] = useState('');
+  const [newDirParent, setNewDirParent] = useState('');
+  const [isCreatingDir, setIsCreatingDir] = useState(false);
+
+  // Copy / Duplicate Modal State (Modal for custom destination or new name)
+  const [showCopyModal, setShowCopyModal] = useState(false);
+  const [copySourceItem, setCopySourceItem] = useState<MikrotikFileItem | null>(null);
+  const [copyDestFolder, setCopyDestFolder] = useState('');
+  const [copyNewName, setCopyNewName] = useState('');
+  const [isExecutingCopy, setIsExecutingCopy] = useState(false);
 
   // File Editor Modal State
   const [editorFile, setEditorFile] = useState<MikrotikFileItem | null>(null);
@@ -199,7 +244,165 @@ export const MikrotikFilesManagerView: React.FC<MikrotikFilesManagerViewProps> =
     return <FileText className="w-5 h-5 text-slate-400" />;
   };
 
-  // Filtered & Sorted files
+  // Extract all known directories (from both directory items and paths in file names)
+  const allDirectories = useMemo(() => {
+    const dirSet = new Set<string>();
+    for (const f of files) {
+      if (f.isDirectory || f.type === 'directory') {
+        const clean = f.name.replace(/\/$/, '');
+        if (clean) dirSet.add(clean);
+      }
+      const parts = f.name.split('/');
+      if (parts.length > 1) {
+        let acc = '';
+        for (let i = 0; i < parts.length - 1; i++) {
+          acc = acc ? `${acc}/${parts[i]}` : parts[i];
+          dirSet.add(acc);
+        }
+      }
+    }
+    return Array.from(dirSet).sort();
+  }, [files]);
+
+  // Folder stats calculator (files count and combined size)
+  const getFolderStats = (dirPath: string) => {
+    const cleanPrefix = dirPath.replace(/\/$/, '') + '/';
+    const childFiles = files.filter(f => !f.isDirectory && f.type !== 'directory' && f.name.startsWith(cleanPrefix));
+    const subDirs = allDirectories.filter(d => d !== dirPath && d.startsWith(cleanPrefix) && !d.slice(cleanPrefix.length).includes('/'));
+    const totalSize = childFiles.reduce((acc, c) => acc + (c.size || 0), 0);
+    return {
+      filesCount: childFiles.length,
+      subDirsCount: subDirs.length,
+      totalCount: childFiles.length + subDirs.length,
+      totalSize,
+    };
+  };
+
+  // Directory Explorer Items for currentPath (hierarchical WinBox style)
+  const explorerItems = useMemo(() => {
+    const normalizedCurrent = currentPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    const prefix = normalizedCurrent ? `${normalizedCurrent}/` : '';
+
+    // Direct subdirectories
+    const directSubDirs: Array<{
+      id: string;
+      name: string;
+      fullPath: string;
+      isDirectory: boolean;
+      type: string;
+      size: number;
+      creationTime: string;
+      itemCount: number;
+      rawItem?: MikrotikFileItem;
+    }> = [];
+
+    for (const dir of allDirectories) {
+      if (prefix) {
+        if (dir.startsWith(prefix)) {
+          const rest = dir.slice(prefix.length);
+          if (rest && !rest.includes('/')) {
+            const stats = getFolderStats(dir);
+            directSubDirs.push({
+              id: `dir_${dir}`,
+              name: rest,
+              fullPath: dir,
+              isDirectory: true,
+              type: 'directory',
+              size: stats.totalSize,
+              creationTime: files.find(f => f.name === dir)?.creationTime || 'نظام المجلدات',
+              itemCount: stats.totalCount,
+              rawItem: files.find(f => f.name === dir) || { id: `dir_${dir}`, name: dir, type: 'directory', size: 0, creationTime: '', isDirectory: true },
+            });
+          }
+        }
+      } else {
+        // Root directories
+        if (!dir.includes('/')) {
+          const stats = getFolderStats(dir);
+          directSubDirs.push({
+            id: `dir_${dir}`,
+            name: dir,
+            fullPath: dir,
+            isDirectory: true,
+            type: 'directory',
+            size: stats.totalSize,
+            creationTime: files.find(f => f.name === dir)?.creationTime || 'نظام المجلدات',
+            itemCount: stats.totalCount,
+            rawItem: files.find(f => f.name === dir) || { id: `dir_${dir}`, name: dir, type: 'directory', size: 0, creationTime: '', isDirectory: true },
+          });
+        }
+      }
+    }
+
+    // Direct files
+    const directFiles: Array<{
+      id: string;
+      name: string;
+      fullPath: string;
+      isDirectory: boolean;
+      type: string;
+      size: number;
+      creationTime: string;
+      itemCount?: number;
+      rawItem?: MikrotikFileItem;
+    }> = [];
+
+    for (const f of files) {
+      if (f.isDirectory || f.type === 'directory') continue;
+      if (prefix) {
+        if (f.name.startsWith(prefix)) {
+          const rest = f.name.slice(prefix.length);
+          if (rest && !rest.includes('/')) {
+            directFiles.push({
+              id: f.id || f.name,
+              name: rest,
+              fullPath: f.name,
+              isDirectory: false,
+              type: f.type,
+              size: f.size || 0,
+              creationTime: f.creationTime,
+              rawItem: f,
+            });
+          }
+        }
+      } else {
+        if (!f.name.includes('/')) {
+          directFiles.push({
+            id: f.id || f.name,
+            name: f.name,
+            fullPath: f.name,
+            isDirectory: false,
+            type: f.type,
+            size: f.size || 0,
+            creationTime: f.creationTime,
+            rawItem: f,
+          });
+        }
+      }
+    }
+
+    // Sort items: subfolders first, then files
+    directSubDirs.sort((a, b) => {
+      let diff = 0;
+      if (sortBy === 'name') diff = a.name.localeCompare(b.name);
+      else if (sortBy === 'size') diff = a.size - b.size;
+      else if (sortBy === 'date') diff = (a.creationTime || '').localeCompare(b.creationTime || '');
+      return sortOrder === 'asc' ? diff : -diff;
+    });
+
+    directFiles.sort((a, b) => {
+      let diff = 0;
+      if (sortBy === 'name') diff = a.name.localeCompare(b.name);
+      else if (sortBy === 'size') diff = a.size - b.size;
+      else if (sortBy === 'type') diff = (a.type || '').localeCompare(b.type || '');
+      else if (sortBy === 'date') diff = (a.creationTime || '').localeCompare(b.creationTime || '');
+      return sortOrder === 'asc' ? diff : -diff;
+    });
+
+    return [...directSubDirs, ...directFiles];
+  }, [files, allDirectories, currentPath, sortBy, sortOrder]);
+
+  // Filtered & Sorted files (for Flat View or Global Search)
   const filteredFiles = useMemo(() => {
     return files
       .filter((file) => {
@@ -212,11 +415,18 @@ export const MikrotikFilesManagerView: React.FC<MikrotikFilesManagerViewProps> =
         return getFileCategory(file) === activeCategory;
       })
       .sort((a, b) => {
+        const aIsDir = a.isDirectory || a.type === 'directory';
+        const bIsDir = b.isDirectory || b.type === 'directory';
+        if (aIsDir && !bIsDir) return -1;
+        if (!aIsDir && bIsDir) return 1;
+
         let diff = 0;
         if (sortBy === 'name') {
           diff = a.name.localeCompare(b.name);
         } else if (sortBy === 'size') {
           diff = (a.size || 0) - (b.size || 0);
+        } else if (sortBy === 'type') {
+          diff = (a.type || '').localeCompare(b.type || '');
         } else if (sortBy === 'date') {
           diff = (a.creationTime || '').localeCompare(b.creationTime || '');
         }
@@ -226,16 +436,200 @@ export const MikrotikFilesManagerView: React.FC<MikrotikFilesManagerViewProps> =
 
   // Statistics calculation
   const stats = useMemo(() => {
-    const totalFiles = files.filter(f => !f.isDirectory).length;
+    const totalFiles = files.filter(f => !f.isDirectory && f.type !== 'directory').length;
+    const totalDirectories = allDirectories.length;
     const totalSize = files.reduce((acc, f) => acc + (f.size || 0), 0);
     const hotspotCount = files.filter(f => getFileCategory(f) === 'hotspot').length;
     const backupCount = files.filter(f => getFileCategory(f) === 'backup').length;
     const scriptCount = files.filter(f => getFileCategory(f) === 'script').length;
     const otherCount = files.filter(f => getFileCategory(f) === 'other').length;
-    return { totalFiles, totalSize, hotspotCount, backupCount, scriptCount, otherCount };
-  }, [files]);
+    return { totalFiles, totalDirectories, totalSize, hotspotCount, backupCount, scriptCount, otherCount };
+  }, [files, allDirectories]);
 
-  // Action Handlers
+  // Winbox Action Handlers
+  // 1. Copy item to clipboard (single file or entire folder)
+  const handleCopyItem = (item: { name: string; isDirectory?: boolean; id?: string; rawItem?: MikrotikFileItem }) => {
+    const isDir = item.isDirectory || (item.rawItem && (item.rawItem.isDirectory || item.rawItem.type === 'directory')) || false;
+    const childStats = isDir ? getFolderStats(item.name) : { totalCount: 1 };
+
+    setClipboardItem({
+      item: (item.rawItem || item) as MikrotikFileItem,
+      isDirectory: isDir,
+      childCount: childStats.totalCount,
+      sourcePath: item.name,
+    });
+
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(item.name).catch(() => {});
+    }
+
+    setFeedback({
+      type: 'success',
+      message: isDir
+        ? `📋 تم نسخ المجلد بالكامل (${item.name}) بما يحتويه (${childStats.totalCount} عنصر). انتقل لأي مجلد واضغط "لصق".`
+        : `📋 تم نسخ الملف (${item.name}) إلى الحافظة. اضغط "لصق" لإدراجه في المجلد المستهدف.`,
+    });
+  };
+
+  // 2. Paste from clipboard into currentPath
+  const handlePasteClipboard = async (destFolderOverride?: string) => {
+    if (!clipboardItem) return;
+    setIsCopying(true);
+    try {
+      const dest = destFolderOverride !== undefined ? destFolderOverride : currentPath;
+      const res = await copyMikrotikItem(config, {
+        sourceNameOrId: clipboardItem.sourcePath,
+        destFolder: dest,
+      });
+      if (res.success) {
+        setFeedback({
+          type: 'success',
+          message: res.message || `تم اللصق بنجاح في (${dest || 'الجذر /'})!`,
+        });
+        setClipboardItem(null);
+        loadFiles();
+      } else {
+        setFeedback({ type: 'error', message: res.message || 'تعذر لصق العنصر' });
+      }
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: `خطأ أثناء اللصق: ${err.message}` });
+    } finally {
+      setIsCopying(false);
+    }
+  };
+
+  // 3. Duplicate modal & execute
+  const handleOpenDuplicate = (item: { name: string; isDirectory?: boolean; id?: string; rawItem?: MikrotikFileItem }) => {
+    const isDir = item.isDirectory || (item.rawItem && (item.rawItem.isDirectory || item.rawItem.type === 'directory')) || false;
+    setCopySourceItem((item.rawItem || item) as MikrotikFileItem);
+    setCopyDestFolder(currentPath);
+    const base = item.name.split('/').pop() || item.name;
+    setCopyNewName(isDir ? `${base}-copy` : base.replace(/(\.[^.]+)$/, '-copy$1'));
+    setShowCopyModal(true);
+  };
+
+  const handleExecuteCopyModal = async () => {
+    if (!copySourceItem) return;
+    setIsExecutingCopy(true);
+    try {
+      const res = await copyMikrotikItem(config, {
+        sourceNameOrId: copySourceItem.name,
+        destFolder: copyDestFolder,
+        newName: copyNewName.trim() || undefined,
+      });
+      if (res.success) {
+        setFeedback({ type: 'success', message: res.message || 'تم النسخ والتكرار بنجاح!' });
+        setShowCopyModal(false);
+        loadFiles();
+      } else {
+        setFeedback({ type: 'error', message: res.message || 'فشل النسخ' });
+      }
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: `خطأ: ${err.message}` });
+    } finally {
+      setIsExecutingCopy(false);
+    }
+  };
+
+  // 4. Create New Directory (Make Dir)
+  const handleOpenMakeDir = () => {
+    setNewDirName('');
+    setNewDirParent(currentPath);
+    setShowMakeDirModal(true);
+  };
+
+  const handleCreateDirectorySubmit = async () => {
+    if (!newDirName.trim()) return;
+    setIsCreatingDir(true);
+    try {
+      const cleanSub = newDirName.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+      const fullPath = newDirParent
+        ? `${newDirParent.replace(/\/$/, '')}/${cleanSub}`
+        : cleanSub;
+      const res = await createMikrotikDirectory(config, fullPath);
+      if (res.success) {
+        setFeedback({ type: 'success', message: res.message || `تم إنشاء المجلد (${fullPath}) بنجاح!` });
+        setShowMakeDirModal(false);
+        setNewDirName('');
+        loadFiles();
+      } else {
+        setFeedback({ type: 'error', message: res.message || 'تعذر إنشاء المجلد' });
+      }
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: `خطأ: ${err.message}` });
+    } finally {
+      setIsCreatingDir(false);
+    }
+  };
+
+  // 5. Batch Delete Selected Items
+  const handleBatchDelete = async () => {
+    if (selectedItemIds.size === 0) return;
+    const items = Array.from(selectedItemIds);
+    if (!window.confirm(`هل أنت متأكد من حذف ${items.length} عنصر محدد نهائياً من الراوتر؟`)) {
+      return;
+    }
+    setIsBatchDeleting(true);
+    try {
+      const res = await batchDeleteMikrotikFiles(config, items);
+      if (res.success) {
+        setFeedback({ type: 'success', message: res.message || `تم حذف ${items.length} عنصر بنجاح.` });
+        setSelectedItemIds(new Set());
+        loadFiles();
+      } else {
+        setFeedback({ type: 'error', message: res.message || 'تعذر حذف بعض العناصر' });
+      }
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: `خطأ أثناء الحذف الجماعي: ${err.message}` });
+    } finally {
+      setIsBatchDeleting(false);
+    }
+  };
+
+  // 6. Navigation Helpers
+  const handleNavigateTo = (dirPath: string) => {
+    setCurrentPath(dirPath.trim().replace(/^\/+/, '').replace(/\/+$/, ''));
+  };
+
+  const handleNavigateUp = () => {
+    if (!currentPath) return;
+    const parts = currentPath.split('/');
+    parts.pop();
+    setCurrentPath(parts.join('/'));
+  };
+
+  // 7. Column Sort Header Click
+  const handleHeaderSort = (col: 'name' | 'size' | 'date' | 'type') => {
+    if (sortBy === col) {
+      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(col);
+      setSortOrder('asc');
+    }
+  };
+
+  // 8. Multi-select toggle
+  const toggleSelectItem = (idOrName: string) => {
+    setSelectedItemIds(prev => {
+      const next = new Set(prev);
+      if (next.has(idOrName)) next.delete(idOrName);
+      else next.add(idOrName);
+      return next;
+    });
+  };
+
+  const toggleSelectAllCurrent = (items: Array<{ fullPath: string }>) => {
+    const allSelected = items.length > 0 && items.every(it => selectedItemIds.has(it.fullPath));
+    if (allSelected) {
+      setSelectedItemIds(new Set());
+    } else {
+      const next = new Set(selectedItemIds);
+      items.forEach(it => next.add(it.fullPath));
+      setSelectedItemIds(next);
+    }
+  };
+
+  // Action Handlers for Editor, Download, Script
   const handleOpenFileEditor = async (file: MikrotikFileItem) => {
     setEditorFile(file);
     setEditorTab('code');

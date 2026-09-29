@@ -1279,7 +1279,7 @@ export async function saveMikrotikFile(
   }
 }
 
-// 4. Delete File from Router
+// 4. Delete File or Directory from Router
 export async function deleteMikrotikFile(
   config: Partial<MikroTikConfig>,
   fileNameOrId: string
@@ -1293,6 +1293,61 @@ export async function deleteMikrotikFile(
     return await parseJsonResponse(res);
   } catch (error: any) {
     return { success: false, message: error.message || 'تعذر حذف الملف من الراوتر' };
+  }
+}
+
+// 4b. Batch Delete Files or Directories
+export async function batchDeleteMikrotikFiles(
+  config: Partial<MikroTikConfig>,
+  itemNamesOrIds: string[]
+): Promise<{ success: boolean; message: string; deletedCount?: number }> {
+  try {
+    const res = await fetch('/api/mikrotik/files/batch-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, itemNamesOrIds }),
+    });
+    return await parseJsonResponse(res);
+  } catch (error: any) {
+    return { success: false, message: error.message || 'تعذر حذف العناصر المحددة' };
+  }
+}
+
+// 4c. Create Directory (Make Dir)
+export async function createMikrotikDirectory(
+  config: Partial<MikroTikConfig>,
+  dirPath: string
+): Promise<{ success: boolean; message: string; directory?: any }> {
+  try {
+    const res = await fetch('/api/mikrotik/files/mkdir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, dirPath }),
+    });
+    return await parseJsonResponse(res);
+  } catch (error: any) {
+    return { success: false, message: error.message || 'تعذر إنشاء المجلد' };
+  }
+}
+
+// 4d. Copy File or Entire Directory
+export async function copyMikrotikItem(
+  config: Partial<MikroTikConfig>,
+  params: {
+    sourceNameOrId: string;
+    destFolder?: string;
+    newName?: string;
+  }
+): Promise<{ success: boolean; message: string; copiedCount?: number }> {
+  try {
+    const res = await fetch('/api/mikrotik/files/copy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: config, ...params }),
+    });
+    return await parseJsonResponse(res);
+  } catch (error: any) {
+    return { success: false, message: error.message || 'تعذر نسخ الملف أو المجلد' };
   }
 }
 
